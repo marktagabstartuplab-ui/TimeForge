@@ -178,6 +178,8 @@ model User {
   passwordHash    String?        @map("password_hash")
   firstName       String         @map("first_name")
   lastName        String         @map("last_name")
+  phone           String?        @map("phone")
+  jobTitle        String?        @map("job_title")
   status          UserStatus     @default(INVITED)
   employmentType  EmploymentType @default(EMPLOYEE) @map("employment_type")
   hourlyRate      Decimal?       @map("hourly_rate") @db.Decimal(12, 2)

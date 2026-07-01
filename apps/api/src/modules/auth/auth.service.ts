@@ -1,10 +1,17 @@
-import { Injectable, UnauthorizedException, NotImplementedException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  NotImplementedException,
+  ConflictException,
+  NotFoundException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ConfigService } from '@nestjs/config';
 import * as argon2 from 'argon2';
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
-import { AuditAction } from '@prisma/client';
+import { AuditAction, EmploymentType, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { RegisterDto } from './dto';
 
 interface JwtConfig {
   accessSecret: string;
@@ -129,6 +136,83 @@ export class AuthService {
       });
       await this.audit(existing.tenantId, existing.userId, AuditAction.LOGOUT);
     }
+  }
+
+  // Public self-service signup. Creates an INVITED user pending admin approval;
+  // never issues tokens. Email verification has no working pipeline yet, so we
+  // mark the address verified here — admin approval (status -> ACTIVE) is the
+  // only real gate.
+  async register(dto: RegisterDto): Promise<void> {
+    const { defaultTenantSlug, defaultOrgSlug } = this.config.get<{
+      defaultTenantSlug: string;
+      defaultOrgSlug: string;
+    }>('registration')!;
+
+    const tenant = await this.prisma.tenant.findUnique({ where: { slug: defaultTenantSlug } });
+    if (!tenant) throw new NotFoundException('Registration is not available');
+
+    const org = await this.prisma.organization.findUnique({
+      where: { tenantId_slug: { tenantId: tenant.id, slug: defaultOrgSlug } },
+    });
+    if (!org) throw new NotFoundException('Registration is not available');
+
+    const email = dto.email.toLowerCase();
+    const existing = await this.prisma.user.findFirst({
+      where: { tenantId: tenant.id, email, deletedAt: null },
+    });
+    if (existing) throw new ConflictException('A user with this email already exists');
+
+    const department = await this.prisma.department.findFirst({
+      where: { id: dto.departmentId, tenantId: tenant.id, organizationId: org.id, deletedAt: null },
+    });
+    if (!department) throw new NotFoundException('Department not found');
+
+    const role = await this.prisma.role.findFirst({ where: { tenantId: tenant.id, key: 'EMPLOYEE' } });
+    if (!role) throw new NotFoundException("Role 'EMPLOYEE' not found");
+
+    const passwordHash = await argon2.hash(dto.password);
+
+    const user = await this.prisma.user.create({
+      data: {
+        tenantId: tenant.id,
+        organizationId: org.id,
+        email,
+        passwordHash,
+        firstName: dto.firstName,
+        lastName: dto.lastName,
+        phone: dto.phone,
+        jobTitle: dto.jobTitle,
+        departmentId: department.id,
+        employmentType: EmploymentType.EMPLOYEE,
+        status: UserStatus.INVITED,
+        emailVerifiedAt: new Date(),
+      },
+    });
+    await this.prisma.userRole.create({ data: { userId: user.id, roleId: role.id } });
+    await this.audit(tenant.id, user.id, AuditAction.ADMIN_ACTION);
+  }
+
+  // Public department list for the signup form's department picker, scoped to
+  // the single default org this MVP registers new users into.
+  async departmentsForRegistration(): Promise<{ id: string; name: string }[]> {
+    const { defaultTenantSlug, defaultOrgSlug } = this.config.get<{
+      defaultTenantSlug: string;
+      defaultOrgSlug: string;
+    }>('registration')!;
+
+    const tenant = await this.prisma.tenant.findUnique({ where: { slug: defaultTenantSlug } });
+    if (!tenant) return [];
+    const org = await this.prisma.organization.findUnique({
+      where: { tenantId_slug: { tenantId: tenant.id, slug: defaultOrgSlug } },
+    });
+    if (!org) return [];
+
+    const departments = await this.prisma.department.findMany({
+      where: { tenantId: tenant.id, organizationId: org.id, deletedAt: null },
+      orderBy: { name: 'asc' },
+      select: { id: true, name: true },
+    });
+    return departments;
   }
 
   // Email verification / password reset: token plumbing lands with the Users

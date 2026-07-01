@@ -15,6 +15,10 @@ export default () => ({
     ttl: parseInt(process.env.RATE_LIMIT_TTL ?? '60', 10),
     max: parseInt(process.env.RATE_LIMIT_MAX ?? '120', 10),
   },
+  registration: {
+    defaultTenantSlug: process.env.DEFAULT_TENANT_SLUG ?? 'demo',
+    defaultOrgSlug: process.env.DEFAULT_ORG_SLUG ?? 'demo-org',
+  },
   ai: {
     provider: process.env.AI_PROVIDER ?? 'OPENAI',
     openaiApiKey:  process.env.OPENAI_API_KEY   ?? '',

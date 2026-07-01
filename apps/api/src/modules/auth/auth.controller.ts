@@ -1,8 +1,9 @@
 import { Body, Controller, Get, HttpCode, Post, Req, Res } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
+import { Throttle } from '@nestjs/throttler';
 import type { Request, Response } from 'express';
 import { AuthService } from './auth.service';
-import { LoginDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto } from './dto';
+import { LoginDto, ForgotPasswordDto, ResetPasswordDto, VerifyEmailDto, RegisterDto } from './dto';
 import { Public, CurrentUser, AuthPrincipal } from '../../common/decorators';
 
 const REFRESH_COOKIE = 'refresh_token';
@@ -86,5 +87,20 @@ export class AuthController {
   @Get('me')
   me(@CurrentUser() user: AuthPrincipal) {
     return user;
+  }
+
+  @Public()
+  @Throttle({ default: { limit: 5, ttl: 3_600_000 } })
+  @Post('register')
+  @HttpCode(201)
+  async register(@Body() dto: RegisterDto) {
+    await this.auth.register(dto);
+    return { status: 'pending_approval' };
+  }
+
+  @Public()
+  @Get('departments')
+  async departments() {
+    return this.auth.departmentsForRegistration();
   }
 }
