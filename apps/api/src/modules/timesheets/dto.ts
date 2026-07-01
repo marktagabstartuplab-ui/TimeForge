@@ -1,6 +1,5 @@
 import {
   IsArray,
-  IsIn,
   IsOptional,
   IsString,
   IsUUID,
@@ -41,21 +40,9 @@ export class SubmitTimesheetDto {
   version!: number;
 }
 
-const DECIDE_STATUSES = ['APPROVED', 'REJECTED', 'REVISION_REQUESTED'] as const;
-export type DecisionStatus = (typeof DECIDE_STATUSES)[number];
-
-export class DecideTimesheetDto {
-  @IsIn(DECIDE_STATUSES)
-  decision!: DecisionStatus;
-
-  @IsOptional()
-  @IsString()
-  @MaxLength(5000)
-  remark?: string;
-
-  @Type(() => Number)
-  version!: number;
-}
+// NOTE (C1 fix): DecideTimesheetDto / the timesheet-level decide() transition was
+// removed. Approval decisions go exclusively through ApprovalsService.decide()
+// (POST /approvals/:timesheetId/decision) - see docs/Backend-RC-Review.md C1.
 
 export class AttachEntriesDto {
   @IsArray()
@@ -68,6 +55,6 @@ export interface TimesheetQuery {
   cursor?: string;
   status?: string;
   userId?: string;
-  from?: string; // filter by periodStart ≥ from
-  to?: string;   // filter by periodStart ≤ to
+  from?: string; // filter by periodStart >= from
+  to?: string;   // filter by periodStart <= to
 }

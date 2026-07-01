@@ -77,6 +77,7 @@ export const PERMISSIONS = {
   KPI_PROGRESS_READ: 'kpi_progress:read',
   KPI_PROGRESS_READ_TEAM: 'kpi_progress:read_team',
   KPI_PROGRESS_READ_ORG: 'kpi_progress:read_org',
+  KPI_READ_ORG: 'kpi:read_org', // org-level KPI dashboards/reports
   // approvals
   APPROVAL_READ_TEAM: 'approval:read_team',
   APPROVAL_DECIDE: 'approval:decide',
@@ -84,6 +85,7 @@ export const PERMISSIONS = {
   // payroll
   PAYROLL_READ_SELF: 'payroll:read_self',
   PAYROLL_READ_STATUS_TEAM: 'payroll:read_status_team',
+  PAYROLL_READ: 'payroll:read', // org-level payroll dashboards/reports (amounts) — Finance/Admin
   PAYROLL_PERIOD_READ: 'payroll_period:read',
   PAYROLL_PERIOD_CREATE: 'payroll_period:create',
   PAYROLL_PERIOD_UPDATE: 'payroll_period:update',
@@ -126,10 +128,16 @@ const ORG_READ_PERMS = [
 ] as const;
 
 /**
- * Role → permission mapping (Phase 1 matrix). ADMIN holds `*` (wildcard,
- * resolved in the PermissionsGuard). Intern is NOT a role — it is an
- * EMPLOYEE-role user with employment_type = INTERN; payroll exclusion is
- * driven by `payroll_eligible`, not by role.
+ * Maps application roles to their permissions (Phase 1 matrix).
+ *
+ * ADMIN uses the `*` wildcard, which is resolved by the PermissionsGuard.
+ *
+ * Note:
+ * Intern is NOT an access role. Interns are assigned the EMPLOYEE role
+ * with `employment_type = INTERN`.
+ *
+ * Payroll eligibility is determined by the `payroll_eligible` flag,
+ * not by the user's role or employment type.
  */
 export const ROLE_PERMISSIONS: Record<Role, string[]> = {
   [Role.ADMIN]: ['*'],
@@ -164,7 +172,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.USER_READ_SELF, P.USER_READ,
     ...ORG_READ_PERMS,
     P.TIMESHEET_READ, P.TIMESHEET_READ_ORG,
-    P.KPI_PROGRESS_READ_ORG, P.KPI_TEMPLATE_READ,
+    P.KPI_PROGRESS_READ_ORG, P.KPI_READ_ORG, P.KPI_TEMPLATE_READ,
     P.ATTENDANCE_READ_ORG,
     P.PAYROLL_PERIOD_READ,
     P.AUDIT_READ_SCOPED,
@@ -177,8 +185,8 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.USER_READ_SELF, P.USER_READ,
     ...ORG_READ_PERMS,
     P.TIMESHEET_READ, P.TIMESHEET_READ_ORG,
-    P.KPI_PROGRESS_READ_ORG,
-    P.PAYROLL_PERIOD_READ, P.PAYROLL_PERIOD_CREATE, P.PAYROLL_PERIOD_UPDATE,
+    P.KPI_PROGRESS_READ_ORG, P.KPI_READ_ORG,
+    P.PAYROLL_READ, P.PAYROLL_PERIOD_READ, P.PAYROLL_PERIOD_CREATE, P.PAYROLL_PERIOD_UPDATE,
     P.PAYROLL_GENERATE, P.PAYROLL_EXPORT,
     P.PAYROLL_RATE_READ, P.PAYROLL_RATE_UPDATE,
     P.AUDIT_READ_SCOPED,

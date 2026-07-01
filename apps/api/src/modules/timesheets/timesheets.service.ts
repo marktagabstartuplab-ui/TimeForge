@@ -13,7 +13,6 @@ import { PERMISSIONS } from '@timeforge/shared';
 import {
   AttachEntriesDto,
   CreateTimesheetDto,
-  DecideTimesheetDto,
   SubmitTimesheetDto,
   TimesheetQuery,
   UpdateTimesheetDto,
@@ -23,7 +22,7 @@ import {
 export class TimesheetsService {
   constructor(private readonly prisma: PrismaService) {}
 
-  // ── Reads ───────────────────────────────────────────────────────────────────
+  // -- Reads --
 
   async findAll(p: AuthPrincipal, query: TimesheetQuery): Promise<PageResult<Timesheet>> {
     const limit = Math.min(Number(query.limit ?? 20), 100);
@@ -60,7 +59,7 @@ export class TimesheetsService {
     return sheet;
   }
 
-  // ── Employee writes ─────────────────────────────────────────────────────────
+  // -- Employee writes --
 
   async create(p: AuthPrincipal, dto: CreateTimesheetDto): Promise<Timesheet> {
     const start = new Date(dto.periodStart);
@@ -114,7 +113,7 @@ export class TimesheetsService {
   }
 
   /**
-   * DRAFT | REVISION_REQUESTED → SUBMITTED.
+   * DRAFT | REVISION_REQUESTED -> SUBMITTED.
    * Recalculates totalMinutes from currently attached, non-deleted entries.
    */
   async submit(p: AuthPrincipal, id: string, dto: SubmitTimesheetDto): Promise<Timesheet> {
@@ -145,35 +144,14 @@ export class TimesheetsService {
     });
   }
 
-  /**
-   * SUBMITTED | UNDER_REVIEW → APPROVED | REJECTED | REVISION_REQUESTED.
-   * Requires approval:decide permission (supervisor / admin).
-   */
-  async decide(p: AuthPrincipal, id: string, dto: DecideTimesheetDto): Promise<Timesheet> {
-    const sheet = await this.prisma.timesheet.findFirst({
-      where: { id, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
-    });
-    if (!sheet) throw new NotFoundException('Timesheet not found');
-    if (sheet.status !== 'SUBMITTED' && sheet.status !== 'UNDER_REVIEW') {
-      throw new ConflictException(
-        `Cannot decide a timesheet with status ${sheet.status}`,
-      );
-    }
-    if (sheet.version !== dto.version) throw new ConflictException('Version mismatch');
-
-    return this.prisma.timesheet.update({
-      where: { id },
-      data: {
-        status: dto.decision as TimesheetStatus,
-        decidedAt: new Date(),
-        updatedBy: p.userId,
-        version: { increment: 1 },
-      },
-    });
-  }
+  // NOTE (C1 fix): the SUBMITTED|UNDER_REVIEW -> APPROVED/REJECTED/REVISION_REQUESTED
+  // decide() transition has been removed from here. It is handled exclusively by
+  // ApprovalsService.decide() (POST /approvals/:timesheetId/decision), which is the
+  // only path enforcing self-approval prevention, team scope, Approval history, KPI
+  // updates, and audit logging. See docs/Backend-RC-Review.md C1.
 
   /**
-   * APPROVED → PAYROLL_READY.
+   * APPROVED -> PAYROLL_READY.
    * Requires payroll:generate permission (Finance / Admin).
    */
   async markPayrollReady(p: AuthPrincipal, id: string): Promise<Timesheet> {
@@ -274,7 +252,7 @@ export class TimesheetsService {
     });
   }
 
-  // ── Private helpers ─────────────────────────────────────────────────────────
+  // -- Private helpers --
 
   private can(p: AuthPrincipal, perm: string): boolean {
     return p.permissions.includes('*') || p.permissions.includes(perm);

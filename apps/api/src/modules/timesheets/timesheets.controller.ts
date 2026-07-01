@@ -15,7 +15,6 @@ import { TimesheetsService } from './timesheets.service';
 import {
   AttachEntriesDto,
   CreateTimesheetDto,
-  DecideTimesheetDto,
   SubmitTimesheetDto,
   TimesheetQuery,
   UpdateTimesheetDto,
@@ -26,7 +25,7 @@ import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/dec
 export class TimesheetsController {
   constructor(private readonly svc: TimesheetsService) {}
 
-  // ── List / detail ──────────────────────────────────────────────────────────
+  // -- List / detail --
 
   @Get()
   @RequirePermissions('timesheet:read')
@@ -40,7 +39,7 @@ export class TimesheetsController {
     return this.svc.findOne(u, id);
   }
 
-  // ── Employee lifecycle ─────────────────────────────────────────────────────
+  // -- Employee lifecycle --
 
   @Post()
   @RequirePermissions('timesheet:create')
@@ -79,7 +78,7 @@ export class TimesheetsController {
     return this.svc.remove(u, id, version);
   }
 
-  // ── Entry management (DRAFT only) ──────────────────────────────────────────
+  // -- Entry management (DRAFT only) --
 
   @Post(':id/entries')
   @RequirePermissions('timesheet:update')
@@ -102,23 +101,18 @@ export class TimesheetsController {
     return this.svc.detachEntry(u, id, entryId);
   }
 
-  // ── Approval workflow ──────────────────────────────────────────────────────
+  // -- Approval workflow --
+  //
+  // NOTE (C1 fix): the SUBMITTED|UNDER_REVIEW -> APPROVED/REJECTED/REVISION_REQUESTED
+  // transition is handled EXCLUSIVELY by ApprovalsController / ApprovalsService via
+  // POST /api/v1/approvals/:timesheetId/decision. That is the only code path that
+  // enforces self-approval prevention (BR-APP-04), team scope (BR-APP-03), Approval
+  // history, KPI updates, and (as of M1) the audit trail. Do not reintroduce a
+  // second `decide` endpoint here -- it previously duplicated (and under-enforced)
+  // that transition. See docs/Backend-RC-Review.md C1.
 
   /**
-   * Supervisor / Admin: SUBMITTED | UNDER_REVIEW → APPROVED | REJECTED | REVISION_REQUESTED.
-   */
-  @Post(':id/decide')
-  @RequirePermissions('approval:decide')
-  decide(
-    @CurrentUser() u: AuthPrincipal,
-    @Param('id', ParseUUIDPipe) id: string,
-    @Body() dto: DecideTimesheetDto,
-  ) {
-    return this.svc.decide(u, id, dto);
-  }
-
-  /**
-   * Finance / Admin: APPROVED → PAYROLL_READY.
+   * Finance / Admin: APPROVED -> PAYROLL_READY.
    */
   @Post(':id/payroll-ready')
   @RequirePermissions('payroll:generate')

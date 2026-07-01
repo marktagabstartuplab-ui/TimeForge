@@ -2,11 +2,12 @@ import {
   ConflictException,
   ForbiddenException,
   Injectable,
+  Logger,
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
-import { PayrollPeriodStatus, Prisma } from '@prisma/client';
+import { AuditAction, PayrollPeriodStatus, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
@@ -17,12 +18,39 @@ import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery } from './
 const OVERTIME_DAILY_THRESHOLD_HOURS = 8;
 /** Work days in a payroll half-period (for OT calculation baseline). */
 const HALF_PERIOD_WORK_DAYS = 13;
+/** M2: idempotency key TTL, matches the AI/Admin money-mutation pattern. */
+const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
 
 @Injectable()
 export class PayrollService {
+  private readonly logger = new Logger(PayrollService.name);
+
   constructor(private readonly prisma: PrismaService) {}
 
-  // ── Payroll Periods ──────────────────────────────────────────────────────────
+  // -- Idempotency helpers (M2) --
+  // Mirrors AdminService/AiService: a resultRef (opaque string) is cached per
+  // tenant+key for 24h so retried requests with the same Idempotency-Key don't
+  // reprocess a money mutation.
+
+  private async checkIdempotency(tenantId: string, key: string): Promise<string | null> {
+    const existing = await (this.prisma as any).idempotencyKey.findFirst({
+      where: { tenantId, key, expiresAt: { gt: new Date() } },
+    });
+    return existing?.resultRef ?? null;
+  }
+
+  private async saveIdempotency(tenantId: string, key: string, resultRef: string): Promise<void> {
+    const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
+    await (this.prisma as any).idempotencyKey
+      .upsert({
+        where: { tenantId_key: { tenantId, key } } as any,
+        update: { resultRef, expiresAt },
+        create: { tenantId, key, resultRef, expiresAt },
+      })
+      .catch((err: Error) => this.logger.warn(`Idempotency persist failed: ${err.message}`));
+  }
+
+  // -- Payroll Periods --
 
   async findAllPeriods(p: AuthPrincipal, query: PayrollPeriodQuery) {
     const limit = Math.min(Number(query.limit ?? 20), 100);
@@ -88,11 +116,25 @@ export class PayrollService {
    * Compute payroll line items from PAYROLL_READY timesheets in this period.
    * Only payroll_eligible = true AND status = ACTIVE users are included (BR-PAY-05).
    * Only PAYROLL_READY hours count toward estimated pay (BR-PAY-01).
+   *
+   * M2: an Idempotency-Key is required by the controller; a retried request with
+   * the same key returns the previously-generated report instead of reprocessing.
    */
-  async generateReport(p: AuthPrincipal, periodId: string) {
+  async generateReport(p: AuthPrincipal, periodId: string, idempotencyKey: string) {
     const period = await this.findOnePeriod(p, periodId);
     if (period.status === 'EXPORTED') {
       throw new ConflictException('Payroll period is already exported and locked (BR-PAY-04)');
+    }
+
+    // M2: if this exact key was already processed, return the cached report untouched.
+    const idemKey = `payroll-generate:${idempotencyKey}`;
+    const cachedReportId = await this.checkIdempotency(p.tenantId, idemKey);
+    if (cachedReportId) {
+      const cachedReport = await this.prisma.payrollReport.findFirst({
+        where: { id: cachedReportId, tenantId: p.tenantId, payrollPeriodId: periodId },
+        include: { lineItems: true },
+      });
+      if (cachedReport) return cachedReport;
     }
 
     // Gather all PAYROLL_READY timesheets within the period date range
@@ -211,7 +253,7 @@ export class PayrollService {
         const overtimeHours = new Decimal(overtimeMins).div(60);
         const regularHours = new Decimal(regularMins).div(60);
 
-        // Estimated pay: regular × rate + overtime × rate × 1.25
+        // Estimated pay: regular x rate + overtime x rate x 1.25
         const estimatedPay = regularHours.mul(rate).add(overtimeHours.mul(rate).mul(1.25));
 
         totalEstimatedPay = totalEstimatedPay.add(estimatedPay);
@@ -262,6 +304,8 @@ export class PayrollService {
       });
     });
 
+    await this.saveIdempotency(p.tenantId, idemKey, report.id);
+
     return report;
   }
 
@@ -284,13 +328,41 @@ export class PayrollService {
   }
 
   /**
-   * Export the payroll report (MVP: synchronous — returns the report data directly).
+   * Export the payroll report (MVP: synchronous -- returns the report data directly).
    * In production, this would queue a BullMQ job and return a 202.
+   *
+   * H1: requires the period be LOCKED (immutable-after-export, BR-PAY-04), rejects
+   * a repeat export of an already-EXPORTED period, and writes an
+   * AuditLog(PAYROLL_EXPORT) entry. M2: idempotent on Idempotency-Key retries.
    */
-  async exportReport(p: AuthPrincipal, periodId: string, dto: ExportPayrollDto) {
+  async exportReport(
+    p: AuthPrincipal,
+    periodId: string,
+    dto: ExportPayrollDto,
+    idempotencyKey: string,
+  ) {
     const period = await this.findOnePeriod(p, periodId);
-    if (period.status === 'OPEN') {
-      throw new ConflictException('Generate the payroll report before exporting');
+
+    if (period.status === 'EXPORTED') {
+      throw new ConflictException('Payroll period has already been exported (BR-PAY-04)');
+    }
+    if (period.status !== 'LOCKED') {
+      throw new ConflictException(
+        `Payroll period must be LOCKED before export (current status: ${period.status}). Generate and lock it first.`,
+      );
+    }
+
+    // M2: replay-safe on retries with the same Idempotency-Key.
+    const idemKey = `payroll-export:${idempotencyKey}`;
+    const cached = await this.checkIdempotency(p.tenantId, idemKey);
+    if (cached) {
+      try {
+        const { reportId, format } = JSON.parse(cached) as { reportId: string; format: string };
+        const cachedReport = await this.findReport(p, reportId);
+        return { reportId: cachedReport.id, format, status: 'COMPLETED', data: cachedReport };
+      } catch {
+        // corrupt cache entry -- fall through and reprocess
+      }
     }
 
     const report = await this.prisma.payrollReport.findFirst({
@@ -305,18 +377,36 @@ export class PayrollService {
         },
       },
     });
-    if (!report) throw new NotFoundException('Payroll report not found — generate first');
+    if (!report) throw new NotFoundException('Payroll report not found -- generate first');
 
-    // Mark exported
-    await this.prisma.payrollPeriod.update({
-      where: { id: periodId },
-      data: {
-        status: 'EXPORTED',
-        exportedAt: new Date(),
-        updatedBy: p.userId,
-        version: { increment: 1 },
-      },
-    });
+    // Mark exported + write the immutable audit trail entry (H1) in one transaction.
+    await this.prisma.$transaction([
+      this.prisma.payrollPeriod.update({
+        where: { id: periodId },
+        data: {
+          status: 'EXPORTED',
+          exportedAt: new Date(),
+          updatedBy: p.userId,
+          version: { increment: 1 },
+        },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          tenantId: p.tenantId,
+          actorId: p.userId,
+          action: AuditAction.PAYROLL_EXPORT,
+          entityType: 'payroll_period',
+          entityId: periodId,
+          metadata: { reportId: report.id, format: dto.format },
+        },
+      }),
+    ]);
+
+    await this.saveIdempotency(
+      p.tenantId,
+      idemKey,
+      JSON.stringify({ reportId: report.id, format: dto.format }),
+    );
 
     // MVP: return the report data directly (full async export is post-MVP)
     return {
@@ -371,7 +461,7 @@ export class PayrollService {
     return lineItems; // hourlyRate and estimatedPay are intentionally excluded
   }
 
-  // ── Hourly Rate Management (Finance / Admin only) ────────────────────────────
+  // -- Hourly Rate Management (Finance / Admin only) --
 
   async getRate(p: AuthPrincipal, userId: string) {
     if (!this.can(p, PERMISSIONS.PAYROLL_RATE_READ)) {
@@ -409,7 +499,7 @@ export class PayrollService {
     });
   }
 
-  // ── Private helpers ──────────────────────────────────────────────────────────
+  // -- Private helpers --
 
   private can(p: AuthPrincipal, perm: string): boolean {
     return p.permissions.includes('*') || p.permissions.includes(perm);

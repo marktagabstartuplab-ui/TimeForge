@@ -5,7 +5,7 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { ApprovalAction, Prisma, Timesheet, TimesheetStatus } from '@prisma/client';
+import { ApprovalAction, AuditAction, Prisma, Timesheet, TimesheetStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
@@ -13,14 +13,18 @@ import { PERMISSIONS } from '@timeforge/shared';
 import { KpiService } from '../kpi/kpi.service';
 import { AddRemarkDto, ApprovalActionDto, ApprovalQueue, DecisionDto } from './dto';
 
-/** Map API action string to DB ApprovalAction enum + resulting TimesheetStatus. */
+/** Map API action string to DB ApprovalAction enum + resulting TimesheetStatus + AuditAction. */
 const ACTION_MAP: Record<
   ApprovalActionDto,
-  { dbAction: ApprovalAction; nextStatus: TimesheetStatus }
+  { dbAction: ApprovalAction; nextStatus: TimesheetStatus; auditAction: AuditAction }
 > = {
-  APPROVE: { dbAction: 'APPROVE', nextStatus: 'APPROVED' },
-  REJECT: { dbAction: 'REJECT', nextStatus: 'REJECTED' },
-  REQUEST_REVISION: { dbAction: 'REQUEST_REVISION', nextStatus: 'REVISION_REQUESTED' },
+  APPROVE: { dbAction: 'APPROVE', nextStatus: 'APPROVED', auditAction: 'APPROVE' },
+  REJECT: { dbAction: 'REJECT', nextStatus: 'REJECTED', auditAction: 'REJECT' },
+  REQUEST_REVISION: {
+    dbAction: 'REQUEST_REVISION',
+    nextStatus: 'REVISION_REQUESTED',
+    auditAction: 'REVISION_REQUEST',
+  },
 };
 
 @Injectable()
@@ -30,7 +34,7 @@ export class ApprovalsService {
     private readonly kpiService: KpiService,
   ) {}
 
-  // ── Queue / reads ────────────────────────────────────────────────────────────
+  // -- Queue / reads --
 
   /**
    * Returns timesheets pending review for this supervisor's team (or org for Admin).
@@ -76,11 +80,14 @@ export class ApprovalsService {
     return sheet;
   }
 
-  // ── Decisions ────────────────────────────────────────────────────────────────
+  // -- Decisions --
 
   /**
    * Supervisor / Admin: make an approval decision.
-   * State machine: SUBMITTED | UNDER_REVIEW → APPROVED | REJECTED | REVISION_REQUESTED
+   * State machine: SUBMITTED | UNDER_REVIEW -> APPROVED | REJECTED | REVISION_REQUESTED
+   *
+   * This is the SOLE approval decision path in the system (see docs/Backend-RC-Review.md
+   * C1) -- the timesheet-level decide() endpoint has been removed.
    */
   async decide(
     p: AuthPrincipal,
@@ -115,10 +122,10 @@ export class ApprovalsService {
 
     // Optimistic lock
     if (sheet.version !== dto.expectedVersion) {
-      throw new ConflictException('Version mismatch — please refresh and retry');
+      throw new ConflictException('Version mismatch -- please refresh and retry');
     }
 
-    const { dbAction, nextStatus } = ACTION_MAP[dto.action];
+    const { dbAction, nextStatus, auditAction } = ACTION_MAP[dto.action];
 
     // BR-APP-02: REJECT and REQUEST_REVISION require a non-empty remark
     if ((dto.action === 'REJECT' || dto.action === 'REQUEST_REVISION') && !dto.remark?.trim()) {
@@ -127,7 +134,7 @@ export class ApprovalsService {
       );
     }
 
-    // Run as a transaction: update timesheet status + create approval record
+    // Run as a transaction: update timesheet status + create approval record + audit log (M1)
     const [updatedSheet] = await this.prisma.$transaction([
       this.prisma.timesheet.update({
         where: { id: timesheetId },
@@ -150,6 +157,16 @@ export class ApprovalsService {
           actedAt: new Date(),
           createdBy: p.userId,
           updatedBy: p.userId,
+        },
+      }),
+      this.prisma.auditLog.create({
+        data: {
+          tenantId: p.tenantId,
+          actorId: p.userId,
+          action: auditAction,
+          entityType: 'timesheet',
+          entityId: timesheetId,
+          metadata: { action: dto.action, resultingState: nextStatus, remark: dto.remark ?? null },
         },
       }),
     ]);
@@ -212,7 +229,7 @@ export class ApprovalsService {
     });
   }
 
-  // ── Private helpers ──────────────────────────────────────────────────────────
+  // -- Private helpers --
 
   private can(p: AuthPrincipal, perm: string): boolean {
     return p.permissions.includes('*') || p.permissions.includes(perm);
