@@ -1,4 +1,4 @@
-import { apiClient } from "./client";
+import { apiClient } from "@/lib/api/client";
 
 export interface AuthUser {
   id: string;
@@ -19,11 +19,6 @@ export interface Department {
   name: string;
 }
 
-export async function login(email: string, password: string): Promise<LoginResponse> {
-  const { data } = await apiClient.post<LoginResponse>("/auth/login", { email, password });
-  return data;
-}
-
 export interface RegisterPayload {
   email: string;
   password: string;
@@ -32,6 +27,11 @@ export interface RegisterPayload {
   phone: string;
   jobTitle: string;
   departmentId: string;
+}
+
+export async function login(email: string, password: string): Promise<LoginResponse> {
+  const { data } = await apiClient.post<LoginResponse>("/auth/login", { email, password });
+  return data;
 }
 
 export async function register(payload: RegisterPayload): Promise<{ status: string }> {

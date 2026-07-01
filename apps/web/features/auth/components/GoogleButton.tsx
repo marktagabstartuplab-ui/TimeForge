@@ -1,11 +1,10 @@
 "use client";
 
-import { Button } from "@/components/ui/button";
 import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 
 function GoogleIcon() {
   return (
-    <svg viewBox="0 0 24 24" className="h-4 w-4" aria-hidden="true">
+    <svg viewBox="0 0 24 24" className="h-[18px] w-[18px]" aria-hidden="true">
       <path
         fill="#4285F4"
         d="M23.52 12.27c0-.85-.08-1.67-.22-2.45H12v4.64h6.47a5.53 5.53 0 0 1-2.4 3.63v3h3.88c2.27-2.09 3.57-5.17 3.57-8.82z"
@@ -23,22 +22,23 @@ function GoogleIcon() {
   );
 }
 
+// Backend has no OAuth support yet — kept for design parity, disabled with a
+// "coming soon" tooltip. Never calls any endpoint.
 export function GoogleButton() {
   return (
     <Tooltip>
       <TooltipTrigger
         render={
-          <Button
+          <button
             type="button"
-            variant="outline"
             aria-disabled="true"
-            aria-label="Sign in with Google - coming soon"
-            className="w-full cursor-not-allowed gap-2 opacity-60"
+            aria-label="Continue with Google — coming soon"
             onClick={(e) => e.preventDefault()}
+            className="flex h-11 w-full cursor-not-allowed items-center justify-center gap-2.5 rounded-[10px] border border-[#c3c6d2] bg-white text-[15px] font-medium text-brand-navy opacity-70"
           >
             <GoogleIcon />
-            Sign in with Google
-          </Button>
+            Continue with Google
+          </button>
         }
       />
       <TooltipContent>Coming soon</TooltipContent>

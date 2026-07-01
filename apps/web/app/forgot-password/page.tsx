@@ -1,17 +1,13 @@
 import type { Metadata } from "next";
-import { AuthCard, AuthCardHeader } from "@/components/auth/AuthCard";
-import { ForgotPasswordForm } from "@/components/auth/ForgotPasswordForm";
+import { AuthCenteredLayout } from "@/features/auth/components/AuthCenteredLayout";
+import { ForgotPasswordForm } from "@/features/auth/components/ForgotPasswordForm";
 
 export const metadata: Metadata = { title: "Reset Your Password | TimeForge" };
 
 export default function ForgotPasswordPage() {
   return (
-    <AuthCard>
-      <AuthCardHeader
-        title="Reset your password"
-        description="Enter your email address and we'll send you a link to reset your password."
-      />
+    <AuthCenteredLayout>
       <ForgotPasswordForm />
-    </AuthCard>
+    </AuthCenteredLayout>
   );
 }

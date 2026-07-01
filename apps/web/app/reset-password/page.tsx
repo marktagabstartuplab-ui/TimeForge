@@ -1,13 +1,13 @@
 import type { Metadata } from "next";
 import { Suspense } from "react";
-import { AuthCard } from "@/components/auth/AuthCard";
+import { AuthCenteredLayout } from "@/features/auth/components/AuthCenteredLayout";
 import { ResetPasswordPageContent } from "./ResetPasswordPageContent";
 
 export const metadata: Metadata = { title: "Change Password | TimeForge" };
 
 export default function ResetPasswordPage() {
   return (
-    <Suspense fallback={<AuthCard>Loading…</AuthCard>}>
+    <Suspense fallback={<AuthCenteredLayout><div /></AuthCenteredLayout>}>
       <ResetPasswordPageContent />
     </Suspense>
   );

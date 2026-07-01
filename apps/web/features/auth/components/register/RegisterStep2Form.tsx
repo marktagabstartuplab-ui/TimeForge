@@ -1,0 +1,210 @@
+"use client";
+
+import { useState } from "react";
+import Link from "next/link";
+import { useForm, Controller } from "react-hook-form";
+import { zodResolver } from "@hookform/resolvers/zod";
+import { useQuery } from "@tanstack/react-query";
+import { Lock, ArrowRight } from "lucide-react";
+import { Checkbox } from "@/components/ui/checkbox";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { AuthCard } from "../AuthCard";
+import { FieldLabel } from "../fields";
+import { PasswordField } from "../PasswordField";
+import { SubmitButton } from "../SubmitButton";
+import { FieldError, FormBanner } from "../FormMessages";
+import { registerStep2Schema, type RegisterStep2Values } from "../../schemas/auth.schema";
+import { fetchDepartments } from "../../api/auth.service";
+import { ApiError } from "@/lib/api/client";
+
+interface Props {
+  onSubmit: (values: RegisterStep2Values) => Promise<void>;
+  onBack: () => void;
+}
+
+export function RegisterStep2Form({ onSubmit, onBack }: Props) {
+  const [submitting, setSubmitting] = useState(false);
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  const { data: departments, isLoading: departmentsLoading } = useQuery({
+    queryKey: ["auth", "departments"],
+    queryFn: fetchDepartments,
+  });
+
+  const {
+    register,
+    handleSubmit,
+    control,
+    formState: { errors },
+  } = useForm<RegisterStep2Values>({
+    resolver: zodResolver(registerStep2Schema),
+    defaultValues: {
+      password: "",
+      confirmPassword: "",
+      departmentId: "",
+      workCategory: "",
+      agreeToTerms: false,
+    },
+  });
+
+  const submit = async (values: RegisterStep2Values) => {
+    setServerError(null);
+    setSubmitting(true);
+    try {
+      await onSubmit(values);
+    } catch (err) {
+      if (err instanceof ApiError && err.details?.length) {
+        setServerError(err.details.join(" "));
+      } else {
+        setServerError(err instanceof ApiError ? err.message : "Something went wrong");
+      }
+      setSubmitting(false);
+    }
+  };
+
+  return (
+    <AuthCard>
+      <div className="mb-6 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-bold text-brand-navy">Complete Registration</h1>
+          <p className="mt-1 text-sm text-brand-muted">Step 2 of 2</p>
+        </div>
+        <button
+          type="button"
+          onClick={onBack}
+          className="text-sm font-medium text-brand hover:underline"
+        >
+          Back
+        </button>
+      </div>
+
+      <form onSubmit={handleSubmit(submit)} noValidate className="space-y-4">
+        {serverError ? <FormBanner message={serverError} /> : null}
+
+        <div>
+          <FieldLabel htmlFor="password">Create Password</FieldLabel>
+          <PasswordField
+            id="password"
+            icon={Lock}
+            autoComplete="new-password"
+            placeholder="••••••••"
+            aria-label="Create Password"
+            invalid={Boolean(errors.password)}
+            {...register("password")}
+          />
+          {errors.password ? (
+            <FieldError message={errors.password.message} />
+          ) : (
+            <p className="mt-1 text-xs text-brand-muted/80">
+              Must be at least 12 characters with one special symbol.
+            </p>
+          )}
+        </div>
+
+        <div>
+          <FieldLabel htmlFor="confirmPassword">Confirm Password</FieldLabel>
+          <PasswordField
+            id="confirmPassword"
+            icon={Lock}
+            autoComplete="new-password"
+            placeholder="••••••••"
+            aria-label="Confirm Password"
+            invalid={Boolean(errors.confirmPassword)}
+            {...register("confirmPassword")}
+          />
+          <FieldError message={errors.confirmPassword?.message} />
+        </div>
+
+        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          <div>
+            <FieldLabel htmlFor="departmentId">Department</FieldLabel>
+            <Controller
+              control={control}
+              name="departmentId"
+              render={({ field }) => (
+                <Select value={field.value} onValueChange={field.onChange}>
+                  <SelectTrigger
+                    id="departmentId"
+                    aria-label="Department"
+                    aria-invalid={Boolean(errors.departmentId)}
+                    className="h-11 w-full rounded-[10px] border-[#c3c6d2]"
+                  >
+                    <SelectValue placeholder={departmentsLoading ? "Loading…" : "Select..."} />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments?.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>
+                        {d.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            <FieldError message={errors.departmentId?.message} />
+          </div>
+
+          <div>
+            <FieldLabel htmlFor="workCategory">Work Category</FieldLabel>
+            <Select disabled>
+              <SelectTrigger
+                id="workCategory"
+                aria-label="Work Category"
+                className="h-11 w-full rounded-[10px] border-[#c3c6d2]"
+              >
+                <SelectValue placeholder="Select..." />
+              </SelectTrigger>
+              <SelectContent />
+            </Select>
+            <p className="mt-1 text-xs text-brand-muted/80">Set later by your admin.</p>
+          </div>
+        </div>
+
+        <div className="flex items-start gap-2 pt-1">
+          <Controller
+            control={control}
+            name="agreeToTerms"
+            render={({ field }) => (
+              <Checkbox
+                id="agreeToTerms"
+                className="mt-0.5"
+                checked={field.value === true}
+                onCheckedChange={(checked) => field.onChange(checked === true)}
+              />
+            )}
+          />
+          <label htmlFor="agreeToTerms" className="text-xs leading-relaxed text-brand-muted">
+            I agree to the{" "}
+            <Link href="/terms" className="font-semibold text-brand hover:underline">
+              Terms of Service
+            </Link>{" "}
+            and acknowledge the{" "}
+            <Link href="/privacy" className="font-semibold text-brand hover:underline">
+              Privacy Policy
+            </Link>
+            .
+          </label>
+        </div>
+        <FieldError message={errors.agreeToTerms?.message} />
+
+        <SubmitButton loading={submitting} loadingText="Setting up…">
+          Complete Setup
+          <ArrowRight className="h-[18px] w-[18px]" />
+        </SubmitButton>
+
+        <p className="text-center text-sm text-brand-muted">
+          Having trouble?{" "}
+          <Link href="/support" className="font-semibold text-brand hover:underline">
+            Contact Support
+          </Link>
+        </p>
+      </form>
+    </AuthCard>
+  );
+}

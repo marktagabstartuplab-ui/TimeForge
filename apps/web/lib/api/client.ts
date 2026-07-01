@@ -28,6 +28,21 @@ export const apiClient = axios.create({
   withCredentials: true,
 });
 
+// In-memory access token, set by the AuthProvider on login. Kept out of
+// localStorage on purpose; the refresh token stays in an httpOnly cookie.
+let accessToken: string | null = null;
+
+export function setAccessToken(token: string | null): void {
+  accessToken = token;
+}
+
+apiClient.interceptors.request.use((config) => {
+  if (accessToken) {
+    config.headers.Authorization = `Bearer ${accessToken}`;
+  }
+  return config;
+});
+
 apiClient.interceptors.response.use(
   (response) => response,
   (error: AxiosError<ApiErrorBody>) => {
