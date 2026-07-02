@@ -1,4 +1,4 @@
-import { IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsInt, IsBoolean, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateTeamDto {
@@ -31,11 +31,13 @@ export class UpdateTeamDto {
   @IsUUID()
   supervisorId?: string;
 
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }
 
 export class DeleteVersionDto {
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }

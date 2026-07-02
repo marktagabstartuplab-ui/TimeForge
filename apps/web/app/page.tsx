@@ -1,6 +1,5 @@
 import { Navbar } from "@/components/landing/Navbar";
 import { Hero } from "@/components/landing/Hero";
-import { StatsBar } from "@/components/landing/StatsBar";
 import { FeatureGrid } from "@/components/landing/FeatureGrid";
 import { CtaBanner } from "@/components/landing/CtaBanner";
 import { Footer } from "@/components/landing/Footer";
@@ -11,7 +10,6 @@ export default function Home() {
       <Navbar />
       <main className="flex-1">
         <Hero />
-        <StatsBar />
         <FeatureGrid />
         <CtaBanner />
       </main>

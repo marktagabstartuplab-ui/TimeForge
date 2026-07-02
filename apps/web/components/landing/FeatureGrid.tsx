@@ -44,8 +44,8 @@ export function FeatureGrid() {
     <section className="px-4 py-24 sm:px-6 lg:px-8">
       <div className="mx-auto max-w-6xl">
         <div className="mx-auto max-w-2xl text-center">
-          <h2 className="text-3xl font-extrabold text-gray-900">Everything your workforce needs</h2>
-          <p className="mt-3 text-base text-gray-500">
+          <h2 className="text-3xl font-extrabold text-brand-ink">Everything your workforce needs</h2>
+          <p className="mt-3 text-base text-brand-muted">
             A complete suite of tools designed to streamline operations from the shop floor to the
             executive suite.
           </p>
@@ -58,10 +58,10 @@ export function FeatureGrid() {
               className="rounded-xl border border-gray-200 p-6 transition-shadow duration-200 hover:shadow-md"
             >
               <span className="flex h-10 w-10 items-center justify-center rounded-lg bg-blue-50">
-                <f.icon className="h-5 w-5 text-blue-600" />
+                <f.icon className="h-5 w-5 text-brand" />
               </span>
-              <h3 className="mt-4 text-base font-semibold text-gray-900">{f.title}</h3>
-              <p className="mt-1.5 text-sm leading-relaxed text-gray-500">{f.description}</p>
+              <h3 className="mt-4 text-base font-semibold text-brand-ink">{f.title}</h3>
+              <p className="mt-1.5 text-sm leading-relaxed text-brand-muted">{f.description}</p>
             </div>
           ))}
         </div>

@@ -3,14 +3,12 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import Link from "next/link";
-import { useForm, Controller } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { Mail } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
 import { AuthCard } from "./AuthCard";
 import { FieldLabel, IconInput } from "./fields";
 import { PasswordField } from "./PasswordField";
-import { GoogleButton } from "./GoogleButton";
 import { SubmitButton } from "./SubmitButton";
 import { FieldError, FormBanner } from "./FormMessages";
 import { loginSchema, type LoginValues } from "../schemas/auth.schema";
@@ -27,11 +25,10 @@ export function LoginForm() {
   const {
     register,
     handleSubmit,
-    control,
     formState: { errors },
   } = useForm<LoginValues>({
     resolver: zodResolver(loginSchema),
-    defaultValues: { email: "", password: "", rememberMe: false },
+    defaultValues: { email: "", password: "" },
   });
 
   const onSubmit = async (values: LoginValues) => {
@@ -53,16 +50,8 @@ export function LoginForm() {
   return (
     <AuthCard>
       <div className="mb-6 text-center">
-        <h1 className="text-[28px] font-bold leading-tight text-brand-navy">Welcome back</h1>
-        <p className="mt-1 text-sm text-brand-muted">Access your workforce workspace</p>
-      </div>
-
-      <GoogleButton />
-
-      <div className="my-6 flex items-center gap-3">
-        <span className="h-px flex-1 bg-[#c3c6d2]/60" />
-        <span className="text-xs font-medium tracking-wide text-brand-muted">OR EMAIL</span>
-        <span className="h-px flex-1 bg-[#c3c6d2]/60" />
+        <h1 className="text-[26px] font-bold leading-tight text-brand-navy">Welcome back</h1>
+        <p className="mt-1 text-sm text-brand-muted">Sign in to your TimeForge workspace</p>
       </div>
 
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="space-y-4">
@@ -75,7 +64,7 @@ export function LoginForm() {
             type="email"
             icon={Mail}
             autoComplete="email"
-            placeholder="alex.johnson@company.com"
+            placeholder="you@company.com"
             aria-label="Email address"
             invalid={Boolean(errors.email)}
             {...register("email")}
@@ -101,34 +90,23 @@ export function LoginForm() {
           <FieldError message={errors.password?.message} />
         </div>
 
-        <div className="flex items-center gap-2">
-          <Controller
-            control={control}
-            name="rememberMe"
-            render={({ field }) => (
-              <Checkbox
-                id="rememberMe"
-                checked={field.value}
-                onCheckedChange={(checked) => field.onChange(checked === true)}
-              />
-            )}
-          />
-          <label htmlFor="rememberMe" className="cursor-pointer text-sm text-brand-muted">
-            Remember me for 30 days
-          </label>
-        </div>
-
         <SubmitButton loading={submitting} loadingText="Signing in…">
           Sign In
         </SubmitButton>
-
-        <p className="text-center text-sm text-brand-muted">
-          Don&apos;t have an account?{" "}
-          <Link href="/register" className="font-semibold text-brand hover:underline">
-            Register your team
-          </Link>
-        </p>
       </form>
+
+      <div className="my-5 flex items-center gap-3">
+        <span className="h-px flex-1 bg-[#c3c6d2]/60" />
+        <span className="text-xs font-medium tracking-wide text-brand-muted">NEW HERE?</span>
+        <span className="h-px flex-1 bg-[#c3c6d2]/60" />
+      </div>
+
+      <Link
+        href="/register"
+        className="flex h-11 w-full items-center justify-center rounded-[10px] border-2 border-brand text-[15px] font-bold text-brand transition-colors hover:bg-blue-50"
+      >
+        Create account
+      </Link>
     </AuthCard>
   );
 }

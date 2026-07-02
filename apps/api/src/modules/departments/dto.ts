@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateDepartmentDto {
@@ -15,11 +15,13 @@ export class UpdateDepartmentDto {
   @MaxLength(200)
   name?: string;
 
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }
 
 export class DeleteVersionDto {
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }

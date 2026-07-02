@@ -14,6 +14,12 @@ export interface LoginResponse {
   user: AuthUser;
 }
 
+export interface RefreshResponse {
+  accessToken: string;
+  tokenType: string;
+  expiresIn: number;
+}
+
 export interface Department {
   id: string;
   name: string;
@@ -56,4 +62,11 @@ export async function fetchDepartments(): Promise<Department[]> {
 
 export async function logout(): Promise<void> {
   await apiClient.post("/auth/logout");
+}
+
+// Exchanges the httpOnly refresh cookie for a new access token — used to
+// restore a session after a hard page load/reload.
+export async function refresh(): Promise<RefreshResponse> {
+  const { data } = await apiClient.post<RefreshResponse>("/auth/refresh");
+  return data;
 }

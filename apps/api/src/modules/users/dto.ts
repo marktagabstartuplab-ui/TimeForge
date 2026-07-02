@@ -8,6 +8,7 @@ import {
   IsUUID,
   MaxLength,
   MinLength,
+  IsInt,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { EmploymentType } from '@prisma/client';
@@ -84,6 +85,7 @@ export class UpdateUserDto {
   @Type(() => Boolean)
   payrollEligible?: boolean;
 
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }

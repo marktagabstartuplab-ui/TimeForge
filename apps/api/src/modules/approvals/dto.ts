@@ -1,4 +1,4 @@
-import { IsIn, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsIn, IsInt, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 const APPROVAL_ACTIONS = ['APPROVE', 'REJECT', 'REQUEST_REVISION'] as const;
@@ -17,6 +17,7 @@ export class DecisionDto {
   @MaxLength(5000)
   remark?: string;
 
+  @IsInt()
   @Type(() => Number)
   expectedVersion!: number;
 }

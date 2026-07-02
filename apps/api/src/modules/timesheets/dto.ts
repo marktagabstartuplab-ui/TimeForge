@@ -4,6 +4,7 @@ import {
   IsString,
   IsUUID,
   MaxLength,
+  IsInt,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -26,6 +27,7 @@ export class UpdateTimesheetDto {
   @MaxLength(5000)
   summary?: string;
 
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }
@@ -36,6 +38,7 @@ export class SubmitTimesheetDto {
   @MaxLength(5000)
   summary?: string;
 
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }

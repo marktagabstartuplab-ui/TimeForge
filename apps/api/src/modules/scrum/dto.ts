@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsString,
   MaxLength,
+  IsInt,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 
@@ -52,6 +53,7 @@ export class UpdateScrumEntryDto {
   @MaxLength(2000)
   notes?: string;
 
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }
@@ -61,6 +63,7 @@ export class CommentScrumEntryDto {
   @MaxLength(2000)
   comment!: string;
 
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }

@@ -6,6 +6,7 @@ import {
   IsString,
   MaxLength,
   Min,
+  IsInt,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { KpiMetricType, KpiPeriod } from '@prisma/client';
@@ -64,6 +65,7 @@ export class UpdateKpiTemplateDto {
   @IsOptional()
   appliesTo?: Record<string, string[]>;
 
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }

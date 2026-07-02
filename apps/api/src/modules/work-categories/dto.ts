@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateWorkCategoryDto {
@@ -15,11 +15,13 @@ export class UpdateWorkCategoryDto {
   @MaxLength(200)
   name?: string;
 
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }
 
 export class DeleteVersionDto {
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }
