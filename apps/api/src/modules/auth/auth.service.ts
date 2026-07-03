@@ -51,7 +51,7 @@ export class AuthService {
       include: { roles: { include: { role: true } } },
     });
     if (!user || !user.passwordHash) throw new UnauthorizedException('Invalid credentials');
-    if (user.status === 'PENDING' || !user.isApproved) {
+    if (user.status === 'PENDING') {
       throw new UnauthorizedException(
         'Your account is awaiting administrator approval. Please check your email for updates.',
       );
