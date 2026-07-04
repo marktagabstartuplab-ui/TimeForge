@@ -26,9 +26,21 @@ import { FieldLabel } from "@/features/auth/components/fields";
 import { FieldError, FormBanner } from "@/features/auth/components/FormMessages";
 import type { ToastState } from "@/components/shared/Toast";
 import {
+  completeScrumTask,
+  createScrumBlocker,
   createScrumEntry,
+  createScrumTask,
+  deleteScrumBlocker,
+  deleteScrumTask,
+  listScrumBlockers,
+  listScrumTasks,
+  resolveScrumBlocker,
+  updateScrumBlocker,
   updateScrumEntry,
+  updateScrumTask,
+  type ScrumBlocker,
   type ScrumEntry,
+  type ScrumTask,
   type ScrumTaskStatus,
 } from "@/features/scrum/api/scrum.service";
 import { listProjects } from "../api/catalog.service";
@@ -36,123 +48,6 @@ import { dailyScrumSchema, type DailyScrumValues } from "../schemas/time-entry.s
 import { formatClockTime, toIsoDate } from "@/lib/time";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
-
-export interface ScrumTaskItem {
-  id: string;
-  description: string;
-  expectedOutput: string;
-  measurementCriteria: string;
-  kpi: string;
-  plannedTarget: string;
-  projectId: string;
-  status: "PENDING" | "IN_PROGRESS" | "COMPLETED";
-  createdAt: string;
-  completedAt?: string | null;
-}
-
-export interface BlockerItem {
-  id: string;
-  description: string;
-  severity: "LOW" | "MEDIUM" | "HIGH";
-  status: "OPEN" | "RESOLVED";
-}
-
-/** Loosely-typed shape tolerated when parsing legacy/foreign JSON from the `today` column. */
-interface RawScrumTaskItem {
-  id?: unknown;
-  description?: unknown;
-  title?: unknown;
-  expectedOutput?: unknown;
-  measurementCriteria?: unknown;
-  kpi?: unknown;
-  plannedTarget?: unknown;
-  projectId?: unknown;
-  status?: unknown;
-  createdAt?: unknown;
-  completedAt?: unknown;
-}
-
-const asString = (v: unknown): string => (typeof v === "string" ? v : "");
-
-export function parseTasks(todayStr: string | null | undefined): ScrumTaskItem[] {
-  if (!todayStr) return [];
-  try {
-    const parsed: unknown = JSON.parse(todayStr);
-    if (Array.isArray(parsed)) {
-      return (parsed as RawScrumTaskItem[]).map((t) => ({
-        id: asString(t.id) || Math.random().toString(36).substring(7),
-        description: asString(t.description) || asString(t.title),
-        expectedOutput: asString(t.expectedOutput),
-        measurementCriteria: asString(t.measurementCriteria),
-        kpi: asString(t.kpi),
-        plannedTarget: asString(t.plannedTarget),
-        projectId: asString(t.projectId),
-        status: t.status === "COMPLETED" ? "COMPLETED" : t.status === "IN_PROGRESS" ? "IN_PROGRESS" : "PENDING",
-        createdAt: asString(t.createdAt) || new Date().toISOString(),
-        completedAt: asString(t.completedAt) || null,
-      }));
-    }
-  } catch {
-    if (todayStr.trim()) {
-      return [
-        {
-          id: "legacy",
-          description: todayStr,
-          expectedOutput: "Legacy Import",
-          measurementCriteria: "Legacy Import",
-          kpi: "",
-          plannedTarget: "",
-          projectId: "",
-          status: "PENDING",
-          createdAt: new Date().toISOString(),
-          completedAt: null,
-        },
-      ];
-    }
-  }
-  return [];
-}
-
-interface RawBlockerItem {
-  id?: unknown;
-  description?: unknown;
-  severity?: unknown;
-  status?: unknown;
-}
-
-const SEVERITIES = ["LOW", "MEDIUM", "HIGH"] as const;
-const BLOCKER_STATUSES = ["OPEN", "RESOLVED"] as const;
-
-export function parseBlockers(blockersStr: string | null | undefined): BlockerItem[] {
-  if (!blockersStr) return [];
-  try {
-    const parsed: unknown = JSON.parse(blockersStr);
-    if (Array.isArray(parsed)) {
-      return (parsed as RawBlockerItem[]).map((b) => ({
-        id: asString(b.id) || Math.random().toString(36).substring(7),
-        description: asString(b.description),
-        severity: SEVERITIES.includes(b.severity as (typeof SEVERITIES)[number])
-          ? (b.severity as BlockerItem["severity"])
-          : "MEDIUM",
-        status: BLOCKER_STATUSES.includes(b.status as (typeof BLOCKER_STATUSES)[number])
-          ? (b.status as BlockerItem["status"])
-          : "OPEN",
-      }));
-    }
-  } catch {
-    if (blockersStr.trim()) {
-      return [
-        {
-          id: "legacy-blocker",
-          description: blockersStr,
-          severity: "MEDIUM",
-          status: "OPEN",
-        },
-      ];
-    }
-  }
-  return [];
-}
 
 const AUTOSAVE_MS = 30_000;
 
@@ -164,28 +59,27 @@ const DAY_STATUS_META: Record<ScrumTaskStatus, { label: string; tone: "neutral" 
   COMPLETED: { label: "Completed", tone: "info" },
 };
 
-/** Draft persistence — per calendar day, cleared on successful submission. */
+/** Draft persistence for the free-text Yesterday/Notes fields — per calendar day, cleared on save. */
 function draftKey(): string {
   return `timeforge.scrum-draft.${toIsoDate(new Date())}`;
 }
 
-function readDraft(): DailyScrumValues | null {
+interface TextDraft {
+  yesterday: string;
+  notes: string;
+}
+
+function readDraft(): TextDraft | null {
   if (typeof window === "undefined") return null;
   try {
     const raw = window.localStorage.getItem(draftKey());
     if (!raw) return null;
     const parsed: unknown = JSON.parse(raw);
     if (typeof parsed !== "object" || parsed === null) return null;
-    const d = parsed as Partial<DailyScrumValues>;
+    const d = parsed as Partial<TextDraft>;
     return {
       yesterday: typeof d.yesterday === "string" ? d.yesterday : "",
-      today: typeof d.today === "string" ? d.today : "",
-      blockers: typeof d.blockers === "string" ? d.blockers : "",
       notes: typeof d.notes === "string" ? d.notes : "",
-      progress: typeof d.progress === "number" ? Math.min(100, Math.max(0, d.progress)) : 0,
-      status: ["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED"].includes(d.status as string)
-        ? (d.status as ScrumTaskStatus)
-        : "NOT_STARTED",
     };
   } catch {
     return null;
@@ -202,11 +96,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
-  
-  // Custom interactive states for Tasks & Blockers
-  const [tasks, setTasks] = useState<ScrumTaskItem[]>([]);
-  const [blockers, setBlockers] = useState<BlockerItem[]>([]);
-  
+
   // Plan New Task Form States
   const [taskDesc, setTaskDesc] = useState("");
   const [taskOutput, setTaskOutput] = useState("");
@@ -227,101 +117,72 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
 
   const { data: projects } = useQuery({ queryKey: ["catalog", "projects"], queryFn: listProjects });
 
-  // Only a fully COMPLETED day is locked. A saved-but-not-completed entry
-  // (e.g. tasks still in progress) stays editable all day — you can keep
-  // planning tasks, marking them complete, and re-saving via PATCH — so the
-  // day only seals itself once every task is done (see
-  // updateScrumProgressAndStatus, which flips status to COMPLETED at 100%).
+  const { data: tasks = [] } = useQuery({
+    queryKey: ["scrum-tasks", entry?.id],
+    queryFn: () => listScrumTasks(entry!.id),
+    enabled: Boolean(entry),
+  });
+
+  const { data: blockers = [] } = useQuery({
+    queryKey: ["scrum-blockers", entry?.id],
+    queryFn: () => listScrumBlockers(entry!.id),
+    enabled: Boolean(entry),
+  });
+
+  // Only a fully COMPLETED day is locked (server-computed from task completion).
   const completed = entry?.status === "COMPLETED";
-  const locked = completed;
+  const locked = entry?.isLocked ?? completed;
 
   const {
     register,
     handleSubmit,
     reset,
     getValues,
-    setValue,
     formState: { errors, isDirty },
   } = useForm<DailyScrumValues>({
     resolver: zodResolver(dailyScrumSchema),
     defaultValues: {
       yesterday: entry?.yesterday ?? "",
-      today: entry?.today ?? "",
-      blockers: entry?.blockers ?? "",
+      today: "",
+      blockers: "",
       notes: entry?.notes ?? "",
       progress: entry?.progress ?? 0,
       status: entry?.status ?? "NOT_STARTED",
     },
   });
 
-  // Sync state when entry or draft loads (entry usually arrives async, after
-  // the form's initial mount, so this also pushes yesterday/notes/progress/
-  // status into the form via reset() — not just the tasks/blockers arrays).
-  // reset() is react-hook-form's own sync API, safe to call directly in the
-  // effect body; only the plain useState setters are deferred.
+  // Sync the free-text fields when entry or draft loads.
   useEffect(() => {
     if (entry) {
       reset({
         yesterday: entry.yesterday,
-        today: entry.today,
-        blockers: entry.blockers ?? "",
+        today: "",
+        blockers: "",
         notes: entry.notes ?? "",
         progress: entry.progress,
         status: entry.status,
       });
     } else {
       const draft = readDraft();
-      if (draft) reset(draft);
+      if (draft) reset({ yesterday: draft.yesterday, today: "", blockers: "", notes: draft.notes, progress: 0, status: "NOT_STARTED" });
     }
-
-    const id = window.setTimeout(() => {
-      if (entry) {
-        setTasks(parseTasks(entry.today));
-        setBlockers(parseBlockers(entry.blockers));
-      } else {
-        const draft = readDraft();
-        if (draft) {
-          setTasks(parseTasks(draft.today));
-          setBlockers(parseBlockers(draft.blockers));
-        } else {
-          setTasks([]);
-          setBlockers([]);
-        }
-      }
-    }, 0);
-    return () => window.clearTimeout(id);
   }, [entry, reset]);
 
-  // Keep Zod form fields in sync with the JSON arrays
-  useEffect(() => {
-    setValue("today", tasks.length > 0 ? JSON.stringify(tasks) : "");
-    setValue("blockers", blockers.length > 0 ? JSON.stringify(blockers) : "");
-  }, [tasks, blockers, setValue]);
+  const hasUnsavedWork = !locked && isDirty;
 
-  // Whether there's meaningful unsaved work: at least one planned task or
-  // blocker, or hand-typed text in Yesterday/Notes not yet locked in.
-  const hasUnsavedWork = !locked && (tasks.length > 0 || blockers.length > 0 || isDirty);
-
-  // Auto-save a local draft every 30s while there's unsaved work.
+  // Auto-save a local draft of the free-text fields every 30s while there's unsaved work.
   useEffect(() => {
     if (!hasUnsavedWork) return;
     const id = window.setInterval(() => {
       const values = getValues();
       window.localStorage.setItem(
         draftKey(),
-        JSON.stringify({
-          yesterday: values.yesterday,
-          today: tasks.length > 0 ? JSON.stringify(tasks) : "",
-          blockers: blockers.length > 0 ? JSON.stringify(blockers) : "",
-          notes: values.notes,
-          progress: values.progress,
-          status: values.status,
-        }),
+        JSON.stringify({ yesterday: values.yesterday, notes: values.notes }),
       );
       setDraftSavedAt(new Date().toISOString());
     }, AUTOSAVE_MS);
     return () => window.clearInterval(id);
-  }, [hasUnsavedWork, tasks, blockers, getValues]);
+  }, [hasUnsavedWork, getValues]);
 
   // Warn before leaving the page with unsaved scrum work.
   useEffect(() => {
@@ -333,202 +194,218 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
     return () => window.removeEventListener("beforeunload", handler);
   }, [hasUnsavedWork]);
 
-  // Calculate dynamic overall progress from tasks
-  const updateScrumProgressAndStatus = (currentTasks: ScrumTaskItem[]) => {
-    const completedCount = currentTasks.filter(t => t.status === "COMPLETED").length;
-    const progressVal = currentTasks.length > 0 ? Math.round((completedCount / currentTasks.length) * 100) : 0;
-    setValue("progress", progressVal);
-    
-    if (progressVal === 100) {
-      setValue("status", "COMPLETED");
-    } else if (progressVal > 0) {
-      setValue("status", "IN_PROGRESS");
-    } else {
-      setValue("status", "NOT_STARTED");
-    }
+  const invalidateEntry = () => {
+    queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
+    queryClient.invalidateQueries({ queryKey: ["scrum-tasks", entry?.id] });
   };
 
+  /** Ensures today's ScrumEntry exists before planning a task/blocker against it. */
+  const ensureEntry = useMutation({
+    mutationFn: async () => {
+      if (entry) return entry;
+      const values = getValues();
+      const created = await createScrumEntry({
+        entryDate: toIsoDate(new Date()),
+        yesterday: values.yesterday || "",
+        today: "",
+      });
+      queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
+      return created;
+    },
+  });
+
   // Task Handlers
-  const handleAddOrEditTask = () => {
-    if (!taskDesc.trim() || !taskOutput.trim() || !taskCriteria.trim()) return;
-
-    if (editingTaskId) {
-      // Modify existing task
-      setTasks(prev => {
-        const updated = prev.map(t => {
-          if (t.id === editingTaskId) {
-            return {
-              ...t,
-              description: taskDesc,
-              expectedOutput: taskOutput,
-              measurementCriteria: taskCriteria,
-              kpi: taskKpi,
-              plannedTarget: taskTarget,
-              projectId: taskProj,
-            };
-          }
-          return t;
-        });
-        updateScrumProgressAndStatus(updated);
-        return updated;
-      });
-      setEditingTaskId(null);
-      onToast({ message: "Task updated." });
-    } else {
-      // Create new task
-      const newTask: ScrumTaskItem = {
-        id: Math.random().toString(36).substring(7),
-        description: taskDesc,
+  const createTask = useMutation({
+    mutationFn: async () => {
+      const activeEntry = await ensureEntry.mutateAsync();
+      return createScrumTask(activeEntry.id, {
+        title: taskDesc,
         expectedOutput: taskOutput,
-        measurementCriteria: taskCriteria,
-        kpi: taskKpi,
-        plannedTarget: taskTarget,
-        projectId: taskProj,
-        status: "PENDING",
-        createdAt: new Date().toISOString(),
-        completedAt: null
-      };
-      setTasks(prev => {
-        const updated = [...prev, newTask];
-        updateScrumProgressAndStatus(updated);
-        return updated;
+        measurement: taskCriteria,
+        kpi: taskKpi || undefined,
+        plannedTarget: taskTarget || undefined,
+        projectId: taskProj || undefined,
       });
+    },
+    onSuccess: () => {
+      invalidateEntry();
       onToast({ message: "Task planned successfully." });
+      setTimeout(() => newTaskRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" }), 100);
+    },
+    onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Could not plan task", tone: "error" }),
+  });
 
-      // Smooth scroll to the new task
-      setTimeout(() => {
-        newTaskRef.current?.scrollIntoView({ behavior: "smooth", block: "nearest" });
-      }, 100);
-    }
+  const editTask = useMutation({
+    mutationFn: (task: ScrumTask) =>
+      updateScrumTask(task.id, {
+        title: taskDesc,
+        expectedOutput: taskOutput,
+        measurement: taskCriteria,
+        kpi: taskKpi || undefined,
+        plannedTarget: taskTarget || undefined,
+        projectId: taskProj || undefined,
+        version: task.version,
+      }),
+    onSuccess: () => {
+      invalidateEntry();
+      onToast({ message: "Task updated." });
+    },
+    onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Could not update task", tone: "error" }),
+  });
 
-    // Reset Form
+  const completeTask = useMutation({
+    mutationFn: (task: ScrumTask) => completeScrumTask(task.id, task.version),
+    onSuccess: () => {
+      invalidateEntry();
+      onToast({ message: "Task marked as completed." });
+    },
+    onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Could not complete task", tone: "error" }),
+  });
+
+  const removeTask = useMutation({
+    mutationFn: (task: ScrumTask) => deleteScrumTask(task.id, task.version),
+    onSuccess: () => {
+      invalidateEntry();
+      onToast({ message: "Task removed." });
+    },
+    onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Could not remove task", tone: "error" }),
+  });
+
+  const resetTaskForm = () => {
     setTaskDesc("");
     setTaskOutput("");
     setTaskCriteria("");
     setTaskKpi("");
     setTaskTarget("");
     setTaskProj("");
+    setEditingTaskId(null);
   };
 
-  const handleEditTaskClick = (item: ScrumTaskItem) => {
+  const handleAddOrEditTask = () => {
+    if (!taskDesc.trim() || !taskOutput.trim() || !taskCriteria.trim()) return;
+    if (editingTaskId) {
+      const task = tasks.find((t) => t.id === editingTaskId);
+      if (task) editTask.mutate(task);
+    } else {
+      createTask.mutate();
+    }
+    resetTaskForm();
+  };
+
+  const handleEditTaskClick = (item: ScrumTask) => {
     if (locked) return;
     setEditingTaskId(item.id);
-    setTaskDesc(item.description);
+    setTaskDesc(item.title);
     setTaskOutput(item.expectedOutput);
-    setTaskCriteria(item.measurementCriteria);
-    setTaskKpi(item.kpi);
-    setTaskTarget(item.plannedTarget);
-    setTaskProj(item.projectId);
-    
-    // Scroll to form
+    setTaskCriteria(item.measurement);
+    setTaskKpi(item.kpi ?? "");
+    setTaskTarget(item.plannedTarget ?? "");
+    setTaskProj(item.projectId ?? "");
     taskListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
   };
 
-  const handleDeleteTask = (id: string) => {
+  const handleDeleteTask = (item: ScrumTask) => {
     if (locked) return;
-    setTasks(prev => {
-      const updated = prev.filter(t => t.id !== id);
-      updateScrumProgressAndStatus(updated);
-      return updated;
-    });
-    onToast({ message: "Task removed." });
+    removeTask.mutate(item);
   };
 
-  const handleMarkTaskComplete = (id: string) => {
+  const handleMarkTaskComplete = (item: ScrumTask) => {
     if (locked) return;
-    const updated = tasks.map(t => {
-      if (t.id === id) {
-        return {
-          ...t,
-          status: "COMPLETED" as const,
-          completedAt: new Date().toISOString()
-        };
-      }
-      return t;
-    });
-    setTasks(updated);
-    updateScrumProgressAndStatus(updated);
-    onToast({ message: "Task marked as completed." });
+    completeTask.mutate(item);
   };
 
   // Blocker Handlers
+  const createBlocker = useMutation({
+    mutationFn: async () => {
+      const activeEntry = await ensureEntry.mutateAsync();
+      return createScrumBlocker(activeEntry.id, { title: blockerDesc, severity: blockerSeverity });
+    },
+    onSuccess: () => {
+      invalidateEntry();
+      onToast({ message: "Blocker added." });
+    },
+    onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Could not add blocker", tone: "error" }),
+  });
+
+  const editBlocker = useMutation({
+    mutationFn: (blocker: ScrumBlocker) =>
+      updateScrumBlocker(blocker.id, { title: blockerDesc, severity: blockerSeverity, version: blocker.version }),
+    onSuccess: () => {
+      invalidateEntry();
+      onToast({ message: "Blocker updated." });
+    },
+    onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Could not update blocker", tone: "error" }),
+  });
+
+  const toggleBlocker = useMutation({
+    mutationFn: (blocker: ScrumBlocker) =>
+      blocker.status === "RESOLVED"
+        ? updateScrumBlocker(blocker.id, { status: "OPEN", version: blocker.version })
+        : resolveScrumBlocker(blocker.id, blocker.version),
+    onSuccess: () => {
+      invalidateEntry();
+      onToast({ message: "Blocker status updated." });
+    },
+    onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Could not update blocker", tone: "error" }),
+  });
+
+  const removeBlocker = useMutation({
+    mutationFn: (blocker: ScrumBlocker) => deleteScrumBlocker(blocker.id, blocker.version),
+    onSuccess: () => {
+      invalidateEntry();
+      onToast({ message: "Blocker removed." });
+    },
+    onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Could not remove blocker", tone: "error" }),
+  });
+
   const handleAddOrEditBlocker = () => {
     if (!blockerDesc.trim()) return;
-
     if (editingBlockerId) {
-      setBlockers(prev => prev.map(b => b.id === editingBlockerId ? { ...b, description: blockerDesc, severity: blockerSeverity } : b));
-      setEditingBlockerId(null);
-      onToast({ message: "Blocker updated." });
+      const blocker = blockers.find((b) => b.id === editingBlockerId);
+      if (blocker) editBlocker.mutate(blocker);
     } else {
-      const newBlocker: BlockerItem = {
-        id: Math.random().toString(36).substring(7),
-        description: blockerDesc,
-        severity: blockerSeverity,
-        status: "OPEN"
-      };
-      setBlockers(prev => [...prev, newBlocker]);
-      onToast({ message: "Blocker added." });
+      createBlocker.mutate();
     }
     setBlockerDesc("");
     setBlockerSeverity("MEDIUM");
+    setEditingBlockerId(null);
   };
 
-  const handleEditBlockerClick = (item: BlockerItem) => {
+  const handleEditBlockerClick = (item: ScrumBlocker) => {
     if (locked) return;
     setEditingBlockerId(item.id);
-    setBlockerDesc(item.description);
-    setBlockerSeverity(item.severity);
+    setBlockerDesc(item.title);
+    setBlockerSeverity(item.severity === "CRITICAL" ? "HIGH" : item.severity);
   };
 
-  const handleDeleteBlocker = (id: string) => {
+  const handleDeleteBlocker = (item: ScrumBlocker) => {
     if (locked) return;
-    setBlockers(prev => prev.filter(b => b.id !== id));
-    onToast({ message: "Blocker removed." });
+    removeBlocker.mutate(item);
   };
 
-  const handleToggleBlockerStatus = (id: string) => {
+  const handleToggleBlockerStatus = (item: ScrumBlocker) => {
     if (locked) return;
-    setBlockers(prev => prev.map(b => b.id === id ? { ...b, status: b.status === "OPEN" ? "RESOLVED" : "OPEN" } : b));
-    onToast({ message: "Blocker status updated." });
+    toggleBlocker.mutate(item);
   };
 
-  // Lock Daily Plan Mutation
+  // Save Yesterday's Accomplishments / Notes (free text only — tasks/blockers persist immediately).
   const save = useMutation({
-    mutationFn: (values: DailyScrumValues) =>
-      entry
-        ? updateScrumEntry(entry.id, {
-            yesterday: values.yesterday,
-            today: JSON.stringify(tasks),
-            blockers: JSON.stringify(blockers),
-            notes: values.notes || undefined,
-            progress: values.progress,
-            status: values.status,
-            version: entry.version,
-          })
-        : createScrumEntry({
-            entryDate: toIsoDate(new Date()),
-            yesterday: values.yesterday,
-            today: JSON.stringify(tasks),
-            blockers: JSON.stringify(blockers),
-            notes: values.notes || undefined,
-            progress: values.progress,
-            status: values.status,
-          }),
-    onSuccess: (saved) => {
+    mutationFn: async (values: DailyScrumValues) => {
+      const activeEntry = await ensureEntry.mutateAsync();
+      return updateScrumEntry(activeEntry.id, {
+        yesterday: values.yesterday,
+        notes: values.notes || undefined,
+        version: activeEntry.version,
+      });
+    },
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
       window.localStorage.removeItem(draftKey());
       setDraftSavedAt(null);
-      onToast({
-        message:
-          saved.status === "COMPLETED"
-            ? "All tasks complete — Daily Scrum locked for today."
-            : entry
-              ? "Daily Scrum updated."
-              : "Daily Scrum saved.",
-      });
+      onToast({ message: "Daily Scrum updated." });
     },
     onError: (err) => {
-      setServerError(err instanceof ApiError ? err.message : "Could not lock your daily scrum plan");
+      setServerError(err instanceof ApiError ? err.message : "Could not save your daily scrum plan");
     },
   });
 
@@ -540,17 +417,14 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
     [save],
   );
 
-  // Performance Score calculations
+  // Performance Score — derived from server-fetched tasks for this entry.
   const totalTasks = tasks.length;
-  const completedTasks = tasks.filter(t => t.status === "COMPLETED").length;
-  const completionPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-  // Mirrors updateScrumProgressAndStatus: 100% completion is what flips the
-  // saved entry's status to COMPLETED (and therefore locks the day).
-  const willComplete = totalTasks > 0 && completionPercentage === 100;
+  const completedTasks = tasks.filter((t) => t.taskStatus === "COMPLETED").length;
+  const completionPercentage = entry?.progress ?? (totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0);
+  const willComplete = totalTasks > 0 && completedTasks === totalTasks;
 
-  // KPI / Target meta maps
-  const hasKpiCount = tasks.filter(t => t.kpi).length;
-  const resolvedBlockersCount = blockers.filter(b => b.status === "RESOLVED").length;
+  const hasKpiCount = tasks.filter((t) => t.kpi).length;
+  const resolvedBlockersCount = blockers.filter((b) => b.status === "RESOLVED").length;
 
   const STATUS_META_THEMED = {
     PENDING: { label: "Pending", tone: "neutral" as const },
@@ -613,8 +487,8 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
       </div>
 
       {serverError ? <FormBanner message={serverError} /> : null}
-      {errors.today?.message || errors.blockers?.message ? (
-        <FormBanner message={(errors.today?.message ?? errors.blockers?.message)!} />
+      {errors.yesterday?.message || errors.notes?.message ? (
+        <FormBanner message={(errors.yesterday?.message ?? errors.notes?.message)!} />
       ) : null}
 
       {/* Today's Commitments Section (Section 2) */}
@@ -625,8 +499,8 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
         </h4>
         <div className="space-y-3">
           {tasks.map((item, idx) => (
-            <div 
-              key={item.id} 
+            <div
+              key={item.id}
               ref={idx === tasks.length - 1 ? newTaskRef : null}
               className="p-4 rounded-[12px] border border-[#c3c6d2]/30 bg-white shadow-[0_1px_2px_rgba(0,0,0,0.02)] hover:border-brand/30 transition-all flex flex-col gap-3"
             >
@@ -639,14 +513,14 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
                       Done at {formatClockTime(item.completedAt)}
                     </span>
                   )}
-                  <StatusBadge {...STATUS_META_THEMED[item.status]} />
+                  <StatusBadge {...STATUS_META_THEMED[item.taskStatus]} />
                 </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-xs">
                 <div>
                   <span className="font-bold text-brand-navy block mb-0.5">Description:</span>
-                  <p className="text-brand-ink">{item.description}</p>
+                  <p className="text-brand-ink">{item.title}</p>
                 </div>
                 <div>
                   <span className="font-bold text-brand-navy block mb-0.5">Expected Output:</span>
@@ -654,7 +528,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
                 </div>
                 <div>
                   <span className="font-bold text-brand-navy block mb-0.5">Measurement Criteria:</span>
-                  <p className="text-brand-ink">{item.measurementCriteria}</p>
+                  <p className="text-brand-ink">{item.measurement}</p>
                 </div>
                 <div className="grid grid-cols-2 gap-2">
                   <div>
@@ -672,13 +546,13 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
                 <span className="text-brand-muted">
                   Project: <strong className="text-brand-ink font-semibold">{projects?.find(p => p.id === item.projectId)?.name || "General work"}</strong>
                 </span>
-                
+
                 {!locked && (
                   <div className="flex items-center gap-2">
-                    {item.status !== "COMPLETED" && (
+                    {item.taskStatus !== "COMPLETED" && (
                       <button
                         type="button"
-                        onClick={() => handleMarkTaskComplete(item.id)}
+                        onClick={() => handleMarkTaskComplete(item)}
                         className="flex h-7 items-center gap-1 rounded-[6px] bg-[#16a34a] px-3 py-1 text-xs font-bold text-white hover:bg-[#15803d] transition-colors"
                       >
                         <Check className="h-3 w-3" />
@@ -695,7 +569,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDeleteTask(item.id)}
+                      onClick={() => handleDeleteTask(item)}
                       className="flex h-7 items-center gap-1 rounded-[6px] border border-red-200 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-50"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
@@ -797,15 +671,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
             {editingTaskId && (
               <button
                 type="button"
-                onClick={() => {
-                  setEditingTaskId(null);
-                  setTaskDesc("");
-                  setTaskOutput("");
-                  setTaskCriteria("");
-                  setTaskKpi("");
-                  setTaskTarget("");
-                  setTaskProj("");
-                }}
+                onClick={resetTaskForm}
                 className="h-10 px-4 rounded-[8px] border border-[#c3c6d2] text-xs font-bold text-brand-navy hover:bg-[#f6f3f4]"
               >
                 Cancel
@@ -813,14 +679,18 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
             )}
             <button
               type="button"
-              disabled={!isFormValid}
+              disabled={!isFormValid || createTask.isPending || editTask.isPending}
               onClick={handleAddOrEditTask}
               className={cn(
                 "h-10 px-5 rounded-[8px] text-xs font-bold text-white transition-all flex items-center gap-1.5",
                 isFormValid ? "bg-brand hover:bg-[#1467d6] cursor-pointer" : "bg-brand/40 cursor-not-allowed"
               )}
             >
-              <Plus className="h-4 w-4" />
+              {createTask.isPending || editTask.isPending ? (
+                <Loader2 className="h-4 w-4 animate-spin" />
+              ) : (
+                <Plus className="h-4 w-4" />
+              )}
               {editingTaskId ? "Save Task Changes" : "Plan Commitment Task"}
             </button>
           </div>
@@ -840,7 +710,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
         </h4>
         <div className="space-y-2">
           {blockers.map((b) => (
-            <div 
+            <div
               key={b.id}
               className={cn(
                 "p-3 rounded-[10px] border flex items-center justify-between gap-3 text-xs",
@@ -851,7 +721,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
                 <AlertCircle className={cn("h-4 w-4 shrink-0 mt-0.5", b.status === "RESOLVED" ? "text-green-500" : "text-red-500")} />
                 <div>
                   <p className={cn("font-medium", b.status === "RESOLVED" ? "line-through text-brand-muted" : "text-brand-ink")}>
-                    {b.description}
+                    {b.title}
                   </p>
                   <span className="text-[10px] font-bold text-brand-muted mt-0.5 block">
                     Severity: {b.severity} · Status: {b.status}
@@ -863,7 +733,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
                 <div className="flex items-center gap-1">
                   <button
                     type="button"
-                    onClick={() => handleToggleBlockerStatus(b.id)}
+                    onClick={() => handleToggleBlockerStatus(b)}
                     className={cn(
                       "h-7 px-2.5 rounded-[6px] font-bold text-[10px] border transition-colors",
                       b.status === "RESOLVED"
@@ -882,7 +752,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
                   </button>
                   <button
                     type="button"
-                    onClick={() => handleDeleteBlocker(b.id)}
+                    onClick={() => handleDeleteBlocker(b)}
                     className="h-7 w-7 rounded-[6px] border border-red-200 flex items-center justify-center text-red-600 hover:bg-red-50"
                   >
                     <Trash2 className="h-3 w-3" />
@@ -928,7 +798,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
             </div>
             <button
               type="button"
-              disabled={!blockerDesc.trim()}
+              disabled={!blockerDesc.trim() || createBlocker.isPending || editBlocker.isPending}
               onClick={handleAddOrEditBlocker}
               className={cn(
                 "h-10 px-4 rounded-[8px] text-xs font-bold text-white transition-all",
@@ -994,7 +864,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
             <div>
               <p className="text-sm font-bold text-amber-800">Today&apos;s Scrum Locked</p>
               <p className="text-xs text-amber-700">
-                Submitted at {entry ? formatClockTime(entry.updatedAt) : "—"} · Editing Disabled
+                Submitted at {entry?.submittedAt ? formatClockTime(entry.submittedAt) : entry ? formatClockTime(entry.updatedAt) : "—"} · Editing Disabled
               </p>
             </div>
           </div>
@@ -1014,21 +884,19 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
                 onClick={() => {
                   reset({
                     yesterday: entry.yesterday,
-                    today: entry.today,
-                    blockers: entry.blockers ?? "",
+                    today: "",
+                    blockers: "",
                     notes: entry.notes ?? "",
                     progress: entry.progress,
                     status: entry.status,
                   });
-                  setTasks(parseTasks(entry.today));
-                  setBlockers(parseBlockers(entry.blockers));
                 }}
                 className="text-sm font-bold text-brand-muted hover:text-brand-navy"
               >
                 Cancel
               </button>
             )}
-            
+
             {!locked && (
               <button
                 type="submit"

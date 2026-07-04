@@ -4,13 +4,21 @@ import {
   IsEnum,
   IsOptional,
   IsString,
+  IsUUID,
   Max,
   MaxLength,
   Min,
   IsInt,
+  IsNumber,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { ScrumTaskStatus } from '@prisma/client';
+import {
+  ScrumTaskStatus,
+  ScrumTaskItemStatus,
+  ScrumTaskPriority,
+  BlockerSeverity,
+  BlockerStatus,
+} from '@prisma/client';
 
 export class CreateScrumEntryDto {
   /** ISO date string, e.g. "2026-06-30" — must not be in the future. */
@@ -103,4 +111,147 @@ export interface ScrumQuery {
   from?: string;
   to?: string;
   hasBlockers?: string; // "true" | "false"
+}
+
+// ─── Scrum Tasks ──────────────────────────────────────────────────────────────
+
+export class CreateScrumTaskDto {
+  @IsString()
+  @MaxLength(500)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string;
+
+  @IsString()
+  @MaxLength(1000)
+  expectedOutput!: string;
+
+  @IsString()
+  @MaxLength(1000)
+  measurement!: string;
+
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
+
+  @IsOptional()
+  @IsEnum(ScrumTaskPriority)
+  priority?: ScrumTaskPriority;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  kpi?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  plannedTarget?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  estimatedHours?: number;
+}
+
+export class UpdateScrumTaskDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  expectedOutput?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(1000)
+  measurement?: string;
+
+  @IsOptional()
+  @IsUUID()
+  projectId?: string;
+
+  @IsOptional()
+  @IsEnum(ScrumTaskItemStatus)
+  taskStatus?: ScrumTaskItemStatus;
+
+  @IsOptional()
+  @IsEnum(ScrumTaskPriority)
+  priority?: ScrumTaskPriority;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  kpi?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(200)
+  plannedTarget?: string;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  estimatedHours?: number;
+
+  @IsOptional()
+  @IsNumber()
+  @Type(() => Number)
+  actualHours?: number;
+
+  @IsInt()
+  @Type(() => Number)
+  version!: number;
+}
+
+// ─── Scrum Blockers ────────────────────────────────────────────────────────────
+
+export class CreateScrumBlockerDto {
+  @IsString()
+  @MaxLength(500)
+  title!: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string;
+
+  @IsOptional()
+  @IsEnum(BlockerSeverity)
+  severity?: BlockerSeverity;
+}
+
+export class UpdateScrumBlockerDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(500)
+  title?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  description?: string;
+
+  @IsOptional()
+  @IsEnum(BlockerSeverity)
+  severity?: BlockerSeverity;
+
+  @IsOptional()
+  @IsEnum(BlockerStatus)
+  status?: BlockerStatus;
+
+  @IsInt()
+  @Type(() => Number)
+  version!: number;
 }

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Clock3, Coffee, Loader2, LogOut, Target } from "lucide-react";
 import {
   Dialog,
@@ -20,7 +20,7 @@ import {
   updateScrumEntry,
   type ScrumEntry,
 } from "@/features/scrum/api/scrum.service";
-import { stopTimer } from "../api/time-entries.service";
+import { clockOutSession, getCurrentWorkSession } from "../api/work-sessions.service";
 import type { DaySummary } from "../lib/day-summary";
 import { eodReviewSchema, type EodReviewValues } from "../schemas/time-entry.schema";
 import { formatMinutes, toIsoDate } from "@/lib/time";
@@ -50,6 +50,12 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
   const [serverError, setServerError] = useState<string | null>(null);
   const [commitmentDone, setCommitmentDone] = useState(false);
 
+  const { data: workSession } = useQuery({
+    queryKey: ["work-session", "current"],
+    queryFn: getCurrentWorkSession,
+    enabled: open,
+  });
+
   const {
     register,
     control,
@@ -62,8 +68,8 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
 
   const submit = useMutation({
     mutationFn: async (values: EodReviewValues) => {
-      if (summary.running) {
-        await stopTimer(summary.running.id);
+      if (workSession?.session?.isActive) {
+        await clockOutSession();
       }
       const eodLine = `EOD Review — ${values.accomplishments}`;
       if (scrumEntry) {
@@ -83,6 +89,7 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["time-entries"] });
       queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
+      queryClient.invalidateQueries({ queryKey: ["work-session", "current"] });
       onOpenChange(false);
       onSubmitted?.();
     },

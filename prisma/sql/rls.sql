@@ -27,7 +27,20 @@ DECLARE
   t text;
   tenant_tables text[] := ARRAY[
     'organizations', 'organization_settings', 'users',
-    'roles', 'refresh_tokens', 'audit_log', 'idempotency_keys'
+    'roles', 'refresh_tokens', 'audit_log', 'idempotency_keys',
+    -- Core organization (Phase 6)
+    'departments', 'teams', 'clients', 'projects', 'work_categories', 'holidays',
+    -- Time tracking & timesheets (Phase 7/8)
+    'time_entries', 'timesheets',
+    -- Daily Scrum (Phase 9 + task/blocker expansion)
+    'scrum_entries', 'scrum_tasks', 'scrum_blockers',
+    -- Supervisor approval, KPI, payroll (Phase 9)
+    'approvals', 'kpi_templates', 'kpi_progress',
+    'payroll_periods', 'payroll_reports', 'payroll_line_items',
+    -- Notifications & AI jobs (Phase 4)
+    'notifications', 'ai_jobs', 'ai_audit', 'ai_results',
+    -- Session tracking (WorkSession/SessionEvent/SessionAttachment expansion)
+    'work_sessions', 'session_events', 'session_attachments'
   ];
 BEGIN
   FOREACH t IN ARRAY tenant_tables LOOP

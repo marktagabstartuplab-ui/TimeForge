@@ -3,6 +3,7 @@ import {
   Controller,
   Delete,
   Get,
+  Header,
   HttpCode,
   Param,
   ParseIntPipe,
@@ -10,12 +11,15 @@ import {
   Patch,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { TimesheetsService } from './timesheets.service';
 import {
   AttachEntriesDto,
   CreateTimesheetDto,
   SubmitTimesheetDto,
+  TimesheetHistoryQuery,
   TimesheetQuery,
   UpdateTimesheetDto,
 } from './dto';
@@ -31,6 +35,29 @@ export class TimesheetsController {
   @RequirePermissions('timesheet:read')
   findAll(@CurrentUser() u: AuthPrincipal, @Query() query: TimesheetQuery) {
     return this.svc.findAll(u, query);
+  }
+
+  // -- History (My Timesheet History) --
+  //
+  // Registered before `:id` so "history" isn't parsed as a timesheet id.
+
+  @Get('history')
+  @RequirePermissions('timesheet:read')
+  history(@CurrentUser() u: AuthPrincipal, @Query() query: TimesheetHistoryQuery) {
+    return this.svc.history(u, query);
+  }
+
+  @Get('history/export')
+  @RequirePermissions('timesheet:read')
+  @Header('Content-Type', 'text/csv')
+  @Header('Content-Disposition', 'attachment; filename="timesheet-history.csv"')
+  async historyExport(
+    @CurrentUser() u: AuthPrincipal,
+    @Query() query: TimesheetHistoryQuery,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const csv = await this.svc.historyCsv(u, query);
+    res.send(csv);
   }
 
   @Get(':id')

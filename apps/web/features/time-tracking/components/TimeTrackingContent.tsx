@@ -13,7 +13,6 @@ import { getMe } from "@/features/account/api/account.service";
 import { fetchDepartments } from "@/features/auth/api/auth.service";
 import { summarizeDay } from "../lib/day-summary";
 import { deriveTasks, type WorkTask } from "../lib/task-select";
-import { clearBreakFlag } from "../lib/break-flag";
 import { CurrentSessionCard } from "./CurrentSessionCard";
 import { ScrumTaskCard } from "./ScrumTaskCard";
 import { WorkDetailsCard } from "./WorkDetailsCard";
@@ -86,13 +85,6 @@ export function TimeTrackingContent() {
     return (id && departmentsQuery.data?.find((d) => d.id === id)?.name) || null;
   }, [meQuery.data, departmentsQuery.data]);
 
-  // Most recent completed entry today — seeds "Resume Shift" context.
-  const lastEntry = useMemo(() => {
-    const completed = entries.filter((e) => e.endTime);
-    if (completed.length === 0) return null;
-    return completed.reduce((latest, e) => (e.endTime! > latest.endTime! ? e : latest));
-  }, [entries]);
-
   // Distinct recent tasks (this week) for Quick Select.
   const tasks = useMemo(() => deriveTasks(weekEntries), [weekEntries]);
 
@@ -146,9 +138,8 @@ export function TimeTrackingContent() {
           {/* Main column */}
           <div className="flex min-w-0 flex-col gap-4">
             <CurrentSessionCard
-              summary={summary}
-              lastEntry={lastEntry}
               selectedTask={selectedTask}
+              runningDescription={summary.running?.description ?? null}
               loading={entriesQuery.isFetching}
               onTimeOut={() => setEodOpen(true)}
             />
@@ -192,13 +183,7 @@ export function TimeTrackingContent() {
         onOpenChange={setEodOpen}
         summary={summary}
         scrumEntry={scrumEntry}
-        onSubmitted={() => {
-          clearBreakFlag();
-          if (typeof window !== "undefined") {
-            window.localStorage.removeItem("timeforge.session-accumulated-seconds");
-          }
-          setDayClosed(true);
-        }}
+        onSubmitted={() => setDayClosed(true)}
       />
 
       <Toast toast={toast} onDismiss={() => setToast(null)} />

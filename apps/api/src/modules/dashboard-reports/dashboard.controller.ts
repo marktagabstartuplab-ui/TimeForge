@@ -29,6 +29,15 @@ export class DashboardController {
     return this.svc.summary(u.tenantId, u, query);
   }
 
+  // ─── Progress (Today's Progress widget) ──────────────────────────────────
+
+  @Get('progress')
+  @RequirePermissions('dashboard:read_self')
+  @ApiOperation({ summary: "Today's Hours, Weekly Hours, Break Time, Completed Tasks, Productivity, Completion %, KPI Progress — all server-computed" })
+  progress(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.progress(u.tenantId, u);
+  }
+
   // ─── Pending Approvals ────────────────────────────────────────────────────
 
   @Get('pending-approvals')

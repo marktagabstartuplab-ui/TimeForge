@@ -25,6 +25,7 @@ enum UserStatus {
   ACTIVE
   SUSPENDED
   DEACTIVATED
+  REJECTED
 }
 
 enum EmploymentType {
@@ -40,6 +41,50 @@ enum ScrumTaskStatus {
   IN_PROGRESS
   BLOCKED
   COMPLETED
+}
+
+// ─── Daily Scrum tasks/blockers & Session Tracking enums ────────────────────
+
+/// Per-task status on a ScrumTask (distinct from ScrumEntry's day-level ScrumTaskStatus above).
+enum ScrumTaskItemStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+enum ScrumTaskPriority {
+  LOW
+  MEDIUM
+  HIGH
+}
+
+enum BlockerSeverity {
+  LOW
+  MEDIUM
+  HIGH
+  CRITICAL
+}
+
+enum BlockerStatus {
+  OPEN
+  RESOLVED
+}
+
+enum SessionEventType {
+  CLOCK_IN
+  BREAK_START
+  BREAK_END
+  TASK_COMPLETED
+  CLOCK_OUT
+}
+
+enum AttachmentType {
+  GITHUB
+  FIGMA
+  PR
+  GOOGLE_DOCS
+  OTHER_LINK
+  FILE
 }
 
 enum AuditAction {
@@ -194,6 +239,8 @@ model User {
   hourlyRate      Decimal?       @map("hourly_rate") @db.Decimal(12, 2)
   payrollEligible Boolean        @default(true) @map("payroll_eligible")
   emailVerifiedAt DateTime?      @map("email_verified_at") @db.Timestamptz
+  rejectedAt      DateTime?      @map("rejected_at") @db.Timestamptz
+  rejectionReason String?        @map("rejection_reason")
   supervisorId    String?        @map("supervisor_id") @db.Uuid
   departmentId    String?        @map("department_id") @db.Uuid
   teamId          String?        @map("team_id") @db.Uuid
@@ -204,16 +251,18 @@ model User {
   deletedAt       DateTime?      @map("deleted_at") @db.Timestamptz
   version         Int            @default(0)
 
-  organization     Organization     @relation(fields: [tenantId, organizationId], references: [tenantId, id])
-  department       Department?      @relation(fields: [departmentId], references: [id])
-  team             Team?            @relation(fields: [teamId], references: [id])
+  organization     Organization      @relation(fields: [tenantId, organizationId], references: [tenantId, id])
+  department       Department?       @relation(fields: [departmentId], references: [id])
+  team             Team?             @relation(fields: [teamId], references: [id])
   roles            UserRole[]
   refreshTokens    RefreshToken[]
   timeEntries      TimeEntry[]
   timesheets       Timesheet[]
   scrumEntries     ScrumEntry[]
+  scrumTasks       ScrumTask[]
+  workSessions     WorkSession[]
   kpiProgress      KpiProgress[]
-  approvals        Approval[]       @relation("SupervisorApprovals")
+  approvals        Approval[]        @relation("SupervisorApprovals")
   payrollLineItems PayrollLineItem[]
   notifications    Notification[]
 
@@ -387,6 +436,7 @@ model Client {
   organization Organization @relation(fields: [tenantId, organizationId], references: [tenantId, id])
   projects     Project[]
   timeEntries  TimeEntry[]
+  scrumEntries ScrumEntry[]
 
   @@unique([tenantId, organizationId, name])
   @@index([tenantId, organizationId])
@@ -411,6 +461,8 @@ model Project {
   organization Organization @relation(fields: [tenantId, organizationId], references: [tenantId, id])
   client       Client?      @relation(fields: [clientId], references: [id])
   timeEntries  TimeEntry[]
+  scrumEntries ScrumEntry[]
+  scrumTasks   ScrumTask[]
 
   @@unique([tenantId, organizationId, code])
   @@index([tenantId, organizationId])
@@ -466,6 +518,7 @@ model TimeEntry {
   organizationId  String          @map("organization_id") @db.Uuid
   userId          String          @map("user_id") @db.Uuid
   timesheetId     String?         @map("timesheet_id") @db.Uuid
+  workSessionId   String?         @map("work_session_id") @db.Uuid
   projectId       String?         @map("project_id") @db.Uuid
   clientId        String?         @map("client_id") @db.Uuid
   workCategoryId  String?         @map("work_category_id") @db.Uuid
@@ -488,10 +541,12 @@ model TimeEntry {
   client       Client?       @relation(fields: [clientId], references: [id])
   workCategory WorkCategory? @relation(fields: [workCategoryId], references: [id])
   timesheet    Timesheet?    @relation(fields: [timesheetId], references: [id])
+  workSession  WorkSession?  @relation(fields: [workSessionId], references: [id])
 
   @@index([tenantId, userId, startTime])
   @@index([tenantId, organizationId])
   @@index([timesheetId])
+  @@index([workSessionId])
   @@map("time_entries")
 }
 
@@ -529,33 +584,173 @@ model Timesheet {
 // ─── Daily Scrum — Phase 9 ───────────────────────────────────────────────────
 
 model ScrumEntry {
-  id             String    @id @default(uuid()) @db.Uuid
-  tenantId       String    @map("tenant_id") @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
-  userId         String    @map("user_id") @db.Uuid
-  entryDate      DateTime  @map("entry_date") @db.Date
+  id             String          @id @default(uuid()) @db.Uuid
+  tenantId       String          @map("tenant_id") @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  userId         String          @map("user_id") @db.Uuid
+  entryDate      DateTime        @map("entry_date") @db.Date
   yesterday      String
+  /// Legacy JSON-encoded task list; superseded by the ScrumTask table. Kept for backward compatibility.
   today          String
+  /// Legacy JSON-encoded blocker list; superseded by the ScrumBlocker table. Kept for backward compatibility.
   blockers       String?
   notes          String?
   /// Self-reported task progress for the day, 0–100.
   progress       Int             @default(0)
   status         ScrumTaskStatus @default(NOT_STARTED)
-  supervisorNote String?   @map("supervisor_note")
-  createdBy      String?   @map("created_by") @db.Uuid
-  updatedBy      String?   @map("updated_by") @db.Uuid
-  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
-  version        Int       @default(0)
+  /// True once progress reaches 100% — mirrors status === COMPLETED but persisted explicitly per spec.
+  isLocked       Boolean         @default(false) @map("is_locked")
+  submittedAt    DateTime?       @map("submitted_at") @db.Timestamptz
+  projectId      String?         @map("project_id") @db.Uuid
+  clientId       String?         @map("client_id") @db.Uuid
+  kpi            String?
+  plannedTarget  String?         @map("planned_target")
+  supervisorNote String?         @map("supervisor_note")
+  createdBy      String?         @map("created_by") @db.Uuid
+  updatedBy      String?         @map("updated_by") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?       @map("deleted_at") @db.Timestamptz
+  version        Int             @default(0)
 
-  organization Organization @relation(fields: [tenantId, organizationId], references: [tenantId, id])
-  user         User         @relation(fields: [userId], references: [id])
+  organization Organization   @relation(fields: [tenantId, organizationId], references: [tenantId, id])
+  user         User           @relation(fields: [userId], references: [id])
+  project      Project?       @relation(fields: [projectId], references: [id])
+  client       Client?        @relation(fields: [clientId], references: [id])
+  tasks        ScrumTask[]
+  blockerItems ScrumBlocker[]
 
   @@unique([tenantId, userId, entryDate])
   @@index([tenantId, organizationId, entryDate])
   @@index([tenantId, userId, entryDate])
   @@map("scrum_entries")
+}
+
+// ─── Daily Scrum Tasks & Blockers ────────────────────────────────────────────
+
+model ScrumTask {
+  id             String              @id @default(uuid()) @db.Uuid
+  tenantId       String              @map("tenant_id") @db.Uuid
+  organizationId String              @map("organization_id") @db.Uuid
+  scrumEntryId   String              @map("scrum_entry_id") @db.Uuid
+  employeeId     String              @map("employee_id") @db.Uuid
+  title          String
+  description    String?
+  expectedOutput String              @map("expected_output")
+  measurement    String
+  projectId      String?             @map("project_id") @db.Uuid
+  taskStatus     ScrumTaskItemStatus @default(PENDING) @map("task_status")
+  completedAt    DateTime?           @map("completed_at") @db.Timestamptz
+  estimatedHours Decimal?            @map("estimated_hours") @db.Decimal(6, 2)
+  actualHours    Decimal?            @map("actual_hours") @db.Decimal(6, 2)
+  priority       ScrumTaskPriority   @default(MEDIUM)
+  kpi            String?
+  plannedTarget  String?             @map("planned_target")
+  createdBy      String?             @map("created_by") @db.Uuid
+  updatedBy      String?             @map("updated_by") @db.Uuid
+  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?           @map("deleted_at") @db.Timestamptz
+  version        Int                 @default(0)
+
+  scrumEntry  ScrumEntry          @relation(fields: [scrumEntryId], references: [id])
+  employee    User                @relation(fields: [employeeId], references: [id])
+  project     Project?            @relation(fields: [projectId], references: [id])
+  attachments SessionAttachment[]
+
+  @@index([tenantId, scrumEntryId])
+  @@index([tenantId, employeeId])
+  @@map("scrum_tasks")
+}
+
+model ScrumBlocker {
+  id             String          @id @default(uuid()) @db.Uuid
+  tenantId       String          @map("tenant_id") @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  scrumEntryId   String          @map("scrum_entry_id") @db.Uuid
+  title          String
+  description    String?
+  severity       BlockerSeverity @default(MEDIUM)
+  status         BlockerStatus   @default(OPEN)
+  resolvedAt     DateTime?       @map("resolved_at") @db.Timestamptz
+  createdBy      String?         @map("created_by") @db.Uuid
+  updatedBy      String?         @map("updated_by") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  version        Int             @default(0)
+
+  scrumEntry ScrumEntry @relation(fields: [scrumEntryId], references: [id])
+
+  @@index([tenantId, scrumEntryId])
+  @@map("scrum_blockers")
+}
+
+// ─── Session Tracking (WorkSession / SessionEvent / SessionAttachment) ──────
+
+model WorkSession {
+  id                     String    @id @default(uuid()) @db.Uuid
+  tenantId               String    @map("tenant_id") @db.Uuid
+  organizationId         String    @map("organization_id") @db.Uuid
+  userId                 String    @map("user_id") @db.Uuid
+  workDate               DateTime  @map("work_date") @db.Date
+  clockIn                DateTime  @map("clock_in") @db.Timestamptz
+  clockOut               DateTime? @map("clock_out") @db.Timestamptz
+  isActive               Boolean   @default(true) @map("is_active")
+  currentBreakStartedAt  DateTime? @map("current_break_started_at") @db.Timestamptz
+  breakCount             Int       @default(0) @map("break_count")
+  breakMinutes           Int       @default(0) @map("break_minutes")
+  sessionDurationMinutes Int?      @map("session_duration_minutes")
+  createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  version                Int       @default(0)
+
+  user        User                @relation(fields: [userId], references: [id])
+  timeEntries TimeEntry[]
+  events      SessionEvent[]
+  attachments SessionAttachment[]
+
+  @@index([tenantId, userId, workDate])
+  @@map("work_sessions")
+}
+
+model SessionEvent {
+  id             String           @id @default(uuid()) @db.Uuid
+  tenantId       String           @map("tenant_id") @db.Uuid
+  organizationId String           @map("organization_id") @db.Uuid
+  userId         String           @map("user_id") @db.Uuid
+  workSessionId  String           @map("work_session_id") @db.Uuid
+  eventType      SessionEventType @map("event_type")
+  metadata       Json?
+  occurredAt     DateTime         @default(now()) @map("occurred_at") @db.Timestamptz
+  createdAt      DateTime         @default(now()) @map("created_at") @db.Timestamptz
+
+  workSession WorkSession @relation(fields: [workSessionId], references: [id])
+
+  @@index([tenantId, workSessionId, occurredAt])
+  @@index([tenantId, userId, occurredAt])
+  @@map("session_events")
+}
+
+model SessionAttachment {
+  id             String         @id @default(uuid()) @db.Uuid
+  tenantId       String         @map("tenant_id") @db.Uuid
+  organizationId String         @map("organization_id") @db.Uuid
+  workSessionId  String?        @map("work_session_id") @db.Uuid
+  scrumTaskId    String?        @map("scrum_task_id") @db.Uuid
+  type           AttachmentType
+  name           String
+  url            String?
+  storageKey     String?        @map("storage_key")
+  uploadedBy     String         @map("uploaded_by") @db.Uuid
+  uploadedAt     DateTime       @default(now()) @map("uploaded_at") @db.Timestamptz
+  createdAt      DateTime       @default(now()) @map("created_at") @db.Timestamptz
+
+  workSession WorkSession? @relation(fields: [workSessionId], references: [id])
+  scrumTask   ScrumTask?   @relation(fields: [scrumTaskId], references: [id])
+
+  @@index([tenantId, workSessionId])
+  @@index([tenantId, scrumTaskId])
+  @@map("session_attachments")
 }
 
 // ─── Supervisor Approval — Phase 9 ───────────────────────────────────────────
@@ -722,6 +917,7 @@ enum NotificationType {
   DEADLINE
   PAYROLL_READY
   AI_REPORT
+  EMPLOYEE_APPROVAL_REQUEST
 
   @@map("notification_type")
 }
@@ -743,19 +939,19 @@ enum NotificationStatus {
 }
 
 model Notification {
-  id        String             @id @default(uuid()) @db.Uuid
-  tenantId  String             @map("tenant_id") @db.Uuid
-  userId    String             @map("user_id") @db.Uuid
+  id        String              @id @default(uuid()) @db.Uuid
+  tenantId  String              @map("tenant_id") @db.Uuid
+  userId    String              @map("user_id") @db.Uuid
   type      NotificationType
   channel   NotificationChannel
-  status    NotificationStatus @default(PENDING)
-  payload   Json               @default("{}")
-  createdBy String?            @map("created_by") @db.Uuid
-  updatedBy String?            @map("updated_by") @db.Uuid
-  createdAt DateTime           @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt DateTime           @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt DateTime?          @map("deleted_at") @db.Timestamptz
-  version   Int                @default(0)
+  status    NotificationStatus  @default(PENDING)
+  payload   Json                @default("{}")
+  createdBy String?             @map("created_by") @db.Uuid
+  updatedBy String?             @map("updated_by") @db.Uuid
+  createdAt DateTime            @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime            @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime?           @map("deleted_at") @db.Timestamptz
+  version   Int                 @default(0)
 
   user User @relation(fields: [userId], references: [id])
 

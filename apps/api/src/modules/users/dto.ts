@@ -140,3 +140,20 @@ export class UsersListQuery {
   @IsOptional()
   role?: string;
 }
+
+export class ApproveUserDto {
+  @IsInt()
+  @Type(() => Number)
+  version!: number;
+}
+
+export class RejectUserDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  reason?: string;
+
+  @IsInt()
+  @Type(() => Number)
+  version!: number;
+}

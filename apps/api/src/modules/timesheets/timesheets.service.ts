@@ -14,6 +14,8 @@ import {
   AttachEntriesDto,
   CreateTimesheetDto,
   SubmitTimesheetDto,
+  TimesheetHistoryQuery,
+  TimesheetHistoryRow,
   TimesheetQuery,
   UpdateTimesheetDto,
 } from './dto';
@@ -57,6 +59,81 @@ export class TimesheetsService {
     if (!sheet) throw new NotFoundException('Timesheet not found');
     await this.assertCanView(p, sheet.userId);
     return sheet;
+  }
+
+  /**
+   * Per-day rollup for "My Timesheet History" — computed entirely server-side
+   * from WorkSession (break bookkeeping) + TimeEntry (worked segments).
+   */
+  async history(p: AuthPrincipal, query: TimesheetHistoryQuery): Promise<TimesheetHistoryRow[]> {
+    const userId = await this.resolveHistoryUserId(p, query.userId);
+    const { from, to } = this.historyRange(query);
+
+    const [sessions, entries] = await Promise.all([
+      this.prisma.workSession.findMany({
+        where: { tenantId: p.tenantId, userId, workDate: { gte: from, lte: to } },
+      }),
+      this.prisma.timeEntry.findMany({
+        where: { tenantId: p.tenantId, userId, deletedAt: null, startTime: { gte: from, lte: this.endOfDay(to) } },
+      }),
+    ]);
+
+    const dayKey = (d: Date): string => d.toISOString().slice(0, 10);
+
+    const buckets = new Map<
+      string,
+      { clockIn: Date | null; clockOut: Date | null; workMinutes: number; breakMinutes: number; active: boolean }
+    >();
+
+    for (const s of sessions) {
+      const key = dayKey(s.workDate);
+      const b = buckets.get(key) ?? { clockIn: null, clockOut: null, workMinutes: 0, breakMinutes: 0, active: false };
+      b.breakMinutes += s.breakMinutes;
+      if (s.isActive) b.active = true;
+      buckets.set(key, b);
+    }
+
+    for (const e of entries) {
+      const key = dayKey(e.startTime);
+      const b = buckets.get(key) ?? { clockIn: null, clockOut: null, workMinutes: 0, breakMinutes: 0, active: false };
+      b.workMinutes += e.durationMinutes ?? 0;
+      if (!b.clockIn || e.startTime < b.clockIn) b.clockIn = e.startTime;
+      if (!e.endTime) {
+        b.active = true;
+      } else if (!b.clockOut || e.endTime > b.clockOut) {
+        b.clockOut = e.endTime;
+      }
+      buckets.set(key, b);
+    }
+
+    return Array.from(buckets.entries())
+      .sort(([a], [b]) => (a < b ? 1 : -1))
+      .map(([date, b]) => ({
+        date,
+        clockIn: b.clockIn?.toISOString() ?? null,
+        clockOut: b.active ? null : (b.clockOut?.toISOString() ?? null),
+        workMinutes: b.workMinutes,
+        breakMinutes: b.breakMinutes,
+        totalMinutes: b.workMinutes + b.breakMinutes,
+        status: b.active ? 'ACTIVE' : ('COMPLETE' as const),
+      }));
+  }
+
+  async historyCsv(p: AuthPrincipal, query: TimesheetHistoryQuery): Promise<string> {
+    const rows = await this.history(p, query);
+    const header = 'Date,Clock In,Clock Out,Work Hours,Break Hours,Total Hours,Status';
+    const lines = rows.map((r) =>
+      [
+        r.date,
+        r.clockIn ?? '',
+        r.clockOut ?? '',
+        (r.workMinutes / 60).toFixed(2),
+        (r.breakMinutes / 60).toFixed(2),
+        (r.totalMinutes / 60).toFixed(2),
+        r.status,
+      ].join(','),
+    );
+    return [header, ...lines].join('\n');
   }
 
   // -- Employee writes --
@@ -310,6 +387,47 @@ export class TimesheetsService {
       throw new ForbiddenException('You can only modify your own timesheets');
     }
     return sheet;
+  }
+
+  private async resolveHistoryUserId(p: AuthPrincipal, requestedUserId?: string): Promise<string> {
+    if (!requestedUserId || requestedUserId === p.userId) return p.userId;
+    if (this.can(p, PERMISSIONS.TIMESHEET_READ_ORG)) return requestedUserId;
+    if (this.can(p, PERMISSIONS.TIMESHEET_READ_TEAM)) {
+      const ids = await this.teamUserIds(p);
+      if (!ids.includes(requestedUserId)) throw new ForbiddenException('That user is outside your team');
+      return requestedUserId;
+    }
+    throw new ForbiddenException('You can only view your own timesheet history');
+  }
+
+  private historyRange(query: TimesheetHistoryQuery): { from: Date; to: Date } {
+    const to = query.to ? new Date(query.to) : new Date();
+    to.setUTCHours(0, 0, 0, 0);
+    let from: Date;
+    switch (query.range) {
+      case '30d':
+        from = new Date(to);
+        from.setUTCDate(from.getUTCDate() - 29);
+        break;
+      case 'month':
+        from = new Date(Date.UTC(to.getUTCFullYear(), to.getUTCMonth(), 1));
+        break;
+      case 'custom':
+        from = query.from ? new Date(query.from) : new Date(to);
+        from.setUTCHours(0, 0, 0, 0);
+        break;
+      case '7d':
+      default:
+        from = new Date(to);
+        from.setUTCDate(from.getUTCDate() - 6);
+    }
+    return { from, to };
+  }
+
+  private endOfDay(d: Date): Date {
+    const end = new Date(d);
+    end.setUTCHours(23, 59, 59, 999);
+    return end;
   }
 
   /** Throws if the timesheet is not in DRAFT status. */

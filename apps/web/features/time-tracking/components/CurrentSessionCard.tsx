@@ -3,22 +3,23 @@
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Briefcase, Building2, Clock3, Coffee, FolderKanban, Loader2, LogOut, Play, Timer } from "lucide-react";
-import { startTimer, stopTimer, type TimeEntry } from "../api/time-entries.service";
+import {
+  clockInSession,
+  endBreak,
+  getCurrentWorkSession,
+  startBreak,
+} from "../api/work-sessions.service";
 import { listClients, listProjects } from "../api/catalog.service";
-import { readBreakStart, setBreakStart, clearBreakFlag } from "../lib/break-flag";
 import { splitDescription, type WorkTask } from "../lib/task-select";
-import type { DaySummary } from "../lib/day-summary";
 import { formatStopwatch, formatClockTime, formatMinutes } from "@/lib/time";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
 interface CurrentSessionCardProps {
-  /** Today's aggregate — running entry, first clock-in, break totals. */
-  summary: DaySummary;
-  /** Most recent completed entry today — its context seeds "Resume Shift". */
-  lastEntry: TimeEntry | null;
   /** Quick Select choice — Clock In starts the session with this context. */
   selectedTask: WorkTask | null;
+  /** Description of the currently running time entry, for the "Working on" tile. */
+  runningDescription: string | null;
   loading: boolean;
   /** Opens the End of Day Review (the only path that stops AND reviews). */
   onTimeOut: () => void;
@@ -27,16 +28,15 @@ interface CurrentSessionCardProps {
 /**
  * Section 1 — Current Session. Wide banner card: cumulative stopwatch,
  * Clock In / Break / Resume / Time Out, and the live session context
- * (started at, working on, project, client) — all derived from the timer.
+ * (started at, working on, project, client) — all backed by the server's
+ * WorkSession (GET /work-sessions/current), not client-side timer math.
  */
 export function CurrentSessionCard({
-  summary,
-  lastEntry,
   selectedTask,
+  runningDescription,
   loading,
   onTimeOut,
 }: CurrentSessionCardProps) {
-  const running = summary.running;
   const queryClient = useQueryClient();
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
@@ -44,8 +44,15 @@ export function CurrentSessionCard({
   const { data: projects } = useQuery({ queryKey: ["catalog", "projects"], queryFn: listProjects });
   const { data: clients } = useQuery({ queryKey: ["catalog", "clients"], queryFn: listClients });
 
-  const breakStart = readBreakStart();
-  const onBreak = !running && Boolean(breakStart);
+  const { data: workSession } = useQuery({
+    queryKey: ["work-session", "current"],
+    queryFn: getCurrentWorkSession,
+    refetchInterval: 30_000,
+  });
+
+  const session = workSession?.session ?? null;
+  const onBreak = workSession?.onBreak ?? false;
+  const running = Boolean(session?.isActive && !onBreak);
 
   useEffect(() => {
     if (!running && !onBreak) return;
@@ -53,12 +60,15 @@ export function CurrentSessionCard({
     return () => clearInterval(id);
   }, [running, onBreak]);
 
-  const invalidate = () => queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+  const invalidate = () => {
+    queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+    queryClient.invalidateQueries({ queryKey: ["work-session", "current"] });
+  };
 
   const clockIn = useMutation({
     // A Quick Select task seeds the new session's context.
     mutationFn: () =>
-      startTimer(
+      clockInSession(
         selectedTask
           ? {
               projectId: selectedTask.projectId ?? undefined,
@@ -68,74 +78,48 @@ export function CurrentSessionCard({
             }
           : {},
       ),
-    onSuccess: () => {
-      clearBreakFlag();
-      if (typeof window !== "undefined") {
-        window.localStorage.setItem("timeforge.session-accumulated-seconds", "0");
-      }
-      invalidate();
-    },
+    onSuccess: invalidate,
     onError: (err) => setError(err instanceof ApiError ? err.message : "Could not start the shift"),
   });
 
   const takeBreak = useMutation({
-    mutationFn: (id: string) => stopTimer(id),
-    onSuccess: () => {
-      setBreakStart(new Date().toISOString());
-      if (typeof window !== "undefined" && running) {
-        const segmentSeconds = Math.max(0, (Date.now() - new Date(running.startTime).getTime()) / 1000);
-        const prev = parseFloat(window.localStorage.getItem("timeforge.session-accumulated-seconds") ?? "0");
-        window.localStorage.setItem("timeforge.session-accumulated-seconds", (prev + segmentSeconds).toString());
-      }
-      invalidate();
-    },
+    mutationFn: () => startBreak(),
+    onSuccess: invalidate,
     onError: (err) => setError(err instanceof ApiError ? err.message : "Could not pause the session"),
   });
 
   const resume = useMutation({
-    // Carry the interrupted session's context into the new entry.
-    mutationFn: () =>
-      startTimer({
-        projectId: lastEntry?.projectId ?? undefined,
-        clientId: lastEntry?.clientId ?? undefined,
-        workCategoryId: lastEntry?.workCategoryId ?? undefined,
-        description: lastEntry?.description ?? undefined,
-      }),
-    onSuccess: () => {
-      clearBreakFlag();
-      invalidate();
-    },
+    mutationFn: () => endBreak(),
+    onSuccess: invalidate,
     onError: (err) => setError(err instanceof ApiError ? err.message : "Could not resume the shift"),
   });
 
-  // Read accumulated session seconds from localStorage.
-  const accumulated = typeof window !== "undefined"
-    ? parseFloat(window.localStorage.getItem("timeforge.session-accumulated-seconds") ?? "0")
+  // Worked seconds = time since clock-in minus completed break minutes, frozen while on break.
+  const breakMinutes = session?.breakMinutes ?? 0;
+  const elapsedSeconds = session
+    ? onBreak
+      ? Math.max(0, (new Date(session.currentBreakStartedAt!).getTime() - new Date(session.clockIn).getTime()) / 1000 - breakMinutes * 60)
+      : running
+        ? Math.max(0, (now - new Date(session.clockIn).getTime()) / 1000 - breakMinutes * 60)
+        : 0
     : 0;
 
-  // Ticks while running; pauses/freezes at the accumulated time on break.
-  const elapsedSeconds = running
-    ? accumulated + Math.max(0, (now - new Date(running.startTime).getTime()) / 1000)
-    : onBreak
-      ? accumulated
-      : 0;
-
-  const breakSeconds = onBreak
-    ? Math.max(0, (now - new Date(breakStart!).getTime()) / 1000)
+  const breakSeconds = onBreak && session?.currentBreakStartedAt
+    ? Math.max(0, (now - new Date(session.currentBreakStartedAt).getTime()) / 1000)
     : 0;
   const breakStopwatch = formatStopwatch(breakSeconds);
 
   const pending = clockIn.isPending || takeBreak.isPending || resume.isPending;
 
-  const nameOf = (list: { id: string; name: string }[] | undefined, id: string | null) =>
+  const nameOf = (list: { id: string; name: string }[] | undefined, id: string | null | undefined) =>
     (id && list?.find((item) => item.id === id)?.name) || null;
 
-  const clockInAt = summary.clockInAt ?? running?.startTime ?? null;
-  const currentTask = running ? splitDescription(running.description).task : "";
+  const clockInAt = session?.clockIn ?? null;
+  const currentTask = running ? splitDescription(runningDescription ?? "").task : "";
   const breakStatus = onBreak
-    ? `On break — ${formatMinutes(Math.max(0, (now - new Date(breakStart!).getTime()) / 60_000))}`
-    : summary.breakCount > 0
-      ? `${formatMinutes(summary.breakMinutes)} (${summary.breakCount} ${summary.breakCount === 1 ? "break" : "breaks"})`
+    ? `On break — ${formatMinutes(Math.max(0, (now - new Date(session!.currentBreakStartedAt!).getTime()) / 60_000))}`
+    : (session?.breakCount ?? 0) > 0
+      ? `${formatMinutes(breakMinutes)} (${session!.breakCount} ${session!.breakCount === 1 ? "break" : "breaks"})`
       : "No breaks yet";
 
   const infoTiles: { label: string; value: string; icon: React.ReactNode }[] = [
@@ -152,12 +136,12 @@ export function CurrentSessionCard({
     },
     {
       label: "Project",
-      value: nameOf(projects, running?.projectId ?? null) ?? "—",
+      value: nameOf(projects, selectedTask?.projectId) ?? "—",
       icon: <FolderKanban className="h-3.5 w-3.5" aria-hidden="true" />,
     },
     {
       label: "Client",
-      value: nameOf(clients, running?.clientId ?? null) ?? "—",
+      value: nameOf(clients, selectedTask?.clientId) ?? "—",
       icon: <Building2 className="h-3.5 w-3.5" aria-hidden="true" />,
     },
   ];
@@ -206,7 +190,7 @@ export function CurrentSessionCard({
                 type="button"
                 onClick={() => {
                   setError(null);
-                  takeBreak.mutate(running.id);
+                  takeBreak.mutate();
                 }}
                 disabled={pending}
                 className={cn(btnBase, "border border-[#c3c6d2]/60 bg-white text-brand-navy hover:bg-[#f6f3f4]")}

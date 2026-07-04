@@ -61,3 +61,21 @@ export interface TimesheetQuery {
   from?: string; // filter by periodStart >= from
   to?: string;   // filter by periodStart <= to
 }
+
+export interface TimesheetHistoryQuery {
+  /** '7d' | '30d' | 'month' | 'custom' — defaults to '7d'. */
+  range?: string;
+  from?: string; // required when range=custom
+  to?: string;   // required when range=custom
+  userId?: string;
+}
+
+export interface TimesheetHistoryRow {
+  date: string;
+  clockIn: string | null;
+  clockOut: string | null;
+  workMinutes: number;
+  breakMinutes: number;
+  totalMinutes: number;
+  status: 'ACTIVE' | 'COMPLETE';
+}
