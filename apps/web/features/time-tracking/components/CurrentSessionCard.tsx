@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Coffee, Loader2, LogOut, Play, Timer } from "lucide-react";
+import { Briefcase, Building2, Clock3, Coffee, FolderKanban, Loader2, LogOut, Play, Timer } from "lucide-react";
 import { startTimer, stopTimer, type TimeEntry } from "../api/time-entries.service";
 import { listClients, listProjects } from "../api/catalog.service";
 import { readBreakStart, setBreakStart, clearBreakFlag } from "../lib/break-flag";
@@ -17,8 +17,6 @@ interface CurrentSessionCardProps {
   summary: DaySummary;
   /** Most recent completed entry today — its context seeds "Resume Shift". */
   lastEntry: TimeEntry | null;
-  /** Total minutes from completed entries today (cumulative stopwatch). */
-  completedMinutes: number;
   /** Quick Select choice — Clock In starts the session with this context. */
   selectedTask: WorkTask | null;
   loading: boolean;
@@ -34,7 +32,6 @@ interface CurrentSessionCardProps {
 export function CurrentSessionCard({
   summary,
   lastEntry,
-  completedMinutes,
   selectedTask,
   loading,
   onTimeOut,
@@ -141,12 +138,28 @@ export function CurrentSessionCard({
       ? `${formatMinutes(summary.breakMinutes)} (${summary.breakCount} ${summary.breakCount === 1 ? "break" : "breaks"})`
       : "No breaks yet";
 
-  const infoTiles: { label: string; value: string }[] = [
-    { label: "Started At", value: clockInAt ? formatClockTime(clockInAt) : "—" },
-    { label: "Break", value: breakStatus },
-    { label: "Working on", value: currentTask || (running ? "General work" : "—") },
-    { label: "Project", value: nameOf(projects, running?.projectId ?? null) ?? "—" },
-    { label: "Client", value: nameOf(clients, running?.clientId ?? null) ?? "—" },
+  const infoTiles: { label: string; value: string; icon: React.ReactNode }[] = [
+    {
+      label: "Started At",
+      value: clockInAt ? formatClockTime(clockInAt) : "—",
+      icon: <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />,
+    },
+    { label: "Break", value: breakStatus, icon: <Coffee className="h-3.5 w-3.5" aria-hidden="true" /> },
+    {
+      label: "Working on",
+      value: currentTask || (running ? "General work" : "—"),
+      icon: <Briefcase className="h-3.5 w-3.5" aria-hidden="true" />,
+    },
+    {
+      label: "Project",
+      value: nameOf(projects, running?.projectId ?? null) ?? "—",
+      icon: <FolderKanban className="h-3.5 w-3.5" aria-hidden="true" />,
+    },
+    {
+      label: "Client",
+      value: nameOf(clients, running?.clientId ?? null) ?? "—",
+      icon: <Building2 className="h-3.5 w-3.5" aria-hidden="true" />,
+    },
   ];
 
   const btnBase =
@@ -289,10 +302,11 @@ export function CurrentSessionCard({
           <dl className="mt-4 grid grid-cols-2 gap-x-6 gap-y-3 sm:grid-cols-5">
             {infoTiles.map((tile) => (
               <div key={tile.label} className="min-w-0">
-                <dt className="text-[10px] font-bold uppercase tracking-[1px] text-brand-muted">
+                <dt className="flex items-center gap-1.5 text-[10px] font-bold uppercase tracking-[1px] text-brand-muted">
+                  <span className="text-brand-muted/60">{tile.icon}</span>
                   {tile.label}
                 </dt>
-                <dd className="truncate text-sm font-bold text-brand-ink" title={tile.value}>
+                <dd className="mt-0.5 truncate text-sm font-bold text-brand-ink" title={tile.value}>
                   {tile.value}
                 </dd>
               </div>

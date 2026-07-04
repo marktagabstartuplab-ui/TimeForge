@@ -70,6 +70,7 @@ async function main() {
         lastName,
         passwordHash,
         status: UserStatus.ACTIVE,
+        isApproved: true,
         employmentType,
         payrollEligible,
         emailVerifiedAt: new Date(),

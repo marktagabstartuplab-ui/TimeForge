@@ -1,13 +1,27 @@
 "use client";
 
 import { useCallback, useEffect, useState, useRef } from "react";
-import { Controller, useForm, useWatch } from "react-hook-form";
+import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Check, CheckCircle2, Loader2, Lock, PencilLine, Plus, Trash2, Edit3, X, AlertCircle } from "lucide-react";
+import {
+  AlertCircle,
+  AlertTriangle,
+  Check,
+  CheckCircle2,
+  ClipboardList,
+  Edit3,
+  History,
+  Loader2,
+  Lock,
+  MessageSquareText,
+  Plus,
+  Save,
+  Trash2,
+} from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
 import { ProgressBar } from "@/components/shared/ProgressBar";
-import { StatusBadge, type BadgeTone } from "@/components/shared/StatusBadge";
+import { StatusBadge } from "@/components/shared/StatusBadge";
 import { FieldLabel } from "@/features/auth/components/fields";
 import { FieldError, FormBanner } from "@/features/auth/components/FormMessages";
 import type { ToastState } from "@/components/shared/Toast";
@@ -19,8 +33,7 @@ import {
 } from "@/features/scrum/api/scrum.service";
 import { listProjects } from "../api/catalog.service";
 import { dailyScrumSchema, type DailyScrumValues } from "../schemas/time-entry.schema";
-import type { WorkTask } from "../lib/task-select";
-import { formatClockTime, formatMinutes, toIsoDate } from "@/lib/time";
+import { formatClockTime, toIsoDate } from "@/lib/time";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
@@ -44,22 +57,39 @@ export interface BlockerItem {
   status: "OPEN" | "RESOLVED";
 }
 
+/** Loosely-typed shape tolerated when parsing legacy/foreign JSON from the `today` column. */
+interface RawScrumTaskItem {
+  id?: unknown;
+  description?: unknown;
+  title?: unknown;
+  expectedOutput?: unknown;
+  measurementCriteria?: unknown;
+  kpi?: unknown;
+  plannedTarget?: unknown;
+  projectId?: unknown;
+  status?: unknown;
+  createdAt?: unknown;
+  completedAt?: unknown;
+}
+
+const asString = (v: unknown): string => (typeof v === "string" ? v : "");
+
 export function parseTasks(todayStr: string | null | undefined): ScrumTaskItem[] {
   if (!todayStr) return [];
   try {
-    const parsed = JSON.parse(todayStr);
+    const parsed: unknown = JSON.parse(todayStr);
     if (Array.isArray(parsed)) {
-      return parsed.map((t: any) => ({
-        id: t.id || Math.random().toString(36).substring(7),
-        description: t.description || t.title || "",
-        expectedOutput: t.expectedOutput || "",
-        measurementCriteria: t.measurementCriteria || "",
-        kpi: t.kpi || "",
-        plannedTarget: t.plannedTarget || "",
-        projectId: t.projectId || "",
+      return (parsed as RawScrumTaskItem[]).map((t) => ({
+        id: asString(t.id) || Math.random().toString(36).substring(7),
+        description: asString(t.description) || asString(t.title),
+        expectedOutput: asString(t.expectedOutput),
+        measurementCriteria: asString(t.measurementCriteria),
+        kpi: asString(t.kpi),
+        plannedTarget: asString(t.plannedTarget),
+        projectId: asString(t.projectId),
         status: t.status === "COMPLETED" ? "COMPLETED" : t.status === "IN_PROGRESS" ? "IN_PROGRESS" : "PENDING",
-        createdAt: t.createdAt || new Date().toISOString(),
-        completedAt: t.completedAt || null,
+        createdAt: asString(t.createdAt) || new Date().toISOString(),
+        completedAt: asString(t.completedAt) || null,
       }));
     }
   } catch {
@@ -83,16 +113,30 @@ export function parseTasks(todayStr: string | null | undefined): ScrumTaskItem[]
   return [];
 }
 
+interface RawBlockerItem {
+  id?: unknown;
+  description?: unknown;
+  severity?: unknown;
+  status?: unknown;
+}
+
+const SEVERITIES = ["LOW", "MEDIUM", "HIGH"] as const;
+const BLOCKER_STATUSES = ["OPEN", "RESOLVED"] as const;
+
 export function parseBlockers(blockersStr: string | null | undefined): BlockerItem[] {
   if (!blockersStr) return [];
   try {
-    const parsed = JSON.parse(blockersStr);
+    const parsed: unknown = JSON.parse(blockersStr);
     if (Array.isArray(parsed)) {
-      return parsed.map((b: any) => ({
-        id: b.id || Math.random().toString(36).substring(7),
-        description: b.description || "",
-        severity: b.severity || "MEDIUM",
-        status: b.status || "OPEN",
+      return (parsed as RawBlockerItem[]).map((b) => ({
+        id: asString(b.id) || Math.random().toString(36).substring(7),
+        description: asString(b.description),
+        severity: SEVERITIES.includes(b.severity as (typeof SEVERITIES)[number])
+          ? (b.severity as BlockerItem["severity"])
+          : "MEDIUM",
+        status: BLOCKER_STATUSES.includes(b.status as (typeof BLOCKER_STATUSES)[number])
+          ? (b.status as BlockerItem["status"])
+          : "OPEN",
       }));
     }
   } catch {
@@ -111,6 +155,14 @@ export function parseBlockers(blockersStr: string | null | undefined): BlockerIt
 }
 
 const AUTOSAVE_MS = 30_000;
+
+/** Whole-day status badge (header pill) — mirrors ScrumEntry.status, distinct from per-task status. */
+const DAY_STATUS_META: Record<ScrumTaskStatus, { label: string; tone: "neutral" | "info" | "warning" }> = {
+  NOT_STARTED: { label: "Not Started", tone: "neutral" },
+  IN_PROGRESS: { label: "In Progress", tone: "info" },
+  BLOCKED: { label: "Blocked", tone: "warning" },
+  COMPLETED: { label: "Completed", tone: "info" },
+};
 
 /** Draft persistence — per calendar day, cleared on successful submission. */
 function draftKey(): string {
@@ -142,16 +194,13 @@ function readDraft(): DailyScrumValues | null {
 
 interface ScrumTaskCardProps {
   entry: ScrumEntry | null;
-  task: WorkTask | null;
-  trackedMinutes: number;
   loading: boolean;
   onToast: (toast: ToastState) => void;
 }
 
-export function ScrumTaskCard({ entry, task, trackedMinutes, loading, onToast }: ScrumTaskCardProps) {
+export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
-  const [editing, setEditing] = useState(false);
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
   
   // Custom interactive states for Tasks & Blockers
@@ -177,15 +226,18 @@ export function ScrumTaskCard({ entry, task, trackedMinutes, loading, onToast }:
   const newTaskRef = useRef<HTMLDivElement>(null);
 
   const { data: projects } = useQuery({ queryKey: ["catalog", "projects"], queryFn: listProjects });
-  const projectName = (task?.projectId && projects?.find((p) => p.id === task.projectId)?.name) || "No project";
 
+  // Only a fully COMPLETED day is locked. A saved-but-not-completed entry
+  // (e.g. tasks still in progress) stays editable all day — you can keep
+  // planning tasks, marking them complete, and re-saving via PATCH — so the
+  // day only seals itself once every task is done (see
+  // updateScrumProgressAndStatus, which flips status to COMPLETED at 100%).
   const completed = entry?.status === "COMPLETED";
-  const locked = Boolean(entry) && (!editing || completed);
+  const locked = completed;
 
   const {
     register,
     handleSubmit,
-    control,
     reset,
     getValues,
     setValue,
@@ -202,30 +254,84 @@ export function ScrumTaskCard({ entry, task, trackedMinutes, loading, onToast }:
     },
   });
 
-  const liveProgress = useWatch({ control, name: "progress" });
-
-  // Sync state when entry or draft loads
+  // Sync state when entry or draft loads (entry usually arrives async, after
+  // the form's initial mount, so this also pushes yesterday/notes/progress/
+  // status into the form via reset() — not just the tasks/blockers arrays).
+  // reset() is react-hook-form's own sync API, safe to call directly in the
+  // effect body; only the plain useState setters are deferred.
   useEffect(() => {
     if (entry) {
-      setTasks(parseTasks(entry.today));
-      setBlockers(parseBlockers(entry.blockers));
+      reset({
+        yesterday: entry.yesterday,
+        today: entry.today,
+        blockers: entry.blockers ?? "",
+        notes: entry.notes ?? "",
+        progress: entry.progress,
+        status: entry.status,
+      });
     } else {
       const draft = readDraft();
-      if (draft) {
-        setTasks(parseTasks(draft.today));
-        setBlockers(parseBlockers(draft.blockers));
-      } else {
-        setTasks([]);
-        setBlockers([]);
-      }
+      if (draft) reset(draft);
     }
-  }, [entry]);
+
+    const id = window.setTimeout(() => {
+      if (entry) {
+        setTasks(parseTasks(entry.today));
+        setBlockers(parseBlockers(entry.blockers));
+      } else {
+        const draft = readDraft();
+        if (draft) {
+          setTasks(parseTasks(draft.today));
+          setBlockers(parseBlockers(draft.blockers));
+        } else {
+          setTasks([]);
+          setBlockers([]);
+        }
+      }
+    }, 0);
+    return () => window.clearTimeout(id);
+  }, [entry, reset]);
 
   // Keep Zod form fields in sync with the JSON arrays
   useEffect(() => {
     setValue("today", tasks.length > 0 ? JSON.stringify(tasks) : "");
     setValue("blockers", blockers.length > 0 ? JSON.stringify(blockers) : "");
   }, [tasks, blockers, setValue]);
+
+  // Whether there's meaningful unsaved work: at least one planned task or
+  // blocker, or hand-typed text in Yesterday/Notes not yet locked in.
+  const hasUnsavedWork = !locked && (tasks.length > 0 || blockers.length > 0 || isDirty);
+
+  // Auto-save a local draft every 30s while there's unsaved work.
+  useEffect(() => {
+    if (!hasUnsavedWork) return;
+    const id = window.setInterval(() => {
+      const values = getValues();
+      window.localStorage.setItem(
+        draftKey(),
+        JSON.stringify({
+          yesterday: values.yesterday,
+          today: tasks.length > 0 ? JSON.stringify(tasks) : "",
+          blockers: blockers.length > 0 ? JSON.stringify(blockers) : "",
+          notes: values.notes,
+          progress: values.progress,
+          status: values.status,
+        }),
+      );
+      setDraftSavedAt(new Date().toISOString());
+    }, AUTOSAVE_MS);
+    return () => window.clearInterval(id);
+  }, [hasUnsavedWork, tasks, blockers, getValues]);
+
+  // Warn before leaving the page with unsaved scrum work.
+  useEffect(() => {
+    if (!hasUnsavedWork) return;
+    const handler = (e: BeforeUnloadEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener("beforeunload", handler);
+    return () => window.removeEventListener("beforeunload", handler);
+  }, [hasUnsavedWork]);
 
   // Calculate dynamic overall progress from tasks
   const updateScrumProgressAndStatus = (currentTasks: ScrumTaskItem[]) => {
@@ -408,12 +514,18 @@ export function ScrumTaskCard({ entry, task, trackedMinutes, loading, onToast }:
             progress: values.progress,
             status: values.status,
           }),
-    onSuccess: () => {
+    onSuccess: (saved) => {
       queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
       window.localStorage.removeItem(draftKey());
       setDraftSavedAt(null);
-      setEditing(false);
-      onToast({ message: entry ? "Daily Scrum updated." : "Daily Scrum Locked & Submitted." });
+      onToast({
+        message:
+          saved.status === "COMPLETED"
+            ? "All tasks complete — Daily Scrum locked for today."
+            : entry
+              ? "Daily Scrum updated."
+              : "Daily Scrum saved.",
+      });
     },
     onError: (err) => {
       setServerError(err instanceof ApiError ? err.message : "Could not lock your daily scrum plan");
@@ -432,7 +544,10 @@ export function ScrumTaskCard({ entry, task, trackedMinutes, loading, onToast }:
   const totalTasks = tasks.length;
   const completedTasks = tasks.filter(t => t.status === "COMPLETED").length;
   const completionPercentage = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
-  
+  // Mirrors updateScrumProgressAndStatus: 100% completion is what flips the
+  // saved entry's status to COMPLETED (and therefore locks the day).
+  const willComplete = totalTasks > 0 && completionPercentage === 100;
+
   // KPI / Target meta maps
   const hasKpiCount = tasks.filter(t => t.kpi).length;
   const resolvedBlockersCount = blockers.filter(b => b.status === "RESOLVED").length;
@@ -455,12 +570,12 @@ export function ScrumTaskCard({ entry, task, trackedMinutes, loading, onToast }:
         </div>
         <div className="flex shrink-0 items-center gap-2">
           {entry && completed ? (
-            <StatusBadge label="Completed" tone="success" />
-          ) : entry ? (
-            <span className="flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-700 ring-1 ring-amber-200">
+            <span className="flex items-center gap-1.5 rounded-full bg-[#f0fdf4] px-2.5 py-0.5 text-xs font-bold text-[#16a34a] ring-1 ring-[#16a34a]/20">
               <Lock className="h-3 w-3" aria-hidden="true" />
-              Locked
+              Completed &amp; Locked
             </span>
+          ) : entry ? (
+            <StatusBadge {...DAY_STATUS_META[entry.status]} />
           ) : (
             <StatusBadge label="Draft" tone="neutral" />
           )}
@@ -487,11 +602,27 @@ export function ScrumTaskCard({ entry, task, trackedMinutes, loading, onToast }:
         </div>
       </div>
 
+      {/* Completion progress bar with quarter markers */}
+      <div>
+        <ProgressBar percent={completionPercentage} label="Task completion" />
+        <div className="mt-1 flex justify-between text-[10px] font-semibold text-brand-muted/70">
+          {[0, 25, 50, 75, 100].map((mark) => (
+            <span key={mark}>{mark}%</span>
+          ))}
+        </div>
+      </div>
+
       {serverError ? <FormBanner message={serverError} /> : null}
+      {errors.today?.message || errors.blockers?.message ? (
+        <FormBanner message={(errors.today?.message ?? errors.blockers?.message)!} />
+      ) : null}
 
       {/* Today's Commitments Section (Section 2) */}
       <div className="space-y-4">
-        <h4 className="text-sm font-bold text-brand-navy uppercase tracking-[0.5px]">Today&apos;s Commitments</h4>
+        <h4 className="flex items-center gap-2 text-sm font-bold text-brand-navy uppercase tracking-[0.5px]">
+          <ClipboardList className="h-4 w-4 text-brand" aria-hidden="true" />
+          Today&apos;s Commitments
+        </h4>
         <div className="space-y-3">
           {tasks.map((item, idx) => (
             <div 
@@ -698,7 +829,15 @@ export function ScrumTaskCard({ entry, task, trackedMinutes, loading, onToast }:
 
       {/* Multiple Blockers Section (Section 7) */}
       <div className="space-y-4 border-t border-[#c3c6d2]/30 pt-4">
-        <h4 className="text-sm font-bold text-brand-navy uppercase tracking-[0.5px]">Active Blockers & Issues</h4>
+        <h4 className="flex items-center gap-2 text-sm font-bold text-brand-navy uppercase tracking-[0.5px]">
+          <AlertTriangle className="h-4 w-4 text-brand" aria-hidden="true" />
+          Active Blockers &amp; Issues
+          {blockers.length > 0 ? (
+            <span className="rounded-full bg-[#f6f3f4] px-2 py-0.5 text-[10px] font-bold normal-case tracking-normal text-brand-muted">
+              {resolvedBlockersCount}/{blockers.length} resolved
+            </span>
+          ) : null}
+        </h4>
         <div className="space-y-2">
           {blockers.map((b) => (
             <div 
@@ -753,7 +892,10 @@ export function ScrumTaskCard({ entry, task, trackedMinutes, loading, onToast }:
             </div>
           ))}
           {blockers.length === 0 && (
-            <p className="text-xs text-brand-muted italic py-2 text-center">No active blockers reported.</p>
+            <p className="flex items-center justify-center gap-1.5 rounded-[10px] bg-[#f0fdf4] py-2.5 text-xs font-bold text-[#16a34a]">
+              <CheckCircle2 className="h-3.5 w-3.5" aria-hidden="true" />
+              No blockers today
+            </p>
           )}
         </div>
 
@@ -776,7 +918,7 @@ export function ScrumTaskCard({ entry, task, trackedMinutes, loading, onToast }:
               <select
                 id="blocker-severity"
                 value={blockerSeverity}
-                onChange={(e) => setBlockerSeverity(e.target.value as any)}
+                onChange={(e) => setBlockerSeverity(e.target.value as "LOW" | "MEDIUM" | "HIGH")}
                 className="h-10 w-full rounded-[8px] border border-[#c3c6d2] bg-white px-2.5 text-xs focus:outline-none focus:border-brand"
               >
                 <option value="LOW">Low</option>
@@ -801,48 +943,70 @@ export function ScrumTaskCard({ entry, task, trackedMinutes, loading, onToast }:
 
       {/* Main Lock Form containing text fields & Lock Button (Section 5) */}
       <form onSubmit={handleSubmit(onSubmit)} noValidate className="border-t border-[#c3c6d2]/30 pt-4 space-y-4">
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-          <div>
-            <FieldLabel htmlFor="yesterday-accomplish">Yesterday&apos;s Accomplishments</FieldLabel>
+        <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
+          {/* Yesterday's Accomplishments — its own card */}
+          <div className="rounded-[12px] border border-[#c3c6d2]/30 bg-[#f6f3f4]/20 p-4">
+            <FieldLabel htmlFor="yesterday-accomplish">
+              <span className="flex items-center gap-1.5">
+                <History className="h-3.5 w-3.5 text-brand" aria-hidden="true" />
+                Yesterday&apos;s Accomplishments
+              </span>
+            </FieldLabel>
             <Textarea
               id="yesterday-accomplish"
               rows={3}
               disabled={locked}
               placeholder="What did you complete yesterday?"
               invalid={Boolean(errors.yesterday)}
+              className="bg-white"
               {...register("yesterday")}
             />
             <FieldError message={errors.yesterday?.message} />
           </div>
-          <div>
-            <FieldLabel htmlFor="scrum-notes">Notes for Supervisor (optional)</FieldLabel>
+
+          {/* Notes for Supervisor — separate, optional card */}
+          <div className="rounded-[12px] border border-[#c3c6d2]/30 bg-[#f6f3f4]/20 p-4">
+            <FieldLabel htmlFor="scrum-notes">
+              <span className="flex items-center gap-1.5">
+                <MessageSquareText className="h-3.5 w-3.5 text-brand" aria-hidden="true" />
+                Notes for Supervisor{" "}
+                <span className="font-normal normal-case text-brand-muted">(optional)</span>
+              </span>
+            </FieldLabel>
             <Textarea
               id="scrum-notes"
               rows={3}
               disabled={locked}
               placeholder="Any private notes or context for your manager?"
               invalid={Boolean(errors.notes)}
+              className="bg-white"
               {...register("notes")}
             />
             <FieldError message={errors.notes?.message} />
           </div>
         </div>
 
+        {locked ? (
+          <div className="flex items-center gap-3 rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+              <Lock className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <div>
+              <p className="text-sm font-bold text-amber-800">Today&apos;s Scrum Locked</p>
+              <p className="text-xs text-amber-700">
+                Submitted at {entry ? formatClockTime(entry.updatedAt) : "—"} · Editing Disabled
+              </p>
+            </div>
+          </div>
+        ) : (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#c3c6d2]/40 pt-4">
           <div className="text-xs text-brand-muted">
-            {locked ? (
-              <p className="font-bold text-amber-700 flex items-center gap-1">
-                <Lock className="h-3.5 w-3.5" />
-                Today&apos;s Scrum Locked · Submitted at {entry ? formatClockTime(entry.updatedAt) : "—"}
-              </p>
-            ) : (
-              <p>
-                {draftSavedAt ? `Draft auto-saved at ${formatClockTime(draftSavedAt)} · ` : ""}
-                Auto-saves every 30s · Ctrl+Enter to submit
-              </p>
-            )}
+            <p>
+              {draftSavedAt ? `Draft auto-saved at ${formatClockTime(draftSavedAt)} · ` : ""}
+              Auto-saves every 30s · Ctrl+Enter to submit
+            </p>
           </div>
-          
+
           <div className="flex items-center gap-3">
             {!locked && entry && (
               <button
@@ -858,7 +1022,6 @@ export function ScrumTaskCard({ entry, task, trackedMinutes, loading, onToast }:
                   });
                   setTasks(parseTasks(entry.today));
                   setBlockers(parseBlockers(entry.blockers));
-                  setEditing(false);
                 }}
                 className="text-sm font-bold text-brand-muted hover:text-brand-navy"
               >
@@ -874,14 +1037,17 @@ export function ScrumTaskCard({ entry, task, trackedMinutes, loading, onToast }:
               >
                 {save.isPending ? (
                   <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
-                ) : (
+                ) : willComplete ? (
                   <Lock className="h-4 w-4" aria-hidden="true" />
+                ) : (
+                  <Save className="h-4 w-4" aria-hidden="true" />
                 )}
-                Lock Daily Plan
+                {willComplete ? "Lock Daily Plan" : "Save Daily Plan"}
               </button>
             )}
           </div>
         </div>
+        )}
       </form>
     </div>
   );

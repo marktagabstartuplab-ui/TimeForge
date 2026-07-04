@@ -148,11 +148,15 @@ export function WorkDetailsCard({ running, selectedTask, departmentName, onToast
           </p>
         </div>
       ) : (
-        <form onSubmit={handleSubmit((v) => save.mutate(v))} noValidate className="mt-5 space-y-4">
+        <form onSubmit={handleSubmit((v) => save.mutate(v))} noValidate className="mt-5 space-y-6">
           {serverError ? <FormBanner message={serverError} /> : null}
 
-          {/* Client / Project */}
-          <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+          {/* Client / Project / Department */}
+          <div>
+            <p className="mb-3 text-xs font-bold uppercase tracking-[0.8px] text-brand-muted">
+              Session Context
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
             {(
               [
                 { name: "clientId" as const, label: "Client", items: toItems(clients) },
@@ -185,76 +189,88 @@ export function WorkDetailsCard({ running, selectedTask, departmentName, onToast
                 />
               </div>
             ))}
+            </div>
+
+            {/* Department (profile, read-only) */}
+            <div className="mt-4">
+              <FieldLabel htmlFor="wd-department">Department</FieldLabel>
+              <input
+                id="wd-department"
+                type="text"
+                disabled
+                value={departmentName ?? "No Department Assigned"}
+                className={cn(
+                  "h-11 w-full rounded-[10px] border border-[#c3c6d2] bg-[#f6f3f4] px-3.5 text-[15px] text-brand-muted",
+                  "cursor-not-allowed",
+                )}
+              />
+              <p className="mt-1 text-xs text-brand-muted/70">Auto-filled from your profile.</p>
+            </div>
           </div>
 
-          {/* Department (profile, read-only) */}
+          {/* Task / Work Category */}
           <div>
-            <FieldLabel htmlFor="wd-department">Department</FieldLabel>
-            <input
-              id="wd-department"
-              type="text"
-              disabled
-              value={departmentName ?? "No Department Assigned"}
-              className={cn(
-                "h-11 w-full rounded-[10px] border border-[#c3c6d2] bg-[#f6f3f4] px-3.5 text-[15px] text-brand-muted",
-                "cursor-not-allowed",
-              )}
-            />
-            <p className="mt-1 text-xs text-brand-muted/70">Auto-filled from your profile.</p>
+            <p className="mb-3 text-xs font-bold uppercase tracking-[0.8px] text-brand-muted">
+              Task &amp; Category
+            </p>
+            <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+              <div>
+                <FieldLabel htmlFor="wd-task">Task</FieldLabel>
+                <IconInput
+                  id="wd-task"
+                  type="text"
+                  placeholder="e.g. UI Refactoring"
+                  invalid={Boolean(errors.task)}
+                  {...register("task")}
+                />
+                <FieldError message={errors.task?.message} />
+              </div>
+
+              <div>
+                <FieldLabel htmlFor="wd-workCategoryId">Work Category</FieldLabel>
+                <Controller
+                  control={control}
+                  name="workCategoryId"
+                  render={({ field }) => (
+                    <Select
+                      value={field.value ?? ""}
+                      onValueChange={(v) => field.onChange(v ?? "")}
+                      items={toItems(categories)}
+                    >
+                      <SelectTrigger id="wd-workCategoryId" aria-label="Work Category" className={selectClass}>
+                        <SelectValue placeholder="Select..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {toItems(categories).map((item) => (
+                          <SelectItem key={item.value} value={item.value}>
+                            {item.label}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  )}
+                />
+              </div>
+            </div>
           </div>
 
-          {/* Task */}
-          <div>
-            <FieldLabel htmlFor="wd-task">Task</FieldLabel>
-            <IconInput
-              id="wd-task"
-              type="text"
-              placeholder="e.g. UI Refactoring"
-              invalid={Boolean(errors.task)}
-              {...register("task")}
-            />
-            <FieldError message={errors.task?.message} />
-          </div>
+          {/* Description / Attachments */}
+          <div className="space-y-4">
+            <p className="text-xs font-bold uppercase tracking-[0.8px] text-brand-muted">
+              Description &amp; Links
+            </p>
 
-          {/* Work Category */}
-          <div>
-            <FieldLabel htmlFor="wd-workCategoryId">Work Category</FieldLabel>
-            <Controller
-              control={control}
-              name="workCategoryId"
-              render={({ field }) => (
-                <Select
-                  value={field.value ?? ""}
-                  onValueChange={(v) => field.onChange(v ?? "")}
-                  items={toItems(categories)}
-                >
-                  <SelectTrigger id="wd-workCategoryId" aria-label="Work Category" className={selectClass}>
-                    <SelectValue placeholder="Select..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {toItems(categories).map((item) => (
-                      <SelectItem key={item.value} value={item.value}>
-                        {item.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-          </div>
-
-          {/* Work Description */}
-          <div>
-            <FieldLabel htmlFor="wd-workDescription">Work Description</FieldLabel>
-            <Textarea
-              id="wd-workDescription"
-              rows={3}
-              placeholder="Detail the specific work for this session..."
-              invalid={Boolean(errors.workDescription)}
-              {...register("workDescription")}
-            />
-            <FieldError message={errors.workDescription?.message} />
-          </div>
+            <div>
+              <FieldLabel htmlFor="wd-workDescription">Work Description</FieldLabel>
+              <Textarea
+                id="wd-workDescription"
+                rows={3}
+                placeholder="Detail the specific work for this session..."
+                invalid={Boolean(errors.workDescription)}
+                {...register("workDescription")}
+              />
+              <FieldError message={errors.workDescription?.message} />
+            </div>
 
           {/* Attachments — reference links on the time entry. */}
           <div>
@@ -323,6 +339,7 @@ export function WorkDetailsCard({ running, selectedTask, departmentName, onToast
             <p className="mt-1 text-xs text-brand-muted/70">
               Links are saved with this session. File uploads need backend support.
             </p>
+          </div>
           </div>
 
           <div className="flex justify-end border-t border-[#c3c6d2]/40 pt-4">

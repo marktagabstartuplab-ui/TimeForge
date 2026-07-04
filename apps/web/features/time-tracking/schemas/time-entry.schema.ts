@@ -22,14 +22,18 @@ export const manualEntrySchema = z
 export type ManualEntryValues = z.infer<typeof manualEntrySchema>;
 
 /**
- * Daily Scrum card. Yesterday / Today / Blockers are all required before
- * submission (write "None" when there are no blockers) — the API itself
- * treats blockers as optional, so this is a workflow rule, not a DTO rule.
+ * Daily Scrum card. `today` and `blockers` are JSON-serialized task/blocker
+ * lists managed by ScrumTaskCard (empty string = none planned/reported —
+ * both are legitimate, common states, not validation failures). Only
+ * `yesterday` is a hand-typed narrative field and stays required.
  */
 export const dailyScrumSchema = z.object({
   yesterday: z.string().min(1, "Tell the team what you completed yesterday").max(5000),
-  today: z.string().min(1, "List your main objectives for today").max(5000),
-  blockers: z.string().min(1, 'Blockers are required — write "None" if you have none').max(5000),
+  today: z.string().max(5000, "Too many tasks — the combined details exceed the 5000-character limit").optional(),
+  blockers: z
+    .string()
+    .max(5000, "Too many blockers — the combined details exceed the 5000-character limit")
+    .optional(),
   notes: z.string().max(2000).optional(),
   progress: z.number().int().min(0).max(100, "Progress cannot exceed 100%"),
   status: z.enum(["NOT_STARTED", "IN_PROGRESS", "BLOCKED", "COMPLETED"]),

@@ -2,7 +2,7 @@ import type { TimeEntry } from "../api/time-entries.service";
 import { minutesBetween } from "@/lib/time";
 
 /** Gaps shorter than this between sessions are treated as continuations, not breaks. */
-const MIN_BREAK_MINUTES = 1;
+export const MIN_BREAK_MINUTES = 1;
 
 export interface DaySummary {
   /** Minutes tracked across all of today's entries (running entry counted up to now). */

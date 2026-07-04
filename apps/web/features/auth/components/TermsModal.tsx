@@ -70,7 +70,7 @@ export function TermsModal({ open, onOpenChange }: TermsModalProps) {
             <div>
               <h3 className="font-bold text-brand-ink text-base mb-1.5">6. Limitation of Liability</h3>
               <p className="leading-relaxed">
-                The platform is provided "as is" without warranties. We are not liable for any indirect, incidental, or consequential damages.
+                The platform is provided &quot;as is&quot; without warranties. We are not liable for any indirect, incidental, or consequential damages.
               </p>
             </div>
 

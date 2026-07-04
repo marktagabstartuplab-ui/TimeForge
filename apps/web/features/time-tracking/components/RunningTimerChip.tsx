@@ -5,7 +5,7 @@ import Link from "next/link";
 import { useQuery } from "@tanstack/react-query";
 import { Timer } from "lucide-react";
 import { listTimeEntries } from "../api/time-entries.service";
-import { formatStopwatch, minutesBetween, startOfDay, endOfDay } from "@/lib/time";
+import { formatStopwatch, startOfDay, endOfDay } from "@/lib/time";
 
 /**
  * Persistent running-session indicator for the top bar: ticking elapsed time

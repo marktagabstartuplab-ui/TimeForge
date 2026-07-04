@@ -1,7 +1,7 @@
 "use client";
 
 import { useQuery } from "@tanstack/react-query";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, Clock3, Coffee, TrendingUp, CalendarDays } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ProgressBar } from "@/components/shared/ProgressBar";
 import { WeeklyHoursChart, type DayHours } from "@/components/shared/WeeklyHoursChart";
@@ -23,14 +23,9 @@ interface TodayProgressCardProps {
 /** Mon-first weekday labels for the chart. */
 const WEEK_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
-function buildWeekDays(entries: any, now: Date): DayHours[] {
+function buildWeekDays(entries: TimeEntry[], now: Date): DayHours[] {
   const minutesByDay = new Map<string, number>();
-  const list = Array.isArray(entries)
-    ? entries
-    : entries && Array.isArray(entries.data)
-      ? entries.data
-      : [];
-  for (const e of list) {
+  for (const e of entries) {
     const key = toIsoDate(new Date(e.startTime));
     const mins = e.durationMinutes ?? minutesBetween(e.startTime, e.endTime ?? now.toISOString());
     minutesByDay.set(key, (minutesByDay.get(key) ?? 0) + mins);
@@ -71,15 +66,32 @@ export function TodayProgressCard({ summary, weekEntries, weekLoading }: TodayPr
   const kpiPercent =
     kpi && kpi.targetValue > 0 ? Math.round((kpi.currentValue / kpi.targetValue) * 100) : null;
 
-  const rows: { label: string; value: string }[] = [
-    { label: "Today's Hours", value: formatMinutes(summary.trackedMinutes) },
-    { label: "Weekly Hours", value: formatMinutes(weekMinutes) },
-    { label: "Break Time", value: formatMinutes(summary.breakMinutes) },
+  const rows: { label: string; value: string; icon: React.ReactNode }[] = [
+    {
+      label: "Today's Hours",
+      value: formatMinutes(summary.trackedMinutes),
+      icon: <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />,
+    },
+    {
+      label: "Weekly Hours",
+      value: formatMinutes(weekMinutes),
+      icon: <CalendarDays className="h-3.5 w-3.5" aria-hidden="true" />,
+    },
+    {
+      label: "Break Time",
+      value: formatMinutes(summary.breakMinutes),
+      icon: <Coffee className="h-3.5 w-3.5" aria-hidden="true" />,
+    },
   ];
 
   return (
     <div className="rounded-[16px] border border-[#c3c6d2]/50 bg-white p-[25px] shadow-[0px_1px_1px_rgba(0,0,0,0.05)]">
-      <h3 className="text-xl text-brand-navy">Today&apos;s Progress</h3>
+      <div className="flex items-center gap-2.5 border-b border-[#c3c6d2]/40 pb-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-brand-cyan/20 text-brand">
+          <TrendingUp className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <h3 className="text-xl text-brand-navy">Today&apos;s Progress</h3>
+      </div>
 
       {weekLoading ? (
         <div className="mt-4 flex flex-col gap-3">
@@ -113,12 +125,18 @@ export function TodayProgressCard({ summary, weekEntries, weekLoading }: TodayPr
                     : "flex items-center justify-between border-t border-[#c3c6d2]/40 py-2"
                 }
               >
-                <dt className="text-sm text-brand-muted">{row.label}</dt>
+                <dt className="flex items-center gap-2 text-sm text-brand-muted">
+                  <span className="text-brand-muted/70">{row.icon}</span>
+                  {row.label}
+                </dt>
                 <dd className="text-sm font-bold text-brand-ink">{row.value}</dd>
               </div>
             ))}
             <div className="flex items-center justify-between border-t border-[#c3c6d2]/40 py-2">
-              <dt className="text-sm text-brand-muted">Current Productivity</dt>
+              <dt className="flex items-center gap-2 text-sm text-brand-muted">
+                <TrendingUp className="h-3.5 w-3.5 text-brand-muted/70" aria-hidden="true" />
+                Current Productivity
+              </dt>
               <dd className="text-sm font-bold text-brand-ink">
                 {dashboardQuery.isLoading
                   ? "…"

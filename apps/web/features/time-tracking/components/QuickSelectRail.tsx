@@ -28,6 +28,18 @@ interface TaskCardProps {
   onTogglePin: (key: string) => void;
 }
 
+/** Small colored icon badge + uppercase label, used to head each rail section. */
+function SectionLabel({ icon, children }: { icon: React.ReactNode; children: React.ReactNode }) {
+  return (
+    <p className="mb-2 flex items-center gap-2 text-[11px] font-bold uppercase tracking-[1px] text-brand-muted">
+      <span className="flex h-5 w-5 shrink-0 items-center justify-center rounded-full bg-brand-cyan/15 text-brand">
+        {icon}
+      </span>
+      {children}
+    </p>
+  );
+}
+
 function TaskCard({ task, highlight, pinned, projectLabel, onPick, onTogglePin }: TaskCardProps) {
   return (
     <div
@@ -114,11 +126,15 @@ export function QuickSelectRail({ tasks, loading, onSelect, onToast }: QuickSele
 
   return (
     <div className="rounded-[16px] border border-[#c3c6d2]/50 bg-white p-[25px] shadow-[0px_1px_1px_rgba(0,0,0,0.05)]">
-      <div className="flex items-center justify-between">
-        <h3 className="text-xl text-brand-navy">Quick Select</h3>
-        <History className="h-4 w-4 text-brand" aria-hidden="true" />
+      <div className="flex items-center gap-2.5 border-b border-[#c3c6d2]/40 pb-3">
+        <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-brand-cyan/20 text-brand">
+          <History className="h-4 w-4" aria-hidden="true" />
+        </span>
+        <div>
+          <h3 className="text-xl text-brand-navy">Quick Select</h3>
+          <p className="text-xs text-brand-muted">Resume recently used tasks</p>
+        </div>
       </div>
-      <p className="mt-1 text-sm text-brand-muted">Resume recently used tasks</p>
 
       {loading ? (
         <div className="mt-4 flex flex-col gap-3">
@@ -134,20 +150,16 @@ export function QuickSelectRail({ tasks, loading, onSelect, onToast }: QuickSele
         <div className="mt-4 flex flex-col gap-4">
           {suggested ? (
             <div>
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[1px] text-brand-muted">
-                <Sparkles className="h-3.5 w-3.5 text-brand" aria-hidden="true" />
+              <SectionLabel icon={<Sparkles className="h-3 w-3" aria-hidden="true" />}>
                 Suggested Task
-              </p>
+              </SectionLabel>
               <TaskCard {...cardProps(suggested)} highlight />
             </div>
           ) : null}
 
           {pinned.length > 0 ? (
-            <div>
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[1px] text-brand-muted">
-                <Pin className="h-3.5 w-3.5 text-brand" aria-hidden="true" />
-                Pinned Tasks
-              </p>
+            <div className="border-t border-[#c3c6d2]/40 pt-3">
+              <SectionLabel icon={<Pin className="h-3 w-3" aria-hidden="true" />}>Pinned Tasks</SectionLabel>
               <div className="flex flex-col gap-2">
                 {pinned.map((t) => (
                   <TaskCard key={t.key} {...cardProps(t)} />
@@ -156,11 +168,8 @@ export function QuickSelectRail({ tasks, loading, onSelect, onToast }: QuickSele
             </div>
           ) : null}
 
-          <div>
-            <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[1px] text-brand-muted">
-              <History className="h-3.5 w-3.5 text-brand" aria-hidden="true" />
-              Recent Tasks
-            </p>
+          <div className="border-t border-[#c3c6d2]/40 pt-3">
+            <SectionLabel icon={<History className="h-3 w-3" aria-hidden="true" />}>Recent Tasks</SectionLabel>
             <div className="flex flex-col gap-2">
               {recent.map((t) => (
                 <TaskCard key={t.key} {...cardProps(t)} />
@@ -170,10 +179,9 @@ export function QuickSelectRail({ tasks, loading, onSelect, onToast }: QuickSele
 
           {favoriteProjects.length > 0 ? (
             <div className="border-t border-[#c3c6d2]/40 pt-3">
-              <p className="mb-2 flex items-center gap-1.5 text-[11px] font-bold uppercase tracking-[1px] text-brand-muted">
-                <Star className="h-3.5 w-3.5 text-brand" aria-hidden="true" />
+              <SectionLabel icon={<Star className="h-3 w-3" aria-hidden="true" />}>
                 Favorite Projects
-              </p>
+              </SectionLabel>
               <ul className="flex flex-col gap-1.5">
                 {favoriteProjects.map((p) => (
                   <li key={p.id} className="flex items-center justify-between text-sm">

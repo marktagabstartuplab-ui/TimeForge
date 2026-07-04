@@ -40,15 +40,10 @@ export function taskKey(projectId: string | null, title: string): string {
 }
 
 /** Groups entries into distinct tasks, most recently used first. */
-export function deriveTasks(entries: any): WorkTask[] {
+export function deriveTasks(entries: TimeEntry[]): WorkTask[] {
   const byKey = new Map<string, WorkTask>();
-  const list = Array.isArray(entries)
-    ? entries
-    : entries && Array.isArray(entries.data)
-      ? entries.data
-      : [];
 
-  for (const entry of list) {
+  for (const entry of entries) {
     const { task, details } = splitDescription(entry.description);
     const title = task || "General work";
     const key = taskKey(entry.projectId, title);

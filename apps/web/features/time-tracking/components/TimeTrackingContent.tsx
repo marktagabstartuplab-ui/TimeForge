@@ -12,7 +12,7 @@ import { listScrumEntries } from "@/features/scrum/api/scrum.service";
 import { getMe } from "@/features/account/api/account.service";
 import { fetchDepartments } from "@/features/auth/api/auth.service";
 import { summarizeDay } from "../lib/day-summary";
-import { deriveTasks, splitDescription, taskKey, type WorkTask } from "../lib/task-select";
+import { deriveTasks, type WorkTask } from "../lib/task-select";
 import { clearBreakFlag } from "../lib/break-flag";
 import { CurrentSessionCard } from "./CurrentSessionCard";
 import { ScrumTaskCard } from "./ScrumTaskCard";
@@ -21,7 +21,7 @@ import { QuickSelectRail } from "./QuickSelectRail";
 import { TodayProgressCard } from "./TodayProgressCard";
 import { TodayEntriesList } from "./TodayEntriesList";
 import { EodReviewModal } from "./EodReviewModal";
-import { startOfDay, endOfDay, toIsoDate, minutesBetween, weekWindow } from "@/lib/time";
+import { startOfDay, endOfDay, toIsoDate, weekWindow } from "@/lib/time";
 
 /**
  * Daily Scrum page — task-driven workflow. Main column: Current Session →
@@ -93,40 +93,8 @@ export function TimeTrackingContent() {
     return completed.reduce((latest, e) => (e.endTime! > latest.endTime! ? e : latest));
   }, [entries]);
 
-  // Sum of completed entries today — the cumulative stopwatch baseline.
-  const completedMinutes = useMemo(
-    () =>
-      entries
-        .filter((e) => e.endTime)
-        .reduce((sum, e) => sum + (e.durationMinutes ?? minutesBetween(e.startTime, e.endTime!)), 0),
-    [entries],
-  );
-
-  // Distinct recent tasks (this week) for Quick Select and the scrum header.
+  // Distinct recent tasks (this week) for Quick Select.
   const tasks = useMemo(() => deriveTasks(weekEntries), [weekEntries]);
-
-  // The task the scrum card is headed by: the running session's context,
-  // else the Quick Select choice, else the most recent task.
-  const currentTask = useMemo<WorkTask | null>(() => {
-    const running = summary.running;
-    if (running) {
-      const { task } = splitDescription(running.description);
-      const title = task || "General work";
-      return (
-        tasks.find((t) => t.key === taskKey(running.projectId, title)) ?? {
-          key: taskKey(running.projectId, title),
-          title,
-          projectId: running.projectId,
-          clientId: running.clientId,
-          workCategoryId: running.workCategoryId,
-          details: splitDescription(running.description).details,
-          minutes: 0,
-          lastUsedAt: running.startTime,
-        }
-      );
-    }
-    return selectedTask ?? tasks[0] ?? null;
-  }, [summary.running, selectedTask, tasks]);
 
   const onToast = useCallback((t: ToastState) => setToast(t), []);
 
@@ -180,7 +148,6 @@ export function TimeTrackingContent() {
             <CurrentSessionCard
               summary={summary}
               lastEntry={lastEntry}
-              completedMinutes={completedMinutes}
               selectedTask={selectedTask}
               loading={entriesQuery.isFetching}
               onTimeOut={() => setEodOpen(true)}
@@ -188,8 +155,6 @@ export function TimeTrackingContent() {
 
             <ScrumTaskCard
               entry={scrumEntry}
-              task={currentTask}
-              trackedMinutes={summary.trackedMinutes}
               loading={scrumQuery.isLoading}
               onToast={onToast}
             />
