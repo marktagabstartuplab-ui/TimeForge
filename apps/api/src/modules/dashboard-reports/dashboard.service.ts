@@ -179,6 +179,89 @@ export class DashboardService {
     };
   }
 
+  // ─── Dashboard: Progress (Today's Hours, Weekly Hours, Completion %, KPI) ──
+  //
+  // Employee Dashboard "Today's Progress" widget — every number computed
+  // server-side from WorkSession/TimeEntry/ScrumTask, no frontend math.
+
+  async progress(tenantId: string, user: AuthPrincipal) {
+    const now = new Date();
+    const todayStart = new Date(now);
+    todayStart.setUTCHours(0, 0, 0, 0);
+    const weekStart = this.startOfIsoWeek(now);
+
+    const [todayEntries, weekEntries, todaySessions, weekTasks] = await Promise.all([
+      this.prisma.timeEntry.findMany({
+        where: { tenantId, userId: user.userId, deletedAt: null, startTime: { gte: todayStart } },
+        select: { startTime: true, endTime: true, durationMinutes: true },
+      }),
+      this.prisma.timeEntry.findMany({
+        where: { tenantId, userId: user.userId, deletedAt: null, startTime: { gte: weekStart } },
+        select: { durationMinutes: true, startTime: true, endTime: true },
+      }),
+      this.prisma.workSession.findMany({
+        where: { tenantId, userId: user.userId, workDate: { gte: todayStart } },
+        select: { breakMinutes: true },
+      }),
+      this.prisma.scrumTask.findMany({
+        where: {
+          tenantId,
+          employeeId: user.userId,
+          deletedAt: null,
+          scrumEntry: { entryDate: { gte: weekStart } },
+        },
+        select: { taskStatus: true },
+      }),
+    ]);
+
+    const minutesOf = (rows: { startTime: Date; endTime: Date | null; durationMinutes: number | null }[]) =>
+      rows.reduce((sum, e) => sum + (e.durationMinutes ?? Math.max(0, Math.round((now.getTime() - e.startTime.getTime()) / 60_000))), 0);
+
+    const todayMinutes = minutesOf(todayEntries);
+    const weekMinutes = minutesOf(weekEntries);
+    const breakMinutesToday = todaySessions.reduce((sum, s) => sum + s.breakMinutes, 0);
+
+    const totalTasks = weekTasks.length;
+    const completedTasks = weekTasks.filter((t) => t.taskStatus === 'COMPLETED').length;
+    const completionPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+    const productivityPercent =
+      todayMinutes + breakMinutesToday > 0
+        ? Math.round((todayMinutes / (todayMinutes + breakMinutesToday)) * 100)
+        : 0;
+
+    const kpi = await this.prisma.kpiProgress.findMany({
+      where: { tenantId, userId: user.userId, deletedAt: null },
+      orderBy: { periodKey: 'desc' },
+      take: 10,
+      select: {
+        id: true,
+        periodKey: true,
+        currentValue: true,
+        targetValue: true,
+        kpiTemplate: { select: { name: true, metricType: true, period: true } },
+      },
+    });
+
+    return {
+      todayHoursMinutes: todayMinutes,
+      weeklyHoursMinutes: weekMinutes,
+      breakMinutesToday,
+      completedTasks,
+      totalTasks,
+      completionPercent,
+      productivityPercent,
+      kpi,
+    };
+  }
+
+  private startOfIsoWeek(date: Date): Date {
+    const d = new Date(date);
+    d.setUTCHours(0, 0, 0, 0);
+    const day = d.getUTCDay() || 7; // Monday = 1 ... Sunday = 7
+    if (day !== 1) d.setUTCDate(d.getUTCDate() - (day - 1));
+    return d;
+  }
+
   // ─── Dashboard: Pending Approvals ─────────────────────────────────────────
 
   async pendingApprovals(tenantId: string, user: AuthPrincipal, query: DashboardQuery) {

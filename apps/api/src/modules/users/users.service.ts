@@ -8,14 +8,24 @@ import { AuditAction, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { buildPage, decodeCursor } from '../../common/crud/crud.service';
-import { CreateUserDto, UpdateUserDto, UpdateMeDto, AssignRolesDto, UsersListQuery } from './dto';
+import {
+  CreateUserDto,
+  UpdateUserDto,
+  UpdateMeDto,
+  AssignRolesDto,
+  UsersListQuery,
+  ApproveUserDto,
+  RejectUserDto,
+} from './dto';
 import { MailerService } from '../../infra/mailer.service';
+import { NotificationsService } from '../notifications/notifications.service';
 
 @Injectable()
 export class UsersService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly mailer: MailerService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private isFinanceOrAdmin(user: AuthPrincipal): boolean {
@@ -166,6 +176,96 @@ export class UsersService {
           console.error('[UsersService] Approval email failed silently:', err),
         );
     }
+
+    return this.findOne(caller, id);
+  }
+
+  /** Explicit approval orchestration — sets ACTIVE, notifies the employee, audits. */
+  async approve(caller: AuthPrincipal, id: string, dto: ApproveUserDto) {
+    const existing = await this.prisma.user.findFirst({ where: { id, tenantId: caller.tenantId, deletedAt: null } });
+    if (!existing) throw new NotFoundException('User not found');
+    if (existing.version !== dto.version) throw new ConflictException('Version mismatch');
+    if (existing.status !== 'PENDING') throw new ConflictException('Only pending accounts can be approved');
+
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        status: UserStatus.ACTIVE,
+        isApproved: true,
+        updatedBy: caller.userId,
+        version: { increment: 1 },
+      },
+    });
+    await this.audit(caller.tenantId, caller.userId, AuditAction.ADMIN_ACTION, 'user', id);
+    await this.notifications.create(caller.tenantId, id, 'APPROVAL_DECISION', {
+      decision: 'APPROVED',
+    });
+
+    const fullName = `${existing.firstName} ${existing.lastName}`;
+    void this.mailer
+      .send(
+        existing.email,
+        'Your TimeForge Account Has Been Approved',
+        [
+          `Hello ${fullName},`,
+          '',
+          'Great news! Your TimeForge account has been reviewed and approved by an administrator.',
+          '',
+          'You can now sign in to TimeForge using the email address and password you registered with.',
+          '',
+          'If you have any questions, please reach out to your HR or system administrator.',
+          '',
+          'Best regards,',
+          'The TimeForge Team',
+        ].join('\n'),
+      )
+      .catch((err: unknown) => console.error('[UsersService] Approval email failed silently:', err));
+
+    return this.findOne(caller, id);
+  }
+
+  /** Explicit rejection orchestration — sets REJECTED, notifies the employee, audits. */
+  async reject(caller: AuthPrincipal, id: string, dto: RejectUserDto) {
+    const existing = await this.prisma.user.findFirst({ where: { id, tenantId: caller.tenantId, deletedAt: null } });
+    if (!existing) throw new NotFoundException('User not found');
+    if (existing.version !== dto.version) throw new ConflictException('Version mismatch');
+    if (existing.status !== 'PENDING') throw new ConflictException('Only pending accounts can be rejected');
+
+    await this.prisma.user.update({
+      where: { id },
+      data: {
+        status: UserStatus.REJECTED,
+        isApproved: false,
+        rejectedAt: new Date(),
+        rejectionReason: dto.reason ?? null,
+        updatedBy: caller.userId,
+        version: { increment: 1 },
+      },
+    });
+    await this.audit(caller.tenantId, caller.userId, AuditAction.ADMIN_ACTION, 'user', id);
+    await this.notifications.create(caller.tenantId, id, 'APPROVAL_DECISION', {
+      decision: 'REJECTED',
+      reason: dto.reason ?? null,
+    });
+
+    const fullName = `${existing.firstName} ${existing.lastName}`;
+    void this.mailer
+      .send(
+        existing.email,
+        'Your TimeForge Registration Update',
+        [
+          `Hello ${fullName},`,
+          '',
+          'Thank you for your interest in TimeForge. After review, your registration was not approved at this time.',
+          ...(dto.reason ? ['', `Reason: ${dto.reason}`] : []),
+          '',
+          'If you believe this is a mistake, please contact your administrator.',
+          '',
+          'Best regards,',
+          'The TimeForge Team',
+        ].join('\n'),
+      )
+      .catch((err: unknown) => console.error('[UsersService] Rejection email failed silently:', err));
 
     return this.findOne(caller, id);
   }

@@ -12,6 +12,7 @@ import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { AuditAction, EmploymentType, UserStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { MailerService } from '../../infra/mailer.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { RegisterDto } from './dto';
 
 interface JwtConfig {
@@ -35,6 +36,7 @@ export class AuthService {
     private readonly jwt: JwtService,
     private readonly config: ConfigService,
     private readonly mailer: MailerService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   private jwtCfg(): JwtConfig {
@@ -54,6 +56,11 @@ export class AuthService {
     if (user.status === 'PENDING') {
       throw new UnauthorizedException(
         'Your account is awaiting administrator approval. Please check your email for updates.',
+      );
+    }
+    if (user.status === 'REJECTED') {
+      throw new UnauthorizedException(
+        'Your account registration was not approved. Please contact your administrator.',
       );
     }
     if (user.status !== 'ACTIVE') throw new UnauthorizedException('Account is not active');
@@ -199,6 +206,11 @@ export class AuthService {
     await this.prisma.userRole.create({ data: { userId: user.id, roleId: role.id } });
     await this.audit(tenant.id, user.id, AuditAction.ADMIN_ACTION);
 
+    // Notify org admins of the new pending registration (in-app; failure must not roll back registration).
+    void this.notifyAdminsOfPendingRegistration(tenant.id, org.id, user.id, dto).catch((err: unknown) =>
+      console.error('[AuthService] Admin notification failed silently:', err),
+    );
+
     // Send welcome email asynchronously — failure must NOT roll back account creation.
     const fullName = `${dto.firstName} ${dto.lastName}`;
     void this.mailer
@@ -264,5 +276,31 @@ export class AuthService {
 
   private async audit(tenantId: string, actorId: string, action: AuditAction): Promise<void> {
     await this.prisma.auditLog.create({ data: { tenantId, actorId, action } });
+  }
+
+  private async notifyAdminsOfPendingRegistration(
+    tenantId: string,
+    organizationId: string,
+    pendingUserId: string,
+    dto: RegisterDto,
+  ): Promise<void> {
+    const admins = await this.prisma.user.findMany({
+      where: {
+        tenantId,
+        organizationId,
+        deletedAt: null,
+        roles: { some: { role: { key: 'ADMIN' } } },
+      },
+      select: { id: true },
+    });
+    await Promise.all(
+      admins.map((admin) =>
+        this.notifications.create(tenantId, admin.id, 'EMPLOYEE_APPROVAL_REQUEST', {
+          userId: pendingUserId,
+          name: `${dto.firstName} ${dto.lastName}`,
+          email: dto.email.toLowerCase(),
+        }),
+      ),
+    );
   }
 }

@@ -9,6 +9,7 @@ import { UsersService } from '../users/users.service';
 import { OrganizationService } from '../organization/organization.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { BulkApproveDto, BulkImportUsersDto } from './dto';
+import { ApproveUserDto, RejectUserDto } from '../users/dto';
 import { AuditAction } from '@prisma/client';
 
 const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
@@ -28,6 +29,16 @@ export class AdminService {
     private readonly usersService: UsersService,
     private readonly organizationService: OrganizationService,
   ) {}
+
+  // ─── Employee approval ────────────────────────────────────────────────────
+
+  async approveUser(caller: AuthPrincipal, id: string, dto: ApproveUserDto) {
+    return this.usersService.approve(caller, id, dto);
+  }
+
+  async rejectUser(caller: AuthPrincipal, id: string, dto: RejectUserDto) {
+    return this.usersService.reject(caller, id, dto);
+  }
 
   // ─── Idempotency helpers ──────────────────────────────────────────────────
 

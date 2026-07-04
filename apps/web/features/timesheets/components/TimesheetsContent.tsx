@@ -37,7 +37,7 @@ import {
 } from "@/lib/time";
 import { ApiError } from "@/lib/api/client";
 import { summarizeDay, buildDayTimeline } from "@/features/time-tracking/lib/day-summary";
-import { readBreakStart } from "@/features/time-tracking/lib/break-flag";
+import { getCurrentWorkSession } from "@/features/time-tracking/api/work-sessions.service";
 
 export function TimesheetsContent() {
   const queryClient = useQueryClient();
@@ -91,11 +91,11 @@ export function TimesheetsContent() {
     () => todayEntriesQuery.data?.data ?? [],
     [todayEntriesQuery.data],
   );
-  const onBreak = useMemo(() => {
-    // A running entry always beats the break flag.
-    const hasRunning = todayEntries.some((e) => !e.endTime);
-    return !hasRunning && Boolean(readBreakStart());
-  }, [todayEntries]);
+  const workSessionQuery = useQuery({
+    queryKey: ["work-session", "current"],
+    queryFn: getCurrentWorkSession,
+  });
+  const onBreak = workSessionQuery.data?.onBreak ?? false;
 
   const daySummary = useMemo(() => summarizeDay(todayEntries, now), [todayEntries, now]);
   const timeline = useMemo(() => buildDayTimeline(todayEntries, onBreak), [todayEntries, onBreak]);

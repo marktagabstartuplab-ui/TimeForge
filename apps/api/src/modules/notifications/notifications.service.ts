@@ -1,10 +1,18 @@
 import { Injectable, NotFoundException } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
-import { AuditAction, Prisma } from '@prisma/client';
+import { AuditAction, Notification, Prisma } from '@prisma/client';
 
 const VALID_STATUSES = ['PENDING', 'SENT', 'READ', 'FAILED'] as const;
-const VALID_TYPES = ['SUBMISSION', 'APPROVAL_DECISION', 'REVISION_REQUEST', 'DEADLINE', 'PAYROLL_READY', 'AI_REPORT'] as const;
+const VALID_TYPES = [
+  'SUBMISSION',
+  'APPROVAL_DECISION',
+  'REVISION_REQUEST',
+  'DEADLINE',
+  'PAYROLL_READY',
+  'AI_REPORT',
+  'EMPLOYEE_APPROVAL_REQUEST',
+] as const;
 
 type NotifStatus = typeof VALID_STATUSES[number];
 type NotifType   = typeof VALID_TYPES[number];
@@ -114,6 +122,28 @@ export class NotificationsService {
     }
 
     return { updated: result.count };
+  }
+
+  // ─── Create ──────────────────────────────────────────────────────────────
+
+  /** Creates an in-app (or email-flagged) notification for a user. Used by other services — not exposed via HTTP. */
+  async create(
+    tenantId: string,
+    userId: string,
+    type: NotifType,
+    payload: Record<string, unknown> = {},
+    channel: 'IN_APP' | 'EMAIL' = 'IN_APP',
+  ): Promise<Notification> {
+    return this.prisma.notification.create({
+      data: {
+        tenantId,
+        userId,
+        type,
+        channel,
+        status: 'SENT',
+        payload: payload as Prisma.InputJsonValue,
+      },
+    });
   }
 
   // ─── Audit helper ─────────────────────────────────────────────────────────

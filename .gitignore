@@ -11,3 +11,5 @@ coverage/
 .vscode/
 *.tsbuildinfo
 prisma/*.db
+var/
+supabase/.temp/

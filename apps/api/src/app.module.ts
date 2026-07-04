@@ -29,6 +29,8 @@ import { WorkCategoriesModule } from './modules/work-categories/work-categories.
 import { UsersModule } from './modules/users/users.module';
 // Phase 7 — Lifecycle spine
 import { TimeTrackingModule } from './modules/time-tracking/time-tracking.module';
+import { WorkSessionsModule } from './modules/work-sessions/work-sessions.module';
+import { AttachmentsModule } from './modules/attachments/attachments.module';
 // Phase 8 — Smart Timesheets
 import { TimesheetsModule } from './modules/timesheets/timesheets.module';
 // Phase 9 — Business modules
@@ -83,6 +85,8 @@ import { AiModule } from './modules/ai/ai.module';
     UsersModule,
     // Phase 7
     TimeTrackingModule,
+    WorkSessionsModule,
+    AttachmentsModule,
     // Phase 8
     TimesheetsModule,
     // Phase 9
