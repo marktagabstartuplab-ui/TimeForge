@@ -29,7 +29,9 @@ export const PERMISSIONS = {
   DEPARTMENT_READ: 'department:read',
   DEPARTMENT_CREATE: 'department:create',
   DEPARTMENT_UPDATE: 'department:update',
+  DEPARTMENT_UPDATE_OWN: 'department:update_own', // Supervisor — only the department(s) they manage
   DEPARTMENT_DELETE: 'department:delete',
+  ORG_DASHBOARD_READ: 'org:read_dashboard', // Organizational Management dashboard/hierarchy/analytics/export
   // teams
   TEAM_READ: 'team:read',
   TEAM_CREATE: 'team:create',
@@ -69,6 +71,7 @@ export const PERMISSIONS = {
   SCRUM_READ: 'scrum:read',
   SCRUM_UPDATE: 'scrum:update',
   SCRUM_READ_TEAM: 'scrum:read_team',
+  SCRUM_READ_ORG: 'scrum:read_org', // Daily Scrum Management dashboard, org-wide — Admin only (wildcard)
   // kpi
   KPI_TEMPLATE_READ: 'kpi_template:read',
   KPI_TEMPLATE_CREATE: 'kpi_template:create',
@@ -98,9 +101,11 @@ export const PERMISSIONS = {
   DASHBOARD_READ_SELF: 'dashboard:read_self',
   DASHBOARD_READ_TEAM: 'dashboard:read_team',
   DASHBOARD_READ_ORG: 'dashboard:read_org',
+  DASHBOARD_READ_ADMIN: 'dashboard:read_admin', // System Overview dashboard — Admin only (wildcard)
   // notifications
   NOTIFICATION_READ_SELF: 'notification:read_self',
   NOTIFICATION_UPDATE_SELF: 'notification:update_self',
+  NOTIFICATION_CREATE_ORG: 'notification:create_org',
   // ai
   AI_TRIGGER_SELF: 'ai:trigger_self',
   AI_TRIGGER_TEAM: 'ai:trigger_team',
@@ -109,6 +114,13 @@ export const PERMISSIONS = {
   // audit
   AUDIT_READ_SCOPED: 'audit:read_scoped',
   AUDIT_READ_ORG: 'audit:read_org',
+  // schedules
+  SCHEDULE_READ: 'schedule:read',
+  SCHEDULE_READ_TEAM: 'schedule:read_team',
+  SCHEDULE_READ_ORG: 'schedule:read_org',
+  SCHEDULE_CREATE: 'schedule:create',
+  SCHEDULE_UPDATE: 'schedule:update',
+  SCHEDULE_DELETE: 'schedule:delete',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -153,6 +165,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.AI_TRIGGER_SELF, P.AI_READ,
     P.DASHBOARD_READ_SELF,
     P.HOLIDAY_READ,
+    P.SCHEDULE_READ,
   ],
   [Role.SUPERVISOR]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -167,6 +180,8 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.AI_TRIGGER_SELF, P.AI_TRIGGER_TEAM, P.AI_READ,
     P.DASHBOARD_READ_SELF, P.DASHBOARD_READ_TEAM,
     P.HOLIDAY_READ,
+    P.DEPARTMENT_UPDATE_OWN,
+    P.SCHEDULE_READ, P.SCHEDULE_READ_TEAM, P.SCHEDULE_CREATE, P.SCHEDULE_UPDATE, P.SCHEDULE_DELETE,
   ],
   [Role.HR]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -174,12 +189,17 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.TIMESHEET_READ, P.TIMESHEET_READ_ORG,
     P.KPI_PROGRESS_READ_ORG, P.KPI_READ_ORG, P.KPI_TEMPLATE_READ,
     P.ATTENDANCE_READ_ORG,
-    P.PAYROLL_PERIOD_READ,
+    P.PAYROLL_PERIOD_READ, P.PAYROLL_PERIOD_CREATE, P.PAYROLL_PERIOD_UPDATE, P.PAYROLL_GENERATE, P.PAYROLL_EXPORT, P.PAYROLL_READ,
     P.AUDIT_READ_SCOPED,
     P.NOTIFICATION_READ_SELF, P.NOTIFICATION_UPDATE_SELF,
     P.AI_TRIGGER_ORG, P.AI_READ,
     P.DASHBOARD_READ_ORG,
     P.ORG_READ, P.ORG_SETTINGS_READ, P.HOLIDAY_READ, P.HOLIDAY_WRITE,
+    P.DEPARTMENT_CREATE, P.DEPARTMENT_UPDATE, P.DEPARTMENT_DELETE,
+    P.PROJECT_CREATE, P.PROJECT_UPDATE, P.PROJECT_DELETE,
+    P.ORG_DASHBOARD_READ,
+    P.SCHEDULE_READ, P.SCHEDULE_READ_ORG, P.SCHEDULE_CREATE, P.SCHEDULE_UPDATE, P.SCHEDULE_DELETE,
+    P.SCHEDULE_READ_ORG, P.SCHEDULE_CREATE, P.SCHEDULE_UPDATE, P.SCHEDULE_DELETE,
   ],
   [Role.FINANCE]: [
     P.USER_READ_SELF, P.USER_READ,

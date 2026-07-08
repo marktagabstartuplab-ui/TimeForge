@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction } from '@prisma/client';
+import { ALL_PERMISSIONS } from '@timeforge/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, ListQuery, PageResult } from '../../common/crud/crud.service';
 import { CreateRoleDto, UpdateRoleDto } from './dto';
@@ -191,6 +192,44 @@ export class RolesService {
         },
       });
     });
+  }
+
+  /**
+   * Permission matrix for the "Role Permissions Overview" UI — grouped by
+   * resource (the part of each permission key before the ':'), cross-referenced
+   * against each real role's actual DB-assigned permissions. No fabricated
+   * roles or features: whatever roles/permissions exist in this tenant.
+   */
+  async matrix(tenantId: string) {
+    const roles = await this.prisma.role.findMany({
+      where: { tenantId, deletedAt: null },
+      include: ROLE_INCLUDE,
+      orderBy: { name: 'asc' },
+    });
+    const roleShapes = roles.map(shapeRole);
+
+    const grouped = new Map<string, string[]>();
+    for (const key of ALL_PERMISSIONS) {
+      const [resource] = key.split(':');
+      const list = grouped.get(resource) ?? [];
+      list.push(key);
+      grouped.set(resource, list);
+    }
+
+    const resources = Array.from(grouped.entries()).map(([resource, keys]) => ({
+      resource,
+      label: resource.replace(/_/g, ' '),
+      permissions: keys.map((key) => ({
+        key,
+        label: (key.split(':')[1] ?? key).replace(/_/g, ' '),
+        roles: Object.fromEntries(roleShapes.map((r) => [r.id, r.permissionKeys.includes(key)])),
+      })),
+    }));
+
+    return {
+      roles: roleShapes.map((r) => ({ id: r.id, key: r.key, name: r.name, isSystem: r.isSystem })),
+      resources,
+    };
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────────

@@ -29,6 +29,8 @@ import { WorkCategoriesModule } from './modules/work-categories/work-categories.
 import { UsersModule } from './modules/users/users.module';
 // Phase 7 — Lifecycle spine
 import { TimeTrackingModule } from './modules/time-tracking/time-tracking.module';
+import { WorkSessionsModule } from './modules/work-sessions/work-sessions.module';
+import { AttachmentsModule } from './modules/attachments/attachments.module';
 // Phase 8 — Smart Timesheets
 import { TimesheetsModule } from './modules/timesheets/timesheets.module';
 // Phase 9 — Business modules
@@ -41,6 +43,13 @@ import { AuditLogsModule } from './modules/audit-logs/audit-logs.module';
 import { DashboardReportsModule } from './modules/dashboard-reports/dashboard-reports.module';
 import { AdminModule } from './modules/admin/admin.module';
 import { AiModule } from './modules/ai/ai.module';
+import { NavigationModule } from './modules/navigation/navigation.module';
+import { SecurityModule } from './modules/security/security.module';
+import { PerformanceModule } from './modules/performance/performance.module';
+import { ReportsModule } from './modules/reports/reports.module';
+import { SupervisorModule } from './modules/supervisor/supervisor.module';
+import { SchedulesModule } from './modules/schedules/schedules.module';
+import { FinanceModule } from './modules/finance/finance.module';
 
 @Module({
   imports: [
@@ -83,6 +92,8 @@ import { AiModule } from './modules/ai/ai.module';
     UsersModule,
     // Phase 7
     TimeTrackingModule,
+    WorkSessionsModule,
+    AttachmentsModule,
     // Phase 8
     TimesheetsModule,
     // Phase 9
@@ -95,6 +106,13 @@ import { AiModule } from './modules/ai/ai.module';
     DashboardReportsModule,
     AdminModule,
     AiModule,
+    NavigationModule,
+    SecurityModule,
+    PerformanceModule,
+    ReportsModule,
+    SupervisorModule,
+    SchedulesModule,
+    FinanceModule,
   ],
   controllers: [HealthController],
   providers: [

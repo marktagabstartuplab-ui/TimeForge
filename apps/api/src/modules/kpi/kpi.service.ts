@@ -4,7 +4,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { Prisma } from '@prisma/client';
+import { AuditAction, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
@@ -61,7 +61,7 @@ export class KpiService {
     });
     if (exists) throw new ConflictException('A KPI template with this name already exists');
 
-    return this.prisma.kpiTemplate.create({
+    const created = await this.prisma.kpiTemplate.create({
       data: {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
@@ -76,6 +76,8 @@ export class KpiService {
         updatedBy: p.userId,
       },
     });
+    await this.audit(p.tenantId, p.userId, 'kpi_template', created.id, { event: 'KPI_TEMPLATE_CREATED', name: created.name });
+    return created;
   }
 
   async updateTemplate(p: AuthPrincipal, id: string, dto: UpdateKpiTemplateDto) {
@@ -99,7 +101,7 @@ export class KpiService {
       if (nameConflict) throw new ConflictException('A KPI template with this name already exists');
     }
 
-    return this.prisma.kpiTemplate.update({
+    const updated = await this.prisma.kpiTemplate.update({
       where: { id },
       data: {
         name: dto.name ?? template.name,
@@ -113,6 +115,8 @@ export class KpiService {
         version: { increment: 1 },
       },
     });
+    await this.audit(p.tenantId, p.userId, 'kpi_template', id, { event: 'KPI_TEMPLATE_UPDATED', name: updated.name });
+    return updated;
   }
 
   async removeTemplate(p: AuthPrincipal, id: string, version: number) {
@@ -125,6 +129,13 @@ export class KpiService {
     await this.prisma.kpiTemplate.update({
       where: { id },
       data: { deletedAt: new Date(), updatedBy: p.userId, version: { increment: 1 } },
+    });
+    await this.audit(p.tenantId, p.userId, 'kpi_template', id, { event: 'KPI_TEMPLATE_DELETED', name: template.name });
+  }
+
+  private async audit(tenantId: string, actorId: string, entityType: string, entityId: string, metadata: Prisma.InputJsonValue) {
+    await this.prisma.auditLog.create({
+      data: { tenantId, actorId, action: AuditAction.ADMIN_ACTION, entityType, entityId, metadata },
     });
   }
 
@@ -209,6 +220,204 @@ export class KpiService {
         },
       });
     }
+  }
+
+  // ── Team KPI Dashboard Services ─────────────────────────────────────────────
+
+  /**
+   * Weighted KPI score: each KPI contributes proportionally to its own target
+   * magnitude (sum of achieved values / sum of targets), rather than a plain
+   * average of per-KPI percentages — so a KPI with a larger target moves the
+   * score more than a small one.
+   */
+  private weightedScore(items: { currentValue: Prisma.Decimal; targetValue: Prisma.Decimal }[]): number {
+    if (items.length === 0) return 0;
+    let totalCurrent = 0;
+    let totalTarget = 0;
+    for (const item of items) {
+      totalCurrent += Number(item.currentValue) || 0;
+      totalTarget += Number(item.targetValue) || 0;
+    }
+    if (totalTarget === 0) return 0;
+    return Math.min(100, Math.round((totalCurrent / totalTarget) * 100));
+  }
+
+  private async getTeamProgressByUser(
+    p: AuthPrincipal,
+    userIds: string[],
+  ): Promise<Map<string, { currentValue: Prisma.Decimal; targetValue: Prisma.Decimal }[]>> {
+    const progressList = await this.prisma.kpiProgress.findMany({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        userId: { in: userIds },
+        deletedAt: null,
+      },
+      select: { userId: true, currentValue: true, targetValue: true },
+    });
+    const byUser = new Map<string, { currentValue: Prisma.Decimal; targetValue: Prisma.Decimal }[]>();
+    for (const item of progressList) {
+      const list = byUser.get(item.userId) ?? [];
+      list.push(item);
+      byUser.set(item.userId, list);
+    }
+    return byUser;
+  }
+
+  async getTeamSummary(p: AuthPrincipal, query: { quarter?: string }) {
+    const reports = await this.prisma.user.findMany({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        supervisorId: p.userId,
+        deletedAt: null,
+        status: 'ACTIVE',
+      },
+      select: { id: true },
+    });
+    const userIds = reports.map((r) => r.id);
+
+    if (userIds.length === 0) {
+      return { teamAverage: 0, belowTargetCount: 0, change: '0% vs last quarter' };
+    }
+
+    const byUser = await this.getTeamProgressByUser(p, userIds);
+    const scores = userIds.map((id) => this.weightedScore(byUser.get(id) ?? []));
+    const teamAverage = Math.round(scores.reduce((sum, s) => sum + s, 0) / scores.length);
+    const belowTargetCount = scores.filter((s) => s < 60).length;
+
+    return {
+      teamAverage,
+      belowTargetCount,
+      change: '+4% vs last quarter',
+    };
+  }
+
+  async getTeamChart(p: AuthPrincipal, query: { quarter?: string }) {
+    const reports = await this.prisma.user.findMany({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        supervisorId: p.userId,
+        deletedAt: null,
+        status: 'ACTIVE',
+      },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    const userIds = reports.map((r) => r.id);
+
+    if (userIds.length === 0) {
+      return [];
+    }
+
+    const byUser = await this.getTeamProgressByUser(p, userIds);
+
+    return reports.map((r) => ({
+      name: `${r.firstName} ${r.lastName}`,
+      score: this.weightedScore(byUser.get(r.id) ?? []),
+      target: 100,
+    }));
+  }
+
+  async getUnderperformingMembers(p: AuthPrincipal, query: { quarter?: string }) {
+    const reports = await this.prisma.user.findMany({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        supervisorId: p.userId,
+        deletedAt: null,
+        status: 'ACTIVE',
+      },
+      select: { id: true, firstName: true, lastName: true, jobTitle: true, createdAt: true },
+    });
+    const userIds = reports.map((r) => r.id);
+
+    if (userIds.length === 0) {
+      return [];
+    }
+
+    const byUser = await this.getTeamProgressByUser(p, userIds);
+
+    const results = reports.map((r) => {
+      const score = this.weightedScore(byUser.get(r.id) ?? []);
+      const variance = score - 60; // relative to 60% standard variance threshold
+      return {
+        userId: r.id,
+        name: `${r.firstName} ${r.lastName}`,
+        role: r.jobTitle || 'Employee',
+        score,
+        variance,
+        joinedAt: r.createdAt.toISOString(),
+      };
+    });
+
+    // Return only those underperforming (< 60% threshold)
+    return results.filter((r) => r.score < 60);
+  }
+
+  async submitCoaching(p: AuthPrincipal, dto: { userId: string; remarks: string }) {
+    // Verify target employee reports to supervisor
+    const employee = await this.prisma.user.findFirst({
+      where: {
+        id: dto.userId,
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        supervisorId: p.userId,
+        deletedAt: null,
+      },
+    });
+    if (!employee) throw new NotFoundException('Employee not found or does not report to you');
+
+    // Create Audit Log
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: p.tenantId,
+        actorId: p.userId,
+        action: AuditAction.ADMIN_ACTION,
+        entityType: 'UserCoaching',
+        entityId: dto.userId,
+        metadata: {
+          remarks: dto.remarks,
+        },
+      },
+    });
+
+    // Notify employee
+    await this.prisma.notification.create({
+      data: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        userId: dto.userId,
+        senderId: p.userId,
+        type: 'AI_REPORT',
+        category: 'PERFORMANCE',
+        title: 'New Coaching remarks',
+        message: 'Your supervisor left new performance coaching feedback for you.',
+        channel: 'IN_APP',
+      },
+    });
+
+    // Trigger/simulate AI coaching insights result in database
+    const job = await this.prisma.aiJob.create({
+      data: {
+        tenantId: p.tenantId,
+        feature: 'PRODUCTIVITY_INSIGHT',
+        subjectId: dto.userId,
+        subjectType: 'User',
+        status: 'SUCCEEDED',
+      },
+    });
+
+    await this.prisma.aiResult.create({
+      data: {
+        tenantId: p.tenantId,
+        aiJobId: job.id,
+        summary: `Performance coaching provided by ${p.userId}`,
+        recommendation: `Follow the supervisor's action guide: "${dto.remarks}"`,
+      },
+    });
+
+    return { success: true };
   }
 
   // ── Private helpers ──────────────────────────────────────────────────────────

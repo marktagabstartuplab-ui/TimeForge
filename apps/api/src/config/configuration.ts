@@ -15,6 +15,10 @@ export default () => ({
     ttl: parseInt(process.env.RATE_LIMIT_TTL ?? '60', 10),
     max: parseInt(process.env.RATE_LIMIT_MAX ?? '120', 10),
   },
+  registration: {
+    defaultTenantSlug: process.env.DEFAULT_TENANT_SLUG ?? 'demo',
+    defaultOrgSlug: process.env.DEFAULT_ORG_SLUG ?? 'demo-org',
+  },
   ai: {
     provider: process.env.AI_PROVIDER ?? 'OPENAI',
     openaiApiKey:  process.env.OPENAI_API_KEY   ?? '',
@@ -29,5 +33,12 @@ export default () => ({
     anonKey: process.env.SUPABASE_ANON_KEY ?? '',
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
     bucket: process.env.SUPABASE_STORAGE_BUCKET ?? 'timeforge',
+  },
+  smtp: {
+    host: process.env.SMTP_HOST ?? 'smtp.gmail.com',
+    port: parseInt(process.env.SMTP_PORT ?? '587', 10),
+    user: process.env.SMTP_USER ?? '',
+    pass: process.env.SMTP_PASS ?? '',
+    from: process.env.SMTP_FROM ?? 'TimeForge Team <no-reply@timeforge.com>',
   },
 });

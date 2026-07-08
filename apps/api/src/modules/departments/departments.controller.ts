@@ -20,14 +20,16 @@ export class DepartmentsController {
   }
 
   @Post()
+  @RequirePermissions('department:create')
   create(@CurrentUser() u: AuthPrincipal, @Body() dto: CreateDepartmentDto) {
     return this.svc.create(u.tenantId, u.organizationId, u.userId, dto);
   }
 
+  // No decorator: department:update (Admin/HR, any department) vs department:update_own
+  // (Supervisor, only their assigned department) is resolved inside the service.
   @Patch(':id')
-  @RequirePermissions('department:update')
   update(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() dto: UpdateDepartmentDto) {
-    return this.svc.update(u.tenantId, u.organizationId, id, u.userId, dto);
+    return this.svc.update(u, id, dto);
   }
 
   @Delete(':id')

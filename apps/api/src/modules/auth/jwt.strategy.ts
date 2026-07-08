@@ -10,6 +10,7 @@ interface JwtPayload {
   tid: string;
   oid: string;
   roles: string[];
+  fid?: string;
 }
 
 @Injectable()
@@ -30,6 +31,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       organizationId: payload.oid,
       roles,
       permissions: this.rbac.resolvePermissions(roles),
+      sessionFamilyId: payload.fid,
     };
   }
 }

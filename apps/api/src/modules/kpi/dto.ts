@@ -6,6 +6,7 @@ import {
   IsString,
   MaxLength,
   Min,
+  IsInt,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { KpiMetricType, KpiPeriod } from '@prisma/client';
@@ -64,6 +65,7 @@ export class UpdateKpiTemplateDto {
   @IsOptional()
   appliesTo?: Record<string, string[]>;
 
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }
@@ -80,4 +82,16 @@ export interface KpiProgressQuery {
   userId?: string;
   kpiTemplateId?: string;
   periodKey?: string;
+}
+
+export class SubmitCoachingDto {
+  @IsString()
+  userId!: string;
+
+  @IsString()
+  remarks!: string;
+}
+
+export interface TeamKpiQuery {
+  quarter?: string; // e.g. "Q1", "Q2", "Q3", "Q4"
 }

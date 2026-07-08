@@ -1,21 +1,8 @@
-import {
-  Controller,
-  Get,
-  HttpCode,
-  Param,
-  ParseUUIDPipe,
-  Post,
-  Query,
-} from '@nestjs/common';
-import {
-  ApiBearerAuth,
-  ApiOkResponse,
-  ApiOperation,
-  ApiQuery,
-  ApiTags,
-} from '@nestjs/swagger';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiOkResponse, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { NotificationsService } from './notifications.service';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
+import { CreateAnnouncementDto, ListNotificationsQueryDto } from './dto';
 
 @ApiTags('Notifications')
 @ApiBearerAuth('access-token')
@@ -27,48 +14,65 @@ export class NotificationsController {
 
   @Get()
   @RequirePermissions('notification:read_self')
-  @ApiOperation({ summary: 'List own notifications (cursor-paginated)' })
-  @ApiQuery({ name: 'status', required: false, enum: ['PENDING', 'SENT', 'READ', 'FAILED'] })
-  @ApiQuery({ name: 'type', required: false, enum: ['SUBMISSION', 'APPROVAL_DECISION', 'REVISION_REQUEST', 'DEADLINE', 'PAYROLL_READY', 'AI_REPORT'] })
-  @ApiQuery({ name: 'limit', required: false, type: Number })
-  @ApiQuery({ name: 'cursor', required: false, type: String })
-  findAll(
-    @CurrentUser() u: AuthPrincipal,
-    @Query() query: Record<string, string>,
-  ) {
+  @ApiOperation({ summary: 'List own notifications (paginated, filterable, searchable, sortable)' })
+  findAll(@CurrentUser() u: AuthPrincipal, @Query() query: ListNotificationsQueryDto) {
     return this.svc.findAll(u.tenantId, u.userId, query);
   }
 
-  // ─── Count ─────────────────────────────────────────────────────────────────
+  // ─── Unread count ────────────────────────────────────────────────────────
 
-  @Get('count')
+  @Get('unread-count')
   @RequirePermissions('notification:read_self')
-  @ApiOperation({ summary: 'Get total and unread notification counts' })
-  @ApiOkResponse({ schema: { example: { total: 42, unread: 5 } } })
-  count(@CurrentUser() u: AuthPrincipal) {
-    return this.svc.count(u.tenantId, u.userId);
+  @ApiOperation({ summary: 'Get the unread notification count' })
+  @ApiOkResponse({ schema: { example: { unread: 5 } } })
+  unreadCount(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.unreadCount(u.tenantId, u.userId);
   }
 
-  // ─── Mark one read ─────────────────────────────────────────────────────────
+  // ─── Mark one read ───────────────────────────────────────────────────────
 
-  @Post(':id/read')
-  @HttpCode(200)
+  @Patch(':id/read')
   @RequirePermissions('notification:update_self')
   @ApiOperation({ summary: 'Mark a notification as read' })
-  markRead(
-    @CurrentUser() u: AuthPrincipal,
-    @Param('id', ParseUUIDPipe) id: string,
-  ) {
+  markRead(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.markRead(u.tenantId, u.userId, id);
   }
 
-  // ─── Mark all read ─────────────────────────────────────────────────────────
+  // ─── Mark all read ───────────────────────────────────────────────────────
 
-  @Post('read-all')
-  @HttpCode(200)
+  @Patch('read-all')
   @RequirePermissions('notification:update_self')
   @ApiOperation({ summary: 'Mark all own notifications as read' })
   markAllRead(@CurrentUser() u: AuthPrincipal) {
     return this.svc.markAllRead(u.tenantId, u.userId);
+  }
+
+  // ─── Archive ─────────────────────────────────────────────────────────────
+
+  @Patch(':id/archive')
+  @RequirePermissions('notification:update_self')
+  @ApiOperation({ summary: 'Archive a notification' })
+  archive(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.archive(u.tenantId, u.userId, id);
+  }
+
+  // ─── Delete ──────────────────────────────────────────────────────────────
+
+  @Delete(':id')
+  @HttpCode(204)
+  @RequirePermissions('notification:update_self')
+  @ApiOperation({ summary: 'Delete a notification' })
+  remove(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.remove(u.tenantId, u.userId, id);
+  }
+
+  // ─── Admin: org-wide announcement ────────────────────────────────────────
+
+  @Post()
+  @HttpCode(201)
+  @RequirePermissions('notification:create_org')
+  @ApiOperation({ summary: 'Broadcast an announcement to every active user in the organization (admin only)' })
+  create(@CurrentUser() u: AuthPrincipal, @Body() dto: CreateAnnouncementDto) {
+    return this.svc.createAnnouncement(u, dto);
   }
 }

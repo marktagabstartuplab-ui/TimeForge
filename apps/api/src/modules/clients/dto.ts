@@ -1,4 +1,4 @@
-import { IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateClientDto {
@@ -25,11 +25,13 @@ export class UpdateClientDto {
   @MaxLength(500)
   contact?: string;
 
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }
 
 export class DeleteVersionDto {
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }

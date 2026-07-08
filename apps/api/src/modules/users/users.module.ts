@@ -1,9 +1,12 @@
 import { Module } from '@nestjs/common';
 import { UsersController } from './users.controller';
+import { EmployeesController } from './employees.controller';
 import { UsersService } from './users.service';
+import { NotificationsModule } from '../notifications/notifications.module';
 
 @Module({
-  controllers: [UsersController],
+  imports: [NotificationsModule],
+  controllers: [UsersController, EmployeesController],
   providers: [UsersService],
   exports: [UsersService],
 })

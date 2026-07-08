@@ -14,7 +14,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { PayrollService } from './payroll.service';
-import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery } from './dto';
+import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, RunActionDto, PayrollExportRequestDto } from './dto';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
 @Controller({ path: 'payroll', version: '1' })
@@ -109,6 +109,27 @@ export class PayrollController {
     return this.svc.findReport(u, id);
   }
 
+  /** The current report for a period, if generated — null otherwise. Never regenerates. */
+  @Get('periods/:id/report')
+  @RequirePermissions('payroll_period:read')
+  findReportByPeriod(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.svc.findReportByPeriod(u, id);
+  }
+
+  /** Flags the discrepant (rejected-hours) line items on a report for follow-up. */
+  @Post('reports/:id/flag-discrepancies')
+  @HttpCode(200)
+  @RequirePermissions('payroll:generate')
+  flagDiscrepancies(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.svc.flagDiscrepancies(u, id);
+  }
+
   // -- Employee self-view (hours only, no amounts) --
 
   @Get('me')
@@ -137,5 +158,57 @@ export class PayrollController {
     @Query('version', ParseIntPipe) version: number,
   ) {
     return this.svc.updateRate(u, userId, rate, version);
+  }
+
+  // -- Payroll Oversight Endpoints --
+
+  @Get('dashboard')
+  @RequirePermissions('payroll:read')
+  getDashboard(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.getDashboard(u);
+  }
+
+  @Get('runs')
+  @RequirePermissions('payroll_period:read')
+  getRuns(
+    @CurrentUser() u: AuthPrincipal,
+    @Query() query: PayrollPeriodQuery,
+  ) {
+    return this.svc.findAllPeriods(u, query);
+  }
+
+  @Get('distribution')
+  @RequirePermissions('payroll:read')
+  getDistribution(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.getDistribution(u);
+  }
+
+  @Post('run')
+  @HttpCode(200)
+  @RequirePermissions('payroll:generate')
+  async runAction(
+    @CurrentUser() u: AuthPrincipal,
+    @Body() dto: RunActionDto,
+    @Headers('Idempotency-Key') idempotencyKey: string,
+  ) {
+    if (dto.action === 'generate') {
+      if (!idempotencyKey?.trim()) {
+        throw new UnprocessableEntityException('Idempotency-Key header is required for generate');
+      }
+      return this.svc.generateReport(u, dto.periodId, idempotencyKey.trim());
+    } else if (dto.action === 'approve') {
+      return this.svc.lockPeriod(u, dto.periodId);
+    }
+    throw new UnprocessableEntityException(`Unsupported action: ${dto.action}`);
+  }
+
+  @Post('export')
+  @HttpCode(200)
+  @RequirePermissions('payroll:export')
+  async exportReportAsync(
+    @CurrentUser() u: AuthPrincipal,
+    @Body() dto: PayrollExportRequestDto,
+  ) {
+    return this.svc.queueExport(u, dto.format, dto.periodId);
   }
 }

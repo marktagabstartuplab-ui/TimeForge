@@ -84,4 +84,43 @@ export class KpiController {
   ) {
     return this.svc.findProgress(u, query);
   }
+
+  // ── Team KPI Dashboard (Supervisor) ─────────────────────────────────────────
+
+  @Get('team/summary')
+  @RequirePermissions('kpi_progress:read_team')
+  getTeamSummary(
+    @CurrentUser() u: AuthPrincipal,
+    @Query() query: { quarter?: string },
+  ) {
+    return this.svc.getTeamSummary(u, query);
+  }
+
+  @Get('team/chart')
+  @RequirePermissions('kpi_progress:read_team')
+  getTeamChart(
+    @CurrentUser() u: AuthPrincipal,
+    @Query() query: { quarter?: string },
+  ) {
+    return this.svc.getTeamChart(u, query);
+  }
+
+  @Get('team/underperforming')
+  @RequirePermissions('kpi_progress:read_team')
+  getUnderperformingMembers(
+    @CurrentUser() u: AuthPrincipal,
+    @Query() query: { quarter?: string },
+  ) {
+    return this.svc.getUnderperformingMembers(u, query);
+  }
+
+  @Post('coaching')
+  @HttpCode(200)
+  @RequirePermissions('kpi_progress:read_team')
+  submitCoaching(
+    @CurrentUser() u: AuthPrincipal,
+    @Body() dto: { userId: string; remarks: string },
+  ) {
+    return this.svc.submitCoaching(u, dto);
+  }
 }

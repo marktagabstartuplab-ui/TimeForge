@@ -1,4 +1,5 @@
-import { Controller, Get, Query } from '@nestjs/common';
+import { Controller, Get, Query, Res } from '@nestjs/common';
+import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { DashboardService } from './dashboard.service';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
@@ -79,5 +80,44 @@ export class ReportsController {
     @Query() query: Record<string, string>,
   ) {
     return this.svc.productivity(u.tenantId, u, query);
+  }
+
+  // ─── Attendance Report ─────────────────────────────────────────────────────
+
+  @Get('attendance-report')
+  @RequirePermissions('attendance:read_org')
+  @ApiOperation({ summary: 'Paginated per-employee attendance report — days logged, absences, tardiness (HR / Admin)' })
+  @ApiQuery({ name: 'search',         required: false, type: String })
+  @ApiQuery({ name: 'departmentId',   required: false, type: String })
+  @ApiQuery({ name: 'payrollPeriodId', required: false, type: String })
+  @ApiQuery({ name: 'from',           required: false, type: String, description: 'ISO 8601 date; ignored if payrollPeriodId is set' })
+  @ApiQuery({ name: 'to',             required: false, type: String, description: 'ISO 8601 date; ignored if payrollPeriodId is set' })
+  @ApiQuery({ name: 'status',         required: false, enum: ['PERFECT', 'EXCELLENT', 'GOOD', 'CRITICAL'] })
+  @ApiQuery({ name: 'sortBy',         required: false, enum: ['name', 'attendancePercent', 'absences', 'tardiness', 'daysLogged'] })
+  @ApiQuery({ name: 'sortDir',        required: false, enum: ['asc', 'desc'] })
+  @ApiQuery({ name: 'page',           required: false, type: Number })
+  @ApiQuery({ name: 'pageSize',       required: false, type: Number })
+  attendance(
+    @CurrentUser() u: AuthPrincipal,
+    @Query() query: Record<string, string>,
+  ) {
+    return this.svc.reportAttendance(u.tenantId, u, query);
+  }
+
+  @Get('attendance-report/export')
+  @RequirePermissions('attendance:read_org')
+  @ApiOperation({ summary: 'Export the attendance report as CSV/XLSX/PDF — every export is audit-logged (HR / Admin)' })
+  @ApiQuery({ name: 'format', required: false, enum: ['CSV', 'XLSX', 'PDF'] })
+  async exportAttendance(
+    @CurrentUser() u: AuthPrincipal,
+    @Query() query: Record<string, string>,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { buffer, contentType, filename } = await this.svc.exportAttendanceReport(u.tenantId, u, query);
+    res.set({
+      'Content-Type': contentType,
+      'Content-Disposition': `attachment; filename="${filename}"`,
+    });
+    return buffer;
   }
 }

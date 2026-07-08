@@ -20,6 +20,23 @@ export class ExportPayrollDto {
   format!: 'PDF' | 'XLSX' | 'BOTH';
 }
 
+export class RunActionDto {
+  @IsEnum(['generate', 'approve'])
+  action!: 'generate' | 'approve';
+
+  @IsString()
+  periodId!: string;
+}
+
+export class PayrollExportRequestDto {
+  @IsEnum(['PDF', 'CSV', 'XLSX'])
+  format!: 'PDF' | 'CSV' | 'XLSX';
+
+  @IsString()
+  @IsOptional()
+  periodId?: string;
+}
+
 export interface PayrollPeriodQuery {
   limit?: string;
   cursor?: string;
@@ -28,4 +45,9 @@ export interface PayrollPeriodQuery {
 
 export interface PayrollRateQuery {
   userId: string;
+}
+
+export class RejectPayrollDto {
+  @IsString()
+  reason!: string;
 }

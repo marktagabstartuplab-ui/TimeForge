@@ -1,4 +1,5 @@
 import {
+  IsArray,
   IsBoolean,
   IsEmail,
   IsEnum,
@@ -8,9 +9,11 @@ import {
   IsUUID,
   MaxLength,
   MinLength,
+  IsInt,
+  ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { EmploymentType } from '@prisma/client';
+import { EmploymentType, UserStatus } from '@prisma/client';
 
 export class CreateUserDto {
   @IsEmail()
@@ -50,6 +53,29 @@ export class CreateUserDto {
   payrollEligible?: boolean;
 }
 
+export class BulkImportEmployeesDto {
+  @IsArray()
+  @ValidateNested({ each: true })
+  @Type(() => CreateUserDto)
+  users!: CreateUserDto[];
+}
+
+export interface EmployeesExportQuery {
+  status?: string;
+  departmentId?: string;
+  teamId?: string;
+  role?: string;
+  q?: string;
+}
+
+export interface PendingAccountsQuery {
+  departmentId?: string;
+  role?: string;
+  q?: string;
+  limit?: string;
+  cursor?: string;
+}
+
 export class UpdateUserDto {
   @IsOptional()
   @IsString()
@@ -62,6 +88,11 @@ export class UpdateUserDto {
   @IsNotEmpty()
   @MaxLength(100)
   lastName?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string;
 
   @IsOptional()
   @IsEnum(EmploymentType)
@@ -84,6 +115,16 @@ export class UpdateUserDto {
   @Type(() => Boolean)
   payrollEligible?: boolean;
 
+  @IsOptional()
+  @IsEnum(UserStatus)
+  status?: UserStatus;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isApproved?: boolean;
+
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }
@@ -100,6 +141,26 @@ export class UpdateMeDto {
   @IsNotEmpty()
   @MaxLength(100)
   lastName?: string;
+
+  @IsOptional()
+  @IsEmail()
+  email?: string;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(30)
+  phone?: string;
+}
+
+export class ChangePasswordDto {
+  @IsString()
+  @IsNotEmpty()
+  currentPassword!: string;
+
+  @IsString()
+  @MinLength(8)
+  @MaxLength(128)
+  newPassword!: string;
 }
 
 export class AssignRolesDto {
@@ -128,4 +189,21 @@ export class UsersListQuery {
 
   @IsOptional()
   role?: string;
+}
+
+export class ApproveUserDto {
+  @IsInt()
+  @Type(() => Number)
+  version!: number;
+}
+
+export class RejectUserDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  reason?: string;
+
+  @IsInt()
+  @Type(() => Number)
+  version!: number;
 }

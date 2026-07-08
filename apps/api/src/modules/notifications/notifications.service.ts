@@ -1,138 +1,205 @@
-import { Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { Notification, NotificationCategory, NotificationChannel, NotificationPriority, NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
-import { AuditAction, Prisma } from '@prisma/client';
+import { AuthPrincipal } from '../../common/decorators';
+import { NotificationsRealtimeService } from './notifications-realtime.service';
+import { CreateAnnouncementDto, ListNotificationsQueryDto, NotificationSort } from './dto';
 
-const VALID_STATUSES = ['PENDING', 'SENT', 'READ', 'FAILED'] as const;
-const VALID_TYPES = ['SUBMISSION', 'APPROVAL_DECISION', 'REVISION_REQUEST', 'DEADLINE', 'PAYROLL_READY', 'AI_REPORT'] as const;
-
-type NotifStatus = typeof VALID_STATUSES[number];
-type NotifType   = typeof VALID_TYPES[number];
-
-export interface ListNotificationsQuery {
-  status?: string;
-  type?: string;
-  limit?: string;
-  cursor?: string;
+export interface CreateNotificationInput {
+  tenantId: string;
+  organizationId: string;
+  userId: string;
+  type: NotificationType;
+  category: NotificationCategory;
+  title: string;
+  message: string;
+  senderId?: string | null;
+  priority?: NotificationPriority;
+  actionUrl?: string | null;
+  actionLabel?: string | null;
+  metadata?: Record<string, unknown>;
+  channel?: NotificationChannel;
 }
+
+const DEFAULT_PAGE_SIZE = 10;
+const MAX_PAGE_SIZE = 50;
 
 @Injectable()
 export class NotificationsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly realtime: NotificationsRealtimeService,
+  ) {}
 
   // ─── List ────────────────────────────────────────────────────────────────
 
-  async findAll(tenantId: string, userId: string, query: ListNotificationsQuery): Promise<PageResult<unknown>> {
-    const limit = Math.min(Number(query.limit ?? 20), 100);
-    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
+  async findAll(tenantId: string, userId: string, query: ListNotificationsQueryDto) {
+    const page = Math.max(1, query.page ?? 1);
+    const pageSize = Math.min(Math.max(1, query.pageSize ?? DEFAULT_PAGE_SIZE), MAX_PAGE_SIZE);
 
-    const where: Record<string, unknown> = {
+    const where: Prisma.NotificationWhereInput = {
       tenantId,
       userId,
       deletedAt: null,
+      isArchived: query.archived ?? false,
     };
-
-    if (query.status && (VALID_STATUSES as readonly string[]).includes(query.status)) {
-      where['status'] = query.status as NotifStatus;
+    if (query.category) where.category = query.category;
+    if (query.unreadOnly) where.isRead = false;
+    if (query.search) {
+      where.OR = [
+        { title: { contains: query.search, mode: 'insensitive' } },
+        { message: { contains: query.search, mode: 'insensitive' } },
+      ];
     }
 
-    if (query.type && (VALID_TYPES as readonly string[]).includes(query.type)) {
-      where['type'] = query.type as NotifType;
-    }
-
-    const rows = await (this.prisma as any).notification.findMany({
-      where,
-      orderBy: { createdAt: 'desc' },
-      take: limit + 1,
-      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
-    });
-
-    return buildPage(rows, limit);
-  }
-
-  // ─── Count ────────────────────────────────────────────────────────────────
-
-  async count(tenantId: string, userId: string): Promise<{ total: number; unread: number }> {
-    const [total, unread] = await Promise.all([
-      (this.prisma as any).notification.count({
-        where: { tenantId, userId, deletedAt: null },
+    const [data, total] = await Promise.all([
+      this.prisma.notification.findMany({
+        where,
+        orderBy: this.resolveSort(query.sortBy),
+        skip: (page - 1) * pageSize,
+        take: pageSize,
       }),
-      (this.prisma as any).notification.count({
-        where: {
-          tenantId,
-          userId,
-          deletedAt: null,
-          status: { not: 'READ' as NotifStatus },
-        },
-      }),
+      this.prisma.notification.count({ where }),
     ]);
-    return { total, unread };
+
+    return { data, page, pageSize, total, totalPages: Math.max(1, Math.ceil(total / pageSize)) };
   }
 
-  // ─── Mark one read ────────────────────────────────────────────────────────
-
-  async markRead(tenantId: string, userId: string, id: string) {
-    const existing = await (this.prisma as any).notification.findFirst({
-      where: { id, tenantId, userId, deletedAt: null },
-    });
-
-    if (!existing) {
-      throw new NotFoundException(`Notification ${id} not found`);
+  private resolveSort(sortBy?: NotificationSort): Prisma.NotificationOrderByWithRelationInput[] {
+    switch (sortBy) {
+      case 'oldest':
+        return [{ createdAt: 'asc' }];
+      case 'priority':
+        return [{ priority: 'desc' }, { createdAt: 'desc' }];
+      case 'unread':
+        return [{ isRead: 'asc' }, { createdAt: 'desc' }];
+      default:
+        return [{ createdAt: 'desc' }];
     }
+  }
 
-    const updated = await (this.prisma as any).notification.update({
-      where: { id },
-      data: {
-        status: 'READ' as NotifStatus,
-        updatedBy: userId,
-        version: { increment: 1 },
-      },
+  // ─── Unread count ────────────────────────────────────────────────────────
+
+  async unreadCount(tenantId: string, userId: string): Promise<{ unread: number }> {
+    const unread = await this.prisma.notification.count({
+      where: { tenantId, userId, deletedAt: null, isArchived: false, isRead: false },
     });
+    return { unread };
+  }
 
-    await this.audit(tenantId, userId, id);
+  // ─── Mark one read ───────────────────────────────────────────────────────
+
+  async markRead(tenantId: string, userId: string, id: string): Promise<Notification> {
+    const existing = await this.prisma.notification.findFirst({ where: { id, tenantId, userId, deletedAt: null } });
+    if (!existing) throw new NotFoundException(`Notification ${id} not found`);
+
+    const updated = await this.prisma.notification.update({
+      where: { id },
+      data: { isRead: true, readAt: existing.readAt ?? new Date(), updatedBy: userId, version: { increment: 1 } },
+    });
+    void this.realtime.broadcastUpdate(updated).catch((err: unknown) => console.error('[Notifications] Realtime broadcast failed:', err));
     return updated;
   }
 
-  // ─── Mark all read ────────────────────────────────────────────────────────
+  // ─── Mark all read ───────────────────────────────────────────────────────
 
   async markAllRead(tenantId: string, userId: string): Promise<{ updated: number }> {
-    const result = await (this.prisma as any).notification.updateMany({
-      where: {
-        tenantId,
-        userId,
-        status: { not: 'READ' as NotifStatus },
-        deletedAt: null,
-      },
-      data: {
-        status: 'READ' as NotifStatus,
-        updatedBy: userId,
-      },
+    const result = await this.prisma.notification.updateMany({
+      where: { tenantId, userId, isRead: false, deletedAt: null },
+      data: { isRead: true, readAt: new Date(), updatedBy: userId },
     });
-
     if (result.count > 0) {
-      await this.audit(tenantId, userId, undefined, { count: result.count });
+      void this.realtime.broadcastCountChanged(tenantId, userId).catch((err: unknown) => console.error('[Notifications] Realtime broadcast failed:', err));
     }
-
     return { updated: result.count };
   }
 
-  // ─── Audit helper ─────────────────────────────────────────────────────────
+  // ─── Archive ─────────────────────────────────────────────────────────────
 
-  private async audit(
-    tenantId: string,
-    actorId: string,
-    entityId?: string,
-    metadata?: Record<string, unknown>,
-  ): Promise<void> {
-    await this.prisma.auditLog.create({
+  async archive(tenantId: string, userId: string, id: string): Promise<Notification> {
+    const existing = await this.prisma.notification.findFirst({ where: { id, tenantId, userId, deletedAt: null } });
+    if (!existing) throw new NotFoundException(`Notification ${id} not found`);
+
+    const updated = await this.prisma.notification.update({
+      where: { id },
+      data: { isArchived: true, updatedBy: userId, version: { increment: 1 } },
+    });
+    void this.realtime.broadcastUpdate(updated).catch((err: unknown) => console.error('[Notifications] Realtime broadcast failed:', err));
+    return updated;
+  }
+
+  // ─── Delete (soft) ───────────────────────────────────────────────────────
+
+  async remove(tenantId: string, userId: string, id: string): Promise<void> {
+    const existing = await this.prisma.notification.findFirst({ where: { id, tenantId, userId, deletedAt: null } });
+    if (!existing) throw new NotFoundException(`Notification ${id} not found`);
+
+    await this.prisma.notification.update({
+      where: { id },
+      data: { deletedAt: new Date(), updatedBy: userId, version: { increment: 1 } },
+    });
+    void this.realtime.broadcastCountChanged(tenantId, userId).catch((err: unknown) => console.error('[Notifications] Realtime broadcast failed:', err));
+  }
+
+  // ─── Create (internal — called by other services) ───────────────────────
+
+  async create(input: CreateNotificationInput): Promise<Notification> {
+    const notification = await this.prisma.notification.create({
       data: {
-        tenantId,
-        actorId,
-        action: AuditAction.SETTINGS_CHANGE,
-        entityType: 'notification',
-        ...(entityId ? { entityId } : {}),
-        ...(metadata  ? { metadata: metadata as Prisma.InputJsonValue }  : {}),
+        tenantId: input.tenantId,
+        organizationId: input.organizationId,
+        userId: input.userId,
+        senderId: input.senderId ?? null,
+        type: input.type,
+        category: input.category,
+        priority: input.priority ?? 'NORMAL',
+        channel: input.channel ?? 'IN_APP',
+        status: 'SENT',
+        title: input.title,
+        message: input.message,
+        actionUrl: input.actionUrl ?? null,
+        actionLabel: input.actionLabel ?? null,
+        metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
       },
     });
+    void this.realtime.broadcastNewNotification(notification).catch((err: unknown) => console.error('[Notifications] Realtime broadcast failed:', err));
+    return notification;
+  }
+
+  // ─── Admin: org-wide announcement ────────────────────────────────────────
+
+  /** Fans an announcement out to every active user in the caller's organization. */
+  async createAnnouncement(caller: AuthPrincipal, dto: CreateAnnouncementDto): Promise<{ sent: number }> {
+    if (!caller.permissions.includes('*') && !caller.permissions.includes('notification:create_org')) {
+      throw new ForbiddenException('Missing required permission: notification:create_org');
+    }
+    const recipients = await this.prisma.user.findMany({
+      where: { tenantId: caller.tenantId, organizationId: caller.organizationId, status: 'ACTIVE', deletedAt: null },
+      select: { id: true },
+    });
+
+    await this.prisma.notification.createMany({
+      data: recipients.map((r) => ({
+        tenantId: caller.tenantId,
+        organizationId: caller.organizationId,
+        userId: r.id,
+        senderId: caller.userId,
+        type: 'ANNOUNCEMENT' as NotificationType,
+        category: 'SYSTEM' as NotificationCategory,
+        priority: dto.priority ?? 'NORMAL',
+        channel: 'IN_APP' as NotificationChannel,
+        status: 'SENT',
+        title: dto.title,
+        message: dto.message,
+        actionUrl: dto.actionUrl ?? null,
+        actionLabel: dto.actionLabel ?? null,
+      })),
+    });
+
+    void Promise.all(recipients.map((r) => this.realtime.broadcastCountChanged(caller.tenantId, r.id))).catch(
+      (err: unknown) => console.error('[Notifications] Realtime broadcast failed:', err),
+    );
+
+    return { sent: recipients.length };
   }
 }

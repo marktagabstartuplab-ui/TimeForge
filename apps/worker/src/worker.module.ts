@@ -5,9 +5,17 @@ import { BullModule } from '@nestjs/bullmq';
 import configuration from '../../api/src/config/configuration';
 import { validate } from '../../api/src/config/env.validation';
 import { PrismaModule } from '../../api/src/common/prisma/prisma.module';
+import { NotificationsService } from '../../api/src/modules/notifications/notifications.service';
+import { NotificationsRealtimeService } from '../../api/src/modules/notifications/notifications-realtime.service';
 import { NotificationsProcessor } from './processors/notifications.processor';
 import { AiProcessor } from './processors/ai.processor';
+import { OrganizationExportProcessor } from './processors/organization-export.processor';
+import { PayrollExportProcessor } from './processors/payroll-export.processor';
+import { PerformanceExportProcessor } from './processors/performance-export.processor';
+import { ReportsExportProcessor } from './processors/reports-export.processor';
+import { FinanceAnalyticsProcessor } from './processors/finance-analytics.processor';
 import { OpenAiProvider } from './ai/openai.provider';
+import { StorageModule } from '../../api/src/modules/storage/storage.module';
 
 @Module({
   imports: [
@@ -29,8 +37,25 @@ import { OpenAiProvider } from './ai/openai.provider';
     }),
     BullModule.registerQueue({ name: 'notifications' }),
     BullModule.registerQueue({ name: 'ai' }),
+    BullModule.registerQueue({ name: 'organization-export' }),
+    BullModule.registerQueue({ name: 'payroll-export' }),
+    BullModule.registerQueue({ name: 'performance-export' }),
+    BullModule.registerQueue({ name: 'reports-export' }),
+    BullModule.registerQueue({ name: 'finance-analytics' }),
     PrismaModule,
+    StorageModule,
   ],
-  providers: [NotificationsProcessor, AiProcessor, OpenAiProvider],
+  providers: [
+    NotificationsService,
+    NotificationsRealtimeService,
+    NotificationsProcessor,
+    AiProcessor,
+    OrganizationExportProcessor,
+    PayrollExportProcessor,
+    PerformanceExportProcessor,
+    ReportsExportProcessor,
+    FinanceAnalyticsProcessor,
+    OpenAiProvider,
+  ],
 })
 export class WorkerModule {}

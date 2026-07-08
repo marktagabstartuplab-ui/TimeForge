@@ -5,6 +5,7 @@ import {
   Headers,
   HttpCode,
   Param,
+  ParseUUIDPipe,
   Patch,
   Post,
   UnprocessableEntityException,
@@ -18,6 +19,7 @@ import {
 } from '@nestjs/swagger';
 import { AdminService } from './admin.service';
 import { BulkApproveDto, BulkImportUsersDto, UpsertConfigDto } from './dto';
+import { ApproveUserDto, RejectUserDto } from '../users/dto';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
 @ApiTags('Admin')
@@ -106,6 +108,32 @@ export class AdminController {
   ) {
     if (!idempotencyKey?.trim()) throw new UnprocessableEntityException('Idempotency-Key header is required');
     return this.svc.bulkImportUsers(u, dto, idempotencyKey.trim());
+  }
+
+  // ─── Employee approval ────────────────────────────────────────────────────
+
+  @Post('users/:id/approve')
+  @HttpCode(200)
+  @RequirePermissions('user:update')
+  @ApiOperation({ summary: 'Approve a PENDING employee registration — activates the account and notifies the employee.' })
+  approveUser(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: ApproveUserDto,
+  ) {
+    return this.svc.approveUser(u, id, dto);
+  }
+
+  @Post('users/:id/reject')
+  @HttpCode(200)
+  @RequirePermissions('user:update')
+  @ApiOperation({ summary: 'Reject a PENDING employee registration — notifies the employee with an optional reason.' })
+  rejectUser(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: RejectUserDto,
+  ) {
+    return this.svc.rejectUser(u, id, dto);
   }
 
   // ─── Bulk approve ─────────────────────────────────────────────────────────

@@ -1,4 +1,4 @@
-import { IsArray, IsDateString, IsOptional, IsString, IsUUID, IsUrl, MaxLength } from 'class-validator';
+import { IsInt, IsArray, IsDateString, IsOptional, IsString, IsUUID, IsUrl, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateTimeEntryDto {
@@ -34,6 +34,7 @@ export class UpdateTimeEntryDto {
   @IsOptional() @IsString() @MaxLength(5000) description?: string;
   @IsOptional() @IsArray() @IsUrl({}, { each: true }) referenceLinks?: string[];
 
+  @IsInt()
   @Type(() => Number)
   version!: number;
 }

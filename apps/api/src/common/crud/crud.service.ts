@@ -11,6 +11,7 @@ export interface PageMeta {
   limit: number;
   nextCursor: string | null;
   hasMore: boolean;
+  total?: number;
 }
 
 export interface PageResult<T> {

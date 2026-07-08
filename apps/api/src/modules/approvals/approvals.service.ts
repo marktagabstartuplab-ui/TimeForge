@@ -11,6 +11,7 @@ import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.serv
 import { AuthPrincipal } from '../../common/decorators';
 import { PERMISSIONS } from '@timeforge/shared';
 import { KpiService } from '../kpi/kpi.service';
+import { NotificationsService } from '../notifications/notifications.service';
 import { AddRemarkDto, ApprovalActionDto, ApprovalQueue, DecisionDto } from './dto';
 
 /** Map API action string to DB ApprovalAction enum + resulting TimesheetStatus + AuditAction. */
@@ -32,6 +33,7 @@ export class ApprovalsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly kpiService: KpiService,
+    private readonly notifications: NotificationsService,
   ) {}
 
   // -- Queue / reads --
@@ -180,6 +182,26 @@ export class ApprovalsService {
         sheet.totalMinutes,
       );
     }
+
+    const DECISION_COPY = {
+      APPROVE: { type: 'APPROVAL_DECISION' as const, title: 'Timesheet approved', message: 'Your timesheet has been approved.' },
+      REJECT: { type: 'REJECTION' as const, title: 'Timesheet rejected', message: `Reason: ${dto.remark}` },
+      REQUEST_REVISION: { type: 'REVISION_REQUEST' as const, title: 'Revision requested', message: `Your supervisor requested changes: ${dto.remark}` },
+    };
+    const copy = DECISION_COPY[dto.action];
+    await this.notifications.create({
+      tenantId: p.tenantId,
+      organizationId: p.organizationId,
+      userId: sheet.userId,
+      senderId: p.userId,
+      type: copy.type,
+      category: 'TIMESHEETS',
+      title: copy.title,
+      message: copy.message,
+      priority: dto.action === 'APPROVE' ? 'NORMAL' : 'HIGH',
+      actionUrl: '/timesheets',
+      actionLabel: 'View Details',
+    });
 
     return updatedSheet;
   }

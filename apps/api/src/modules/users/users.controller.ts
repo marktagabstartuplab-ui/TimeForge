@@ -1,6 +1,7 @@
 import {
   Body,
   Controller,
+  Delete,
   Get,
   HttpCode,
   Param,
@@ -8,10 +9,27 @@ import {
   Patch,
   Post,
   Query,
+  UploadedFile,
+  UseInterceptors,
 } from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { UsersService } from './users.service';
-import { CreateUserDto, UpdateUserDto, UpdateMeDto, AssignRolesDto, UsersListQuery } from './dto';
+import {
+  CreateUserDto,
+  UpdateUserDto,
+  UpdateMeDto,
+  AssignRolesDto,
+  UsersListQuery,
+  ChangePasswordDto,
+} from './dto';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
+
+interface UploadedMulterFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+  originalname: string;
+}
 
 @Controller({ path: 'users', version: '1' })
 export class UsersController {
@@ -33,6 +51,32 @@ export class UsersController {
   @RequirePermissions('user:read_self')
   updateMe(@CurrentUser() u: AuthPrincipal, @Body() dto: UpdateMeDto) {
     return this.svc.updateMe(u, dto);
+  }
+
+  @Patch('me/avatar')
+  @RequirePermissions('user:read_self')
+  @UseInterceptors(FileInterceptor('file'))
+  updateAvatar(@CurrentUser() u: AuthPrincipal, @UploadedFile() file: UploadedMulterFile) {
+    return this.svc.updateAvatar(u, file);
+  }
+
+  @Patch('me/password')
+  @RequirePermissions('user:read_self')
+  changePassword(@CurrentUser() u: AuthPrincipal, @Body() dto: ChangePasswordDto) {
+    return this.svc.changePassword(u, dto);
+  }
+
+  @Get('me/sessions')
+  @RequirePermissions('user:read_self')
+  listSessions(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.listSessions(u);
+  }
+
+  @Delete('me/sessions')
+  @HttpCode(204)
+  @RequirePermissions('user:read_self')
+  logoutOtherDevices(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.revokeOtherSessions(u);
   }
 
   @Get(':id')

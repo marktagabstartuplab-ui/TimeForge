@@ -31,6 +31,14 @@ export class RolesController {
     return this.svc.findAll(u.tenantId, query);
   }
 
+  // Registered before `:id` so "matrix" isn't parsed as a role id.
+  @Get('matrix')
+  @RequirePermissions('role:read')
+  @ApiOperation({ summary: 'Permission matrix — real roles × real permissions, grouped by resource' })
+  matrix(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.matrix(u.tenantId);
+  }
+
   @Get(':id')
   @RequirePermissions('role:read')
   @ApiOperation({ summary: 'Fetch a single role by ID' })

@@ -16,6 +16,8 @@ export interface AuthPrincipal {
   organizationId: string;
   roles: string[];
   permissions: string[];
+  /** Refresh-token family of the session that issued this access token (marks "this device" in the sessions list). */
+  sessionFamilyId?: string;
 }
 
 /** Injects the authenticated principal (req.user). */

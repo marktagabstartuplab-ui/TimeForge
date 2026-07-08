@@ -7,12 +7,24 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
-import { AuditAction, PayrollPeriodStatus, Prisma } from '@prisma/client';
+import { AuditAction, PayrollPeriodStatus, Prisma, EmploymentType } from '@prisma/client';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
+import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { PERMISSIONS } from '@timeforge/shared';
+import { NotificationsService } from '../notifications/notifications.service';
 import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery } from './dto';
+
+export interface PayrollExportJobData {
+  tenantId: string;
+  organizationId: string;
+  periodId?: string;
+  format: 'PDF' | 'CSV' | 'XLSX' | 'BOTH';
+  actorId: string;
+}
 
 /** Overtime threshold: hours per period beyond which additional hours count as OT. */
 const OVERTIME_DAILY_THRESHOLD_HOURS = 8;
@@ -25,7 +37,11 @@ const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
 export class PayrollService {
   private readonly logger = new Logger(PayrollService.name);
 
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly notifications: NotificationsService,
+    @InjectQueue('payroll-export') private readonly exportQueue: Queue<PayrollExportJobData>,
+  ) {}
 
   // -- Idempotency helpers (M2) --
   // Mirrors AdminService/AiService: a resultRef (opaque string) is cached per
@@ -197,7 +213,7 @@ export class PayrollService {
       ...rejectedMinutes.keys(),
     ]);
 
-    // Filter: only payroll-eligible, active users (BR-PAY-05)
+    // Filter: only payroll-eligible, active users (BR-PAY-05) and exclude interns
     const eligibleUsers = await this.prisma.user.findMany({
       where: {
         id: { in: [...allUserIds] },
@@ -205,6 +221,7 @@ export class PayrollService {
         organizationId: p.organizationId,
         payrollEligible: true,
         status: 'ACTIVE',
+        employmentType: { not: 'INTERN' },
         deletedAt: null,
       },
       select: { id: true, hourlyRate: true },
@@ -408,6 +425,23 @@ export class PayrollService {
       JSON.stringify({ reportId: report.id, format: dto.format }),
     );
 
+    void Promise.all(
+      report.lineItems.map((item) =>
+        this.notifications.create({
+          tenantId: p.tenantId,
+          organizationId: p.organizationId,
+          userId: item.userId,
+          senderId: p.userId,
+          type: 'PAYROLL_READY',
+          category: 'PAYROLL',
+          title: 'Payslip available',
+          message: 'Your payslip for this period is ready to view.',
+          actionUrl: '/payslips',
+          actionLabel: 'View Payslip',
+        }),
+      ),
+    ).catch((err: unknown) => console.error('[PayrollService] Payslip notification fan-out failed:', err));
+
     // MVP: return the report data directly (full async export is post-MVP)
     return {
       reportId: report.id,
@@ -424,7 +458,7 @@ export class PayrollService {
         lineItems: {
           include: {
             user: {
-              select: { firstName: true, lastName: true, email: true, employmentType: true },
+              select: { firstName: true, lastName: true, email: true, employmentType: true, jobTitle: true, department: { select: { name: true } } },
             },
           },
         },
@@ -432,6 +466,70 @@ export class PayrollService {
     });
     if (!report) throw new NotFoundException('Payroll report not found');
     return report;
+  }
+
+  /** The current report for a period (if generated yet), for the Payroll Processing wizard — read-only, never regenerates. */
+  async findReportByPeriod(p: AuthPrincipal, periodId: string) {
+    await this.findOnePeriod(p, periodId); // 404s if the period doesn't exist / isn't in this org
+    return this.prisma.payrollReport.findFirst({
+      where: { payrollPeriodId: periodId, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+      include: {
+        lineItems: {
+          include: {
+            user: {
+              select: { firstName: true, lastName: true, email: true, employmentType: true, jobTitle: true, department: { select: { name: true } } },
+            },
+          },
+        },
+      },
+    });
+  }
+
+  /**
+   * Marks the discrepant line items (rejectedHours > 0) on a report as flagged for
+   * follow-up: writes an audit trail entry and notifies the affected employees.
+   * Discrepancy status itself is derived from rejectedHours, not a stored flag —
+   * this action's purpose is the audit/notification trail, not changing the status.
+   */
+  async flagDiscrepancies(p: AuthPrincipal, reportId: string) {
+    if (!this.can(p, PERMISSIONS.PAYROLL_GENERATE)) {
+      throw new ForbiddenException('Only HR/Finance/Admin can flag payroll discrepancies');
+    }
+    const report = await this.prisma.payrollReport.findFirst({
+      where: { id: reportId, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+      include: { lineItems: { where: { rejectedHours: { gt: 0 } } } },
+    });
+    if (!report) throw new NotFoundException('Payroll report not found');
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: p.tenantId,
+        actorId: p.userId,
+        action: AuditAction.ADMIN_ACTION,
+        entityType: 'payroll_report',
+        entityId: report.id,
+        metadata: { event: 'PAYROLL_DISCREPANCY_FLAGGED', affectedUserIds: report.lineItems.map((li) => li.userId) },
+      },
+    });
+
+    await Promise.all(
+      report.lineItems.map((item) =>
+        this.notifications.create({
+          tenantId: p.tenantId,
+          organizationId: p.organizationId,
+          userId: item.userId,
+          senderId: p.userId,
+          type: 'ANNOUNCEMENT',
+          category: 'PAYROLL',
+          title: 'Payroll discrepancy flagged',
+          message: 'HR flagged a discrepancy on your timesheet hours for this payroll period — it is under review.',
+          actionUrl: '/payslips',
+          actionLabel: 'View Payslip',
+        }),
+      ),
+    );
+
+    return { flaggedCount: report.lineItems.length };
   }
 
   /**
@@ -497,6 +595,257 @@ export class PayrollService {
       data: { hourlyRate: rate, updatedBy: p.userId, version: { increment: 1 } },
       select: { id: true, firstName: true, lastName: true, hourlyRate: true, version: true },
     });
+  }
+
+  async getDashboard(p: AuthPrincipal) {
+    if (!this.can(p, PERMISSIONS.PAYROLL_READ)) {
+      throw new ForbiddenException('Only Finance/Admin can view the payroll dashboard');
+    }
+
+    const periods = await this.prisma.payrollPeriod.findMany({
+      where: { tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+      orderBy: { startDate: 'desc' },
+      include: {
+        reports: {
+          include: {
+            lineItems: {
+              include: {
+                user: {
+                  select: {
+                    department: { select: { id: true, name: true } }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    let totalPayroll = 0;
+    let totalPayrollTrend = '+0.0%';
+    const reportsWithTotals = periods
+      .flatMap(per => per.reports)
+      .sort((a, b) => b.createdAt.getTime() - a.createdAt.getTime());
+
+    if (reportsWithTotals.length > 0) {
+      const latestReport = reportsWithTotals[0];
+      const totalsObj = latestReport.totals as { totalEstimatedPay?: string } | null;
+      totalPayroll = Number(totalsObj?.totalEstimatedPay ?? 0);
+
+      if (reportsWithTotals.length > 1) {
+        const prevReport = reportsWithTotals[1];
+        const prevTotalsObj = prevReport.totals as { totalEstimatedPay?: string } | null;
+        const prevVal = Number(prevTotalsObj?.totalEstimatedPay ?? 0);
+        if (prevVal > 0) {
+          const change = ((totalPayroll - prevVal) / prevVal) * 100;
+          totalPayrollTrend = (change >= 0 ? '+' : '') + change.toFixed(1) + '%';
+        }
+      }
+    }
+
+    const activePayrunsCount = periods.filter(per => ['OPEN', 'GENERATED', 'LOCKED'].includes(per.status)).length;
+
+    const pendingHRApprovals = await this.prisma.timesheet.count({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        status: { in: ['SUBMITTED', 'UNDER_REVIEW'] },
+        deletedAt: null,
+      }
+    });
+
+    let payEfficiency = 100.0;
+    let payEfficiencyTrend = '+0.0%';
+    if (reportsWithTotals.length > 0) {
+      const latestReport = reportsWithTotals[0];
+      const approvedSum = latestReport.lineItems.reduce((acc, item) => acc + Number(item.approvedHours), 0);
+      const pendingSum = latestReport.lineItems.reduce((acc, item) => acc + Number(item.pendingHours), 0);
+      const totalHours = approvedSum + pendingSum;
+      if (totalHours > 0) {
+        payEfficiency = (approvedSum / totalHours) * 100;
+      }
+
+      if (reportsWithTotals.length > 1) {
+        const prevReport = reportsWithTotals[1];
+        const prevApprovedSum = prevReport.lineItems.reduce((acc, item) => acc + Number(item.approvedHours), 0);
+        const prevPendingSum = prevReport.lineItems.reduce((acc, item) => acc + Number(item.pendingHours), 0);
+        const prevTotalHours = prevApprovedSum + prevPendingSum;
+        let prevEfficiency = 100.0;
+        if (prevTotalHours > 0) {
+          prevEfficiency = (prevApprovedSum / prevTotalHours) * 100;
+        }
+        const change = payEfficiency - prevEfficiency;
+        payEfficiencyTrend = (change >= 0 ? '+' : '') + change.toFixed(1) + '%';
+      }
+    }
+
+    const activeRuns: any[] = [];
+    const activePeriods = periods.filter(per => ['OPEN', 'GENERATED', 'LOCKED', 'EXPORTED'].includes(per.status)).slice(0, 10);
+
+    for (const per of activePeriods) {
+      let uiStatus = 'Pending';
+      if (per.status === 'EXPORTED') uiStatus = 'Completed';
+      else if (per.status === 'GENERATED' || per.status === 'LOCKED') uiStatus = 'Processing';
+
+      const deptSplits = new Map<string, number>();
+      
+      if (per.reports.length > 0 && per.reports[0].lineItems.length > 0) {
+        for (const item of per.reports[0].lineItems) {
+          const deptName = item.user.department?.name ?? 'Operations';
+          deptSplits.set(deptName, (deptSplits.get(deptName) ?? 0) + Number(item.estimatedPay));
+        }
+      } else {
+        const users = await this.prisma.user.findMany({
+          where: {
+            tenantId: p.tenantId,
+            organizationId: p.organizationId,
+            payrollEligible: true,
+            status: 'ACTIVE',
+            employmentType: { not: 'INTERN' },
+            deletedAt: null,
+          },
+          include: { department: { select: { name: true } } },
+        });
+
+        const timesheets = await this.prisma.timesheet.findMany({
+          where: {
+            tenantId: p.tenantId,
+            organizationId: p.organizationId,
+            status: 'PAYROLL_READY',
+            deletedAt: null,
+            periodStart: { gte: per.startDate },
+            periodEnd: { lte: per.endDate },
+          },
+        });
+
+        for (const u of users) {
+          const userTimesheets = timesheets.filter(ts => ts.userId === u.id);
+          const totalMins = userTimesheets.reduce((acc, ts) => acc + ts.totalMinutes, 0);
+          const hours = totalMins / 60;
+          const rate = Number(u.hourlyRate ?? 0);
+          const estPay = hours * rate;
+          const deptName = u.department?.name ?? 'Operations';
+          deptSplits.set(deptName, (deptSplits.get(deptName) ?? 0) + estPay);
+        }
+      }
+
+      if (deptSplits.size === 0) {
+        deptSplits.set('Operations', 0);
+      }
+
+      for (const [deptName, grossTotal] of deptSplits.entries()) {
+        activeRuns.push({
+          id: per.id,
+          startDate: per.startDate,
+          endDate: per.endDate,
+          type: per.type,
+          department: deptName,
+          grossTotal,
+          status: uiStatus,
+        });
+      }
+    }
+
+    return {
+      cards: {
+        totalPayroll: { value: totalPayroll, trend: totalPayrollTrend },
+        activePayruns: { value: activePayrunsCount },
+        pendingHRApprovals: { value: pendingHRApprovals, label: 'Requires immediate action' },
+        payEfficiency: { value: Number(payEfficiency.toFixed(1)), trend: payEfficiencyTrend },
+      },
+      activeRuns,
+    };
+  }
+
+  async getDistribution(p: AuthPrincipal) {
+    if (!this.can(p, PERMISSIONS.PAYROLL_READ)) {
+      throw new ForbiddenException('Only Finance/Admin can view payroll distribution');
+    }
+
+    const latestReport = await this.prisma.payrollReport.findFirst({
+      where: { tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+      include: {
+        lineItems: {
+          include: {
+            user: {
+              select: {
+                department: { select: { name: true } }
+              }
+            }
+          }
+        }
+      }
+    });
+
+    if (!latestReport || latestReport.lineItems.length === 0) {
+      return {
+        totalSpend: 0,
+        departments: [
+          { name: 'Engineering & Design', value: 35, amount: 0 },
+          { name: 'Sales & Marketing', value: 25, amount: 0 },
+          { name: 'Executive Management', value: 20, amount: 0 },
+          { name: 'Product Support', value: 20, amount: 0 },
+        ],
+      };
+    }
+
+    const deptAmounts = new Map<string, number>();
+    let totalSpend = 0;
+
+    for (const item of latestReport.lineItems) {
+      const deptName = item.user.department?.name ?? 'Operations';
+      const amt = Number(item.estimatedPay);
+      deptAmounts.set(deptName, (deptAmounts.get(deptName) ?? 0) + amt);
+      totalSpend += amt;
+    }
+
+    const departmentsList = Array.from(deptAmounts.entries()).map(([name, amount]) => {
+      const percentage = totalSpend > 0 ? Math.round((amount / totalSpend) * 100) : 0;
+      return { name, value: percentage, amount };
+    });
+
+    return {
+      totalSpend,
+      departments: departmentsList.sort((a, b) => b.amount - a.amount),
+    };
+  }
+
+  async queueExport(
+    p: AuthPrincipal,
+    format: 'PDF' | 'CSV' | 'XLSX',
+    periodId?: string,
+  ) {
+    if (!this.can(p, PERMISSIONS.PAYROLL_EXPORT)) {
+      throw new ForbiddenException('Only Finance/Admin can export payroll reports');
+    }
+
+    const jobId = randomUUID();
+    await this.exportQueue.add(
+      'export',
+      {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        periodId,
+        format: format as any,
+        actorId: p.userId,
+      },
+      { jobId, attempts: 2, backoff: { type: 'exponential', delay: 2000 } },
+    );
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: p.tenantId,
+        actorId: p.userId,
+        action: AuditAction.PAYROLL_EXPORT,
+        entityType: 'payroll_period',
+        entityId: periodId || null,
+        metadata: { jobId, format },
+      },
+    });
+
+    return { jobId };
   }
 
   // -- Private helpers --

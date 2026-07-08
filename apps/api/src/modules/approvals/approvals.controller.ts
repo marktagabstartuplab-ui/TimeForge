@@ -11,10 +11,38 @@ import {
 import { ApprovalsService } from './approvals.service';
 import { AddRemarkDto, ApprovalQueue, DecisionDto } from './dto';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
+import { UsersService } from '../users/users.service';
+import { ApproveUserDto, PendingAccountsQuery, RejectUserDto } from '../users/dto';
 
 @Controller({ path: 'approvals', version: '1' })
 export class ApprovalsController {
-  constructor(private readonly svc: ApprovalsService) {}
+  constructor(
+    private readonly svc: ApprovalsService,
+    private readonly users: UsersService,
+  ) {}
+
+  // ── Pending Account Approvals (registered before :timesheetId so "accounts"
+  //    isn't parsed as a timesheet id) ──────────────────────────────────────
+
+  @Get('accounts')
+  @RequirePermissions('user:update')
+  findPendingAccounts(@CurrentUser() u: AuthPrincipal, @Query() query: PendingAccountsQuery) {
+    return this.users.listPendingAccounts(u, query);
+  }
+
+  @Post('accounts/:id/approve')
+  @HttpCode(200)
+  @RequirePermissions('user:update')
+  approveAccount(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() dto: ApproveUserDto) {
+    return this.users.approve(u, id, dto);
+  }
+
+  @Post('accounts/:id/reject')
+  @HttpCode(200)
+  @RequirePermissions('user:update')
+  rejectAccount(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() dto: RejectUserDto) {
+    return this.users.reject(u, id, dto);
+  }
 
   /** Supervisor / Admin: list the review queue for their team / org. */
   @Get()
