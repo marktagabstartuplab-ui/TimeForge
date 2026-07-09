@@ -80,7 +80,6 @@ export function ReportsDashboardContent() {
       setToast({ message: `Report download logged successfully.`, tone: "success" });
       refetchHistory();
       if (data.filePath) {
-        // mock download file trigger
         window.open(`/api/storage/${data.filePath}`, "_blank");
       }
     },
@@ -184,7 +183,7 @@ export function ReportsDashboardContent() {
             <span className="text-emerald-600 bg-emerald-50 px-1.5 py-0.5 rounded">+4.2%</span>
           </div>
           <div className="text-2xl font-extrabold text-brand-navy mt-2">
-            ${dashboard?.laborCost.toLocaleString() ?? "4,822,150"}
+            ₱{dashboard?.laborCost.toLocaleString() ?? "4,822,150"}
           </div>
           <div className="mt-3">
             <ProgressBar percent={72} className="h-1" />
@@ -252,7 +251,7 @@ export function ReportsDashboardContent() {
                   style={{ height: `${Math.max(20, Math.min(180, (dept.cost / 1500000) * 150))}px` }}
                 ></div>
                 <span className="text-[10px] font-bold text-brand-navy text-center truncate w-full">{dept.name}</span>
-                <span className="text-[10px] text-brand-muted font-medium">${(dept.cost / 1000000).toFixed(1)}M</span>
+                <span className="text-[10px] text-brand-muted font-medium">₱{(dept.cost / 1000000).toFixed(1)}M</span>
               </div>
             ))}
           </div>

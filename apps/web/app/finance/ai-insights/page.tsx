@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { HRAIInsightsContent } from "@/features/hr-ai-insights/components/HRAIInsightsContent";
+import { FinanceAiInsightsContent } from "@/features/finance-ai/components/FinanceAiInsightsContent";
 
 export const metadata: Metadata = { title: "AI Insights | TimeForge" };
 
 export default function FinanceAIInsightsPage() {
-  return <HRAIInsightsContent />;
+  return <FinanceAiInsightsContent />;
 }

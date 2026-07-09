@@ -1,4 +1,6 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Inject, Injectable, NotFoundException } from '@nestjs/common';
+import { InjectQueue } from '@nestjs/bullmq';
+import { Queue } from 'bullmq';
 import { Notification, NotificationCategory, NotificationChannel, NotificationPriority, NotificationType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthPrincipal } from '../../common/decorators';
@@ -29,6 +31,7 @@ export class NotificationsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly realtime: NotificationsRealtimeService,
+    @InjectQueue('notifications') private readonly notificationsQueue: Queue,
   ) {}
 
   // ─── List ────────────────────────────────────────────────────────────────
@@ -144,6 +147,7 @@ export class NotificationsService {
   // ─── Create (internal — called by other services) ───────────────────────
 
   async create(input: CreateNotificationInput): Promise<Notification> {
+    const channel = input.channel ?? 'IN_APP';
     const notification = await this.prisma.notification.create({
       data: {
         tenantId: input.tenantId,
@@ -153,8 +157,8 @@ export class NotificationsService {
         type: input.type,
         category: input.category,
         priority: input.priority ?? 'NORMAL',
-        channel: input.channel ?? 'IN_APP',
-        status: 'SENT',
+        channel,
+        status: channel === 'EMAIL' ? 'PENDING' : 'SENT',
         title: input.title,
         message: input.message,
         actionUrl: input.actionUrl ?? null,
@@ -162,7 +166,33 @@ export class NotificationsService {
         metadata: (input.metadata ?? {}) as Prisma.InputJsonValue,
       },
     });
-    void this.realtime.broadcastNewNotification(notification).catch((err: unknown) => console.error('[Notifications] Realtime broadcast failed:', err));
+
+    if (channel === 'EMAIL') {
+      const user = await this.prisma.user.findUnique({
+        where: { id: input.userId },
+        select: { email: true },
+      });
+      if (user?.email) {
+        void this.notificationsQueue.add(
+          'deliver',
+          {
+            notificationId: notification.id,
+            tenantId: input.tenantId,
+            organizationId: input.organizationId,
+            userId: input.userId,
+            email: user.email,
+            title: input.title,
+            message: input.message,
+            channel: 'EMAIL',
+          },
+          { attempts: 3, backoff: { type: 'exponential', delay: 5_000 } },
+        ).catch((err: unknown) => console.error('[Notifications] Failed to enqueue email delivery:', err));
+      }
+    }
+
+    if (channel === 'IN_APP') {
+      void this.realtime.broadcastNewNotification(notification).catch((err: unknown) => console.error('[Notifications] Realtime broadcast failed:', err));
+    }
     return notification;
   }
 

@@ -1,8 +1,11 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { TeamsService } from './teams.service';
 import { CreateTeamDto, UpdateTeamDto } from './dto';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
+@ApiTags('Teams')
+@ApiBearerAuth()
 @Controller({ path: 'teams', version: '1' })
 export class TeamsController {
   constructor(private readonly svc: TeamsService) {}

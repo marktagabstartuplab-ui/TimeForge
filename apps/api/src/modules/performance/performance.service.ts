@@ -157,7 +157,7 @@ export class PerformanceService {
       totalKpiSum += Math.min(100, Math.round((val / target) * 100));
       kpiCount++;
     });
-    const overallKpiScore = kpiCount > 0 ? Math.round(totalKpiSum / kpiCount) : 75;
+    const overallKpiScore = kpiCount > 0 ? Math.round(totalKpiSum / kpiCount) : 0;
 
     // Efficiency Score
     let totalActiveMins = 0;
@@ -169,19 +169,19 @@ export class PerformanceService {
     });
     const efficiencyScore = totalActiveMins + totalBreakMins > 0
       ? Math.round((totalActiveMins / (totalActiveMins + totalBreakMins)) * 100)
-      : 94; // fallback mockup value
+      : 0;
 
     // Attendance Rate
     const totalExpectedTimesheets = userIds.length * 4;
     const completedTimesheets = timesheets.filter((t) => t.status === 'APPROVED' || t.status === 'PAYROLL_READY').length;
     const attendanceRate = totalExpectedTimesheets > 0
       ? Math.min(100, Math.round((completedTimesheets / totalExpectedTimesheets) * 100))
-      : 98; // fallback mockup value
+      : 0;
 
     // Task Completion
     const totalTasks = scrumTasks.length;
     const completedTasks = scrumTasks.filter((t) => t.taskStatus === 'COMPLETED').length;
-    const taskCompletionStr = totalTasks > 0 ? `${completedTasks}/${totalTasks}` : '14/18';
+    const taskCompletionStr = totalTasks > 0 ? `${completedTasks}/${totalTasks}` : '0/0';
 
     // Status mapping based on overall score
     let scoreStatus = 'On Track';
@@ -206,7 +206,7 @@ export class PerformanceService {
         rating: scoreRating,
         status: scoreStatus,
         timePeriod: 'Weekly',
-        kpisTracked: kpiCount || 8,
+        kpisTracked: kpiCount || 0,
       },
       summaryCards: {
         efficiency: {
@@ -221,8 +221,8 @@ export class PerformanceService {
         },
         taskCompletion: {
           value: taskCompletionStr,
-          completed: totalTasks > 0 ? completedTasks : 14,
-          total: totalTasks > 0 ? totalTasks : 18,
+          completed: totalTasks > 0 ? completedTasks : 0,
+          total: totalTasks > 0 ? totalTasks : 0,
           trend: 'stable',
         },
         kpiScore: {
@@ -259,18 +259,14 @@ export class PerformanceService {
         current,
         target,
         percentage,
-        change: '+5% from Q2', // simulated variance
+        change: null,
         trend: 'up',
       };
     });
 
-    // Fallback default list if no KPIs configured yet
+    // No KPIs configured yet — return empty
     if (items.length === 0) {
-      return [
-        { name: 'Software Features Completed', current: 24, target: 30, percentage: 80, change: '+12% from Q2', trend: 'up' },
-        { name: 'Bugs Resolved (Severity 1-3)', current: 45, target: 50, percentage: 90, change: '+5% from Q2', trend: 'up' },
-        { name: 'Documentation Items Submitted', current: 8, target: 15, percentage: 53, change: '-8% from Q2', trend: 'down' },
-      ];
+      return [];
     }
 
     return items;
@@ -609,7 +605,7 @@ export class PerformanceService {
       userIds,
       format,
       actorId: p.userId,
-    });
+    }, { attempts: 2, backoff: { type: 'exponential', delay: 2000 } });
 
     return { jobId: job.id };
   }

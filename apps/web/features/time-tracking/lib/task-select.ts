@@ -44,8 +44,7 @@ export function deriveTasks(entries: TimeEntry[]): WorkTask[] {
   const byKey = new Map<string, WorkTask>();
 
   for (const entry of entries) {
-    const { task, details } = splitDescription(entry.description);
-    const title = task || "General work";
+    const title = entry.task || "General work";
     const key = taskKey(entry.projectId, title);
     const minutes =
       entry.durationMinutes ??
@@ -58,7 +57,7 @@ export function deriveTasks(entries: TimeEntry[]): WorkTask[] {
         existing.lastUsedAt = entry.startTime;
         existing.clientId = entry.clientId;
         existing.workCategoryId = entry.workCategoryId;
-        existing.details = details || existing.details;
+        existing.details = entry.description || existing.details;
       }
     } else {
       byKey.set(key, {
@@ -67,7 +66,7 @@ export function deriveTasks(entries: TimeEntry[]): WorkTask[] {
         projectId: entry.projectId,
         clientId: entry.clientId,
         workCategoryId: entry.workCategoryId,
-        details,
+        details: entry.description ?? "",
         minutes,
         lastUsedAt: entry.startTime,
       });

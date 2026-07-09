@@ -14,6 +14,8 @@ interface DataTableProps<T> {
   rowKey: (row: T) => string;
   /** Rendered inside the table body area when rows is empty. */
   emptyState?: React.ReactNode;
+  /** Optional row click handler. */
+  onRowClick?: (row: T) => void;
   "aria-label"?: string;
 }
 
@@ -21,7 +23,7 @@ interface DataTableProps<T> {
  * Light table matching the Figma audit/history tables: muted uppercase header
  * band, hairline row separators. Scrolls horizontally on small screens.
  */
-export function DataTable<T>({ columns, rows, rowKey, emptyState, ...aria }: DataTableProps<T>) {
+export function DataTable<T>({ columns, rows, rowKey, emptyState, onRowClick, ...aria }: DataTableProps<T>) {
   if (rows.length === 0 && emptyState) {
     return <>{emptyState}</>;
   }
@@ -46,7 +48,14 @@ export function DataTable<T>({ columns, rows, rowKey, emptyState, ...aria }: Dat
         </thead>
         <tbody>
           {rows.map((row) => (
-            <tr key={rowKey(row)} className="border-b border-[#c3c6d2]/40 last:border-b-0">
+            <tr
+              key={rowKey(row)}
+              className={cn(
+                "border-b border-[#c3c6d2]/40 last:border-b-0",
+                onRowClick && "cursor-pointer transition-colors hover:bg-[#f6f3f4]",
+              )}
+              onClick={() => onRowClick?.(row)}
+            >
               {columns.map((col) => (
                 <td key={col.key} className={cn("px-4 py-4 align-middle text-sm text-brand-ink", col.className)}>
                   {col.render(row)}

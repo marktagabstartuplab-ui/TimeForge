@@ -114,7 +114,7 @@ export class PayrollService {
     });
     if (conflict) throw new ConflictException('A payroll period for these exact dates already exists');
 
-    return this.prisma.payrollPeriod.create({
+    const period = await this.prisma.payrollPeriod.create({
       data: {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
@@ -126,6 +126,19 @@ export class PayrollService {
         updatedBy: p.userId,
       },
     });
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: p.tenantId,
+        actorId: p.userId,
+        action: AuditAction.ADMIN_ACTION,
+        entityType: 'payroll_period',
+        entityId: period.id,
+        metadata: { action: 'createPeriod', type: dto.type, startDate, endDate },
+      },
+    }).catch(() => {});
+
+    return period;
   }
 
   /**
@@ -333,7 +346,7 @@ export class PayrollService {
         `Cannot lock a payroll period with status ${period.status}. Generate first.`,
       );
     }
-    return this.prisma.payrollPeriod.update({
+    const updated = await this.prisma.payrollPeriod.update({
       where: { id: periodId },
       data: {
         status: 'LOCKED',
@@ -342,6 +355,19 @@ export class PayrollService {
         version: { increment: 1 },
       },
     });
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: p.tenantId,
+        actorId: p.userId,
+        action: AuditAction.ADMIN_ACTION,
+        entityType: 'payroll_period',
+        entityId: periodId,
+        metadata: { action: 'lockPeriod' },
+      },
+    }).catch(() => {});
+
+    return updated;
   }
 
   /**
@@ -590,11 +616,24 @@ export class PayrollService {
     if (!user) throw new NotFoundException('User not found');
     if (user.version !== version) throw new ConflictException('Version mismatch');
 
-    return this.prisma.user.update({
+    const updated = await this.prisma.user.update({
       where: { id: userId },
       data: { hourlyRate: rate, updatedBy: p.userId, version: { increment: 1 } },
       select: { id: true, firstName: true, lastName: true, hourlyRate: true, version: true },
     });
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: p.tenantId,
+        actorId: p.userId,
+        action: AuditAction.ADMIN_ACTION,
+        entityType: 'user',
+        entityId: userId,
+        metadata: { action: 'updateRate', previousRate: user.hourlyRate, newRate: rate },
+      },
+    }).catch(() => {});
+
+    return updated;
   }
 
   async getDashboard(p: AuthPrincipal) {
@@ -846,6 +885,405 @@ export class PayrollService {
     });
 
     return { jobId };
+  }
+
+  // -- Finance Payroll Processing (validate/approve/reject/send-to-bank pipeline) --
+  // Distinct from the HR-facing generate/lock/export wizard above: this is the Finance-only
+  // review pipeline gated by PAYROLL_VALIDATE/APPROVE/REJECT/SEND_TO_BANK permissions, which
+  // only the FINANCE role (and ADMIN via wildcard) holds — see packages/shared/src/permissions.ts.
+
+  async getProcessingDashboard(p: AuthPrincipal, periodId: string) {
+    const period = await this.findOnePeriod(p, periodId);
+
+    const report = await this.prisma.payrollReport.findFirst({
+      where: { payrollPeriodId: periodId, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+      include: {
+        lineItems: {
+          include: {
+            user: {
+              select: {
+                id: true, firstName: true, lastName: true, email: true,
+                jobTitle: true, employmentType: true, hourlyRate: true,
+                payrollEligible: true, status: true,
+                department: { select: { name: true } },
+              },
+            },
+          },
+        },
+      },
+    });
+
+    const lineItems = report?.lineItems ?? [];
+
+    let grossPayroll = 0;
+    let totalHours = 0;
+
+    const employees = lineItems.map((li) => {
+      const estimatedPay = Number(li.estimatedPay);
+      grossPayroll += estimatedPay;
+      totalHours += Number(li.approvedHours) + Number(li.overtimeHours);
+      const baseRate = Number(li.hourlyRate);
+      const approvedHrs = Number(li.approvedHours);
+      const overtimeHrs = Number(li.overtimeHours);
+      const totalHrs = approvedHrs + overtimeHrs;
+      const payMultiplier = baseRate > 0 && totalHrs > 0
+        ? Number((estimatedPay / (totalHrs * baseRate)).toFixed(2))
+        : 1;
+
+      let status: string;
+      if (Number(li.rejectedHours) > 0) {
+        status = 'Action Required';
+      } else if (period.processingStatus === 'PENDING_APPROVAL' || period.processingStatus === 'APPROVED') {
+        status = 'Pending Approval';
+      } else {
+        status = 'Ready';
+      }
+
+      return {
+        id: li.user.id,
+        firstName: li.user.firstName,
+        lastName: li.user.lastName,
+        email: li.user.email,
+        jobTitle: li.user.jobTitle,
+        employmentType: li.user.employmentType,
+        department: li.user.department,
+        hourlyRate: baseRate,
+        payrollEligible: li.user.payrollEligible,
+        status: li.user.status,
+        estimatedPay,
+        approvedHours: approvedHrs,
+        pendingHours: Number(li.pendingHours),
+        overtimeHours: overtimeHrs,
+        payMultiplier,
+        rowStatus: status,
+        rejectedHours: Number(li.rejectedHours),
+        lineItemId: li.id,
+      };
+    });
+
+    const estimatedTax = grossPayroll * 0.15;
+
+    const auditLogRaw = await this.prisma.auditLog.findMany({
+      where: {
+        tenantId: p.tenantId,
+        entityType: 'payroll_period',
+        entityId: periodId,
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 20,
+    });
+
+    const actorIds = [...new Set(auditLogRaw.map((e) => e.actorId).filter(Boolean) as string[])];
+    const actors = actorIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: actorIds }, tenantId: p.tenantId },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : [];
+    const actorMap = new Map(actors.map((a) => [a.id, `${a.firstName} ${a.lastName}`]));
+
+    const nextDeadline = await this.getNextDeadline(p);
+
+    return {
+      grossPayroll,
+      totalEmployees: employees.length,
+      estimatedTax,
+      periodId: period.id,
+      periodLabel: `${period.startDate.toISOString().slice(0, 10)} - ${period.endDate.toISOString().slice(0, 10)}`,
+      periodStatus: period.status,
+      processingStatus: period.processingStatus,
+      nextDeadline,
+      employees,
+      auditLog: auditLogRaw.map((entry) => ({
+        id: entry.id,
+        action: entry.action,
+        actorName: entry.actorId ? (actorMap.get(entry.actorId) ?? null) : null,
+        createdAt: entry.createdAt.toISOString(),
+        metadata: entry.metadata as Record<string, unknown> | null,
+      })),
+    };
+  }
+
+  async getPayrollEmployees(p: AuthPrincipal) {
+    const users = await this.prisma.user.findMany({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        payrollEligible: true,
+        status: 'ACTIVE',
+        employmentType: { not: 'INTERN' },
+        deletedAt: null,
+      },
+      select: {
+        id: true, firstName: true, lastName: true, email: true,
+        jobTitle: true, employmentType: true, hourlyRate: true,
+        payrollEligible: true, status: true,
+        department: { select: { name: true } },
+      },
+      orderBy: { firstName: 'asc' },
+    });
+
+    return users.map((u) => ({
+      id: u.id,
+      firstName: u.firstName,
+      lastName: u.lastName,
+      email: u.email,
+      jobTitle: u.jobTitle,
+      employmentType: u.employmentType,
+      department: u.department,
+      hourlyRate: Number(u.hourlyRate ?? 0),
+      payrollEligible: u.payrollEligible,
+      status: u.status,
+    }));
+  }
+
+  async getPayrollAuditLog(p: AuthPrincipal) {
+    const auditLogRaw = await this.prisma.auditLog.findMany({
+      where: {
+        tenantId: p.tenantId,
+        entityType: 'payroll_period',
+        action: { in: ['PAYROLL_VALIDATED', 'PAYROLL_APPROVED', 'PAYROLL_REJECTED', 'PAYROLL_SENT_TO_BANK', 'PAYROLL_EXPORT'] },
+      },
+      orderBy: { createdAt: 'desc' },
+      take: 50,
+    });
+
+    const actorIds = [...new Set(auditLogRaw.map((e) => e.actorId).filter(Boolean) as string[])];
+    const actors = actorIds.length > 0
+      ? await this.prisma.user.findMany({
+          where: { id: { in: actorIds }, tenantId: p.tenantId },
+          select: { id: true, firstName: true, lastName: true },
+        })
+      : [];
+    const actorMap = new Map(actors.map((a) => [a.id, `${a.firstName} ${a.lastName}`]));
+
+    return auditLogRaw.map((entry) => ({
+      id: entry.id,
+      action: entry.action,
+      actorName: entry.actorId ? (actorMap.get(entry.actorId) ?? null) : null,
+      createdAt: entry.createdAt.toISOString(),
+      metadata: entry.metadata as Record<string, unknown> | null,
+    }));
+  }
+
+  async getNextDeadline(p: AuthPrincipal) {
+    const now = new Date();
+    const currentMonth = now.getMonth();
+    const currentYear = now.getFullYear();
+
+    const firstHalfEnd = new Date(currentYear, currentMonth, 15);
+    const secondHalfEnd = new Date(currentYear, currentMonth + 1, 0);
+    secondHalfEnd.setHours(23, 59, 59, 999);
+
+    if (now <= firstHalfEnd) {
+      return { label: 'First Half Deadline', date: firstHalfEnd.toISOString() };
+    } else {
+      return { label: 'Second Half Deadline', date: secondHalfEnd.toISOString() };
+    }
+  }
+
+  async validatePayroll(p: AuthPrincipal, periodId: string, idempotencyKey: string) {
+    const period = await this.findOnePeriod(p, periodId);
+
+    const idemKey = `payroll-validate:${idempotencyKey}`;
+    const cached = await this.checkIdempotency(p.tenantId, idemKey);
+    if (cached) {
+      const cachedPeriod = await this.findOnePeriod(p, periodId);
+      return { periodId, processingStatus: cachedPeriod.processingStatus };
+    }
+
+    if (period.processingStatus !== 'DRAFT' && period.processingStatus !== 'VALIDATING') {
+      throw new ConflictException(`Cannot validate payroll with processing status ${period.processingStatus}. Must be DRAFT.`);
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.payrollPeriod.update({
+        where: { id: periodId },
+        data: {
+          processingStatus: 'VALIDATED',
+          validatedAt: new Date(),
+          validatedBy: p.userId,
+          updatedBy: p.userId,
+          version: { increment: 1 },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          tenantId: p.tenantId,
+          actorId: p.userId,
+          action: 'PAYROLL_VALIDATED',
+          entityType: 'payroll_period',
+          entityId: periodId,
+          metadata: { previousStatus: period.processingStatus },
+        },
+      });
+
+      return updated;
+    });
+
+    await this.saveIdempotency(p.tenantId, idemKey, result.id);
+    return { periodId, processingStatus: result.processingStatus };
+  }
+
+  async approvePayroll(p: AuthPrincipal, periodId: string, idempotencyKey: string) {
+    const period = await this.findOnePeriod(p, periodId);
+
+    const idemKey = `payroll-approve:${idempotencyKey}`;
+    const cached = await this.checkIdempotency(p.tenantId, idemKey);
+    if (cached) {
+      const cachedPeriod = await this.findOnePeriod(p, periodId);
+      return { periodId, processingStatus: cachedPeriod.processingStatus };
+    }
+
+    if (period.processingStatus !== 'VALIDATED' && period.processingStatus !== 'PENDING_APPROVAL') {
+      throw new ConflictException(
+        `Cannot approve payroll with processing status ${period.processingStatus}. Must be VALIDATED first.`,
+      );
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.payrollPeriod.update({
+        where: { id: periodId },
+        data: {
+          processingStatus: 'APPROVED',
+          approvedAt: new Date(),
+          approvedBy: p.userId,
+          updatedBy: p.userId,
+          version: { increment: 1 },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          tenantId: p.tenantId,
+          actorId: p.userId,
+          action: 'PAYROLL_APPROVED',
+          entityType: 'payroll_period',
+          entityId: periodId,
+          metadata: { previousStatus: period.processingStatus },
+        },
+      });
+
+      return updated;
+    });
+
+    await this.saveIdempotency(p.tenantId, idemKey, result.id);
+    return { periodId, processingStatus: result.processingStatus };
+  }
+
+  async rejectPayroll(p: AuthPrincipal, periodId: string, reason: string, idempotencyKey: string) {
+    const period = await this.findOnePeriod(p, periodId);
+
+    const idemKey = `payroll-reject:${idempotencyKey}`;
+    const cached = await this.checkIdempotency(p.tenantId, idemKey);
+    if (cached) {
+      const cachedPeriod = await this.findOnePeriod(p, periodId);
+      return { periodId, processingStatus: cachedPeriod.processingStatus };
+    }
+
+    if (period.processingStatus !== 'VALIDATED' && period.processingStatus !== 'PENDING_APPROVAL') {
+      throw new ConflictException(
+        `Cannot reject payroll with processing status ${period.processingStatus}. Must be VALIDATED first.`,
+      );
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.payrollPeriod.update({
+        where: { id: periodId },
+        data: {
+          processingStatus: 'REJECTED',
+          rejectedAt: new Date(),
+          rejectedBy: p.userId,
+          rejectionReason: reason,
+          updatedBy: p.userId,
+          version: { increment: 1 },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          tenantId: p.tenantId,
+          actorId: p.userId,
+          action: 'PAYROLL_REJECTED',
+          entityType: 'payroll_period',
+          entityId: periodId,
+          metadata: { previousStatus: period.processingStatus, reason },
+        },
+      });
+
+      return updated;
+    });
+
+    await this.saveIdempotency(p.tenantId, idemKey, result.id);
+    return { periodId, processingStatus: result.processingStatus };
+  }
+
+  async sendToBank(p: AuthPrincipal, periodId: string, idempotencyKey: string) {
+    const period = await this.findOnePeriod(p, periodId);
+
+    const idemKey = `payroll-send-to-bank:${idempotencyKey}`;
+    const cached = await this.checkIdempotency(p.tenantId, idemKey);
+    if (cached) {
+      const cachedPeriod = await this.findOnePeriod(p, periodId);
+      return { periodId, processingStatus: cachedPeriod.processingStatus };
+    }
+
+    if (period.processingStatus !== 'APPROVED') {
+      throw new ConflictException(
+        `Cannot send payroll to bank with processing status ${period.processingStatus}. Must be APPROVED first.`,
+      );
+    }
+
+    const result = await this.prisma.$transaction(async (tx) => {
+      const updated = await tx.payrollPeriod.update({
+        where: { id: periodId },
+        data: {
+          processingStatus: 'SENT_TO_BANK',
+          sentToBankAt: new Date(),
+          sentToBankBy: p.userId,
+          updatedBy: p.userId,
+          version: { increment: 1 },
+        },
+      });
+
+      await tx.auditLog.create({
+        data: {
+          tenantId: p.tenantId,
+          actorId: p.userId,
+          action: 'PAYROLL_SENT_TO_BANK',
+          entityType: 'payroll_period',
+          entityId: periodId,
+          metadata: { previousStatus: period.processingStatus },
+        },
+      });
+
+      return updated;
+    });
+
+    await this.saveIdempotency(p.tenantId, idemKey, result.id);
+
+    void Promise.all(
+      (await this.prisma.payrollLineItem.findMany({
+        where: { payrollReport: { payrollPeriodId: periodId }, tenantId: p.tenantId },
+        select: { userId: true },
+      })).map((item) =>
+        this.notifications.create({
+          tenantId: p.tenantId,
+          organizationId: p.organizationId,
+          userId: item.userId,
+          senderId: p.userId,
+          type: 'PAYROLL_READY',
+          category: 'PAYROLL',
+          title: 'Payroll sent to bank',
+          message: 'Your payment has been initiated. Check your account for details.',
+          actionUrl: '/payslips',
+          actionLabel: 'View Details',
+        }),
+      ),
+    ).catch((err: unknown) => this.logger.error('Send-to-bank notification fan-out failed:', err));
+
+    return { periodId, processingStatus: result.processingStatus };
   }
 
   // -- Private helpers --

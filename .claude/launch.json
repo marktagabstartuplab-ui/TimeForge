@@ -13,7 +13,7 @@
       "runtimeExecutable": "npm",
       "runtimeArgs": ["run", "start:api"],
       "port": 3000,
-      "autoPort": false
+      "autoPort": true
     }
   ]
 }

@@ -104,6 +104,19 @@ export class AiService {
     }
   }
 
+  // ─── Feature toggle check ────────────────────────────────────────────────
+
+  private async checkFeatureEnabled(tenantId: string, organizationId: string, feature: string): Promise<void> {
+    const setting = await this.prisma.organizationSetting.findFirst({
+      where: { tenantId, organizationId, key: 'ai.toggles', deletedAt: null },
+    });
+    if (!setting) return;
+    const toggles = setting.value as Record<string, boolean> | null;
+    if (toggles && toggles[feature] === false) {
+      throw new UnprocessableEntityException(`AI feature "${feature}" is disabled by organization settings`);
+    }
+  }
+
   // ─── Trigger job ─────────────────────────────────────────────────────────
 
   async triggerJob(
@@ -118,6 +131,9 @@ export class AiService {
         `Feature ${dto.feature} requires permission ${requiredPerm}`,
       );
     }
+
+    // Feature toggle check
+    await this.checkFeatureEnabled(user.tenantId, user.organizationId, dto.feature);
 
     // Idempotency: return cached jobId if key already used
     const idemKey = `ai:${idempotencyKey}`;

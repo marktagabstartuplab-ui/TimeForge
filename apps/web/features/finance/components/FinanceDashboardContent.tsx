@@ -52,9 +52,9 @@ import {
 const PIE_COLORS = ["#0052cc", "#0ea5e9", "#0f172a", "#38bdf8", "#818cf8", "#f59e0b", "#10b981", "#ef4444"];
 
 function formatCurrency(value: number): string {
-  if (value >= 1_000_000) return `$${(value / 1_000_000).toFixed(1)}M`;
-  if (value >= 1_000) return `$${(value / 1_000).toFixed(1)}K`;
-  return `$${value.toFixed(2)}`;
+  if (value >= 1_000_000) return `₱${(value / 1_000_000).toFixed(1)}M`;
+  if (value >= 1_000) return `₱${(value / 1_000).toFixed(1)}K`;
+  return `₱${value.toFixed(2)}`;
 }
 
 function formatDate(iso: string): string {
@@ -236,7 +236,7 @@ export function FinanceDashboardContent() {
                   </defs>
                   <CartesianGrid strokeDasharray="3 3" stroke="#e5e7eb" />
                   <XAxis dataKey="label" tick={{ fontSize: 12 }} stroke="#9ca3af" />
-                  <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" tickFormatter={(v) => `$${(v / 1000).toFixed(0)}k`} />
+                  <YAxis tick={{ fontSize: 12 }} stroke="#9ca3af" tickFormatter={(v) => `₱${(v / 1000).toFixed(0)}k`} />
                   <RechartsTooltip
                     content={({ active, payload, label }) => {
                       if (!active || !payload?.length) return null;

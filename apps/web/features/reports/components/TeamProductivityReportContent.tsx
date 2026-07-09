@@ -155,7 +155,7 @@ export function TeamProductivityReportContent() {
           <div>
             <span className="text-[10px] font-bold text-brand-muted uppercase tracking-wider">Est. Payroll Liability</span>
             <div className="text-3xl font-extrabold text-brand-navy mt-2">
-              {isSummaryLoading ? "..." : `$${(summary?.payrollLiability ?? 42850).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+              {isSummaryLoading ? "..." : `₱${(summary?.payrollLiability ?? 42850).toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
             </div>
           </div>
           <div className="h-10 w-10 rounded-full bg-sky-50 text-[#0052cc] flex items-center justify-center">
@@ -276,7 +276,7 @@ export function TeamProductivityReportContent() {
                       {row.rejectedHours > 0 ? row.rejectedHours.toFixed(2) : "0.00"}
                     </td>
                     <td className="py-4 px-4 text-brand-navy font-bold">
-                      ${row.payrollEstimate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                      ₱{row.payrollEstimate.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                     </td>
                   </tr>
                 ))
@@ -292,7 +292,7 @@ export function TeamProductivityReportContent() {
                   </td>
                   <td className="py-4 px-4 text-[#be123c]">{totalRejected.toFixed(2)}</td>
                   <td className="py-4 px-4 text-brand-navy">
-                    ${totalPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
+                    ₱{totalPayroll.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}
                   </td>
                 </tr>
               </tfoot>

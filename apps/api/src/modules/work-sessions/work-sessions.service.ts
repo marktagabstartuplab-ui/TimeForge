@@ -1,5 +1,5 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
-import { SessionEvent, WorkSession } from '@prisma/client';
+import { AuditAction, Prisma, SessionEvent, WorkSession } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { ClockInDto } from './dto';
@@ -78,6 +78,7 @@ export class WorkSessionsService {
       },
     });
     await this.event(p, session.id, 'CLOCK_IN');
+    await this.audit(p, AuditAction.ADMIN_ACTION, 'work_session', session.id, { event: 'CLOCK_IN' });
     return this.current(p);
   }
 
@@ -105,6 +106,7 @@ export class WorkSessionsService {
       data: { currentBreakStartedAt: end, breakCount: { increment: 1 }, version: { increment: 1 } },
     });
     await this.event(p, session.id, 'BREAK_START');
+    await this.audit(p, AuditAction.ADMIN_ACTION, 'work_session', session.id, { event: 'BREAK_START' });
     return this.current(p);
   }
 
@@ -144,6 +146,7 @@ export class WorkSessionsService {
       },
     });
     await this.event(p, session.id, 'BREAK_END');
+    await this.audit(p, AuditAction.ADMIN_ACTION, 'work_session', session.id, { event: 'BREAK_END' });
     return this.current(p);
   }
 
@@ -188,6 +191,7 @@ export class WorkSessionsService {
       },
     });
     await this.event(p, session.id, 'CLOCK_OUT');
+    await this.audit(p, AuditAction.ADMIN_ACTION, 'work_session', session.id, { event: 'CLOCK_OUT' });
     return this.current(p);
   }
 
@@ -205,6 +209,10 @@ export class WorkSessionsService {
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────
+
+  private async audit(p: AuthPrincipal, action: AuditAction, entityType: string, entityId: string, metadata: Prisma.InputJsonValue) {
+    await this.prisma.auditLog.create({ data: { tenantId: p.tenantId, actorId: p.userId, action, entityType, entityId, metadata } });
+  }
 
   private async activeSession(p: AuthPrincipal): Promise<WorkSession> {
     const session = await this.prisma.workSession.findFirst({

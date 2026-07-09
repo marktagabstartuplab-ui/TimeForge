@@ -7,7 +7,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { PerformanceService, PerformanceQuery } from './performance.service';
-import { AuthPrincipal, CurrentUser } from '../../common/decorators';
+import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
 export class PerformanceExportDto {
   format!: 'CSV' | 'XLSX' | 'PDF';
@@ -21,6 +21,7 @@ export class PerformanceController {
   constructor(private readonly svc: PerformanceService) {}
 
   @Get('dashboard')
+  @RequirePermissions('dashboard:read_team')
   async getDashboard(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: PerformanceQuery,
@@ -29,6 +30,7 @@ export class PerformanceController {
   }
 
   @Get('overview')
+  @RequirePermissions('dashboard:read_team')
   async getOverview(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: PerformanceQuery,
@@ -37,6 +39,7 @@ export class PerformanceController {
   }
 
   @Get('metrics')
+  @RequirePermissions('dashboard:read_team')
   async getMetrics(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: PerformanceQuery,
@@ -45,6 +48,7 @@ export class PerformanceController {
   }
 
   @Get('kpis')
+  @RequirePermissions('kpi:read_org')
   async getKpis(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: PerformanceQuery,
@@ -53,6 +57,7 @@ export class PerformanceController {
   }
 
   @Get('trends')
+  @RequirePermissions('dashboard:read_team')
   async getTrends(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: PerformanceQuery,
@@ -61,6 +66,7 @@ export class PerformanceController {
   }
 
   @Get('history')
+  @RequirePermissions('dashboard:read_team')
   async getHistory(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: PerformanceQuery,
@@ -69,6 +75,7 @@ export class PerformanceController {
   }
 
   @Get('coach')
+  @RequirePermissions('ai:read')
   async getCoach(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: PerformanceQuery,
@@ -78,6 +85,7 @@ export class PerformanceController {
 
   @Post('export')
   @HttpCode(202)
+  @RequirePermissions('dashboard:read_org')
   async queueExport(
     @CurrentUser() u: AuthPrincipal,
     @Body() dto: PerformanceExportDto,

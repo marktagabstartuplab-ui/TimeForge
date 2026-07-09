@@ -33,7 +33,7 @@ export class OpenAiProvider {
 
   constructor(private readonly config: ConfigService) {
     this.apiKey  = config.get<string>('ai.openaiApiKey') ?? '';
-    this.model   = config.get<string>('ai.openaiModel')  ?? 'gpt-4o-mini';
+    this.model   = config.get<string>('ai.openaiModel')  ?? 'qwen/qwen3.6-plus';
     this.baseUrl = config.get<string>('ai.openaiBaseUrl') ?? 'https://api.openai.com/v1';
   }
 
@@ -52,12 +52,14 @@ export class OpenAiProvider {
       { role: 'user',    content: userPrompt   },
     ];
 
+    // No response_format constraint: not every OpenAI-compatible provider/model
+    // (e.g. OpenRouter free-tier models) supports json_object/json_schema mode.
+    // Prompts already instruct JSON output; parseStructured() has a raw-text fallback.
     const body = JSON.stringify({
       model: this.model,
       messages,
       temperature: 0.3,
       max_tokens: 1024,
-      response_format: { type: 'json_object' },
     });
 
     const promptHash = this.hash(body);

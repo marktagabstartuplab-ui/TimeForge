@@ -54,7 +54,7 @@ function rowStatus(approvedHours: number, rejectedHours: number): RowStatus {
 }
 
 function formatCurrency(n: number): string {
-  return `$${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
+  return `₱${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
 function formatDateRange(start: string, end: string): string {

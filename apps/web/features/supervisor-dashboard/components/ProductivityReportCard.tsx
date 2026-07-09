@@ -58,7 +58,7 @@ export function ProductivityReportCard() {
             isLoading
               ? "…"
               : data?.overtimeCost !== null && data?.overtimeCost !== undefined
-                ? `$${data.overtimeCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
+                ? `₱${data.overtimeCost.toLocaleString("en-US", { minimumFractionDigits: 2 })}`
                 : `${data?.overtimeHours ?? 0}h`
           }
           caption={

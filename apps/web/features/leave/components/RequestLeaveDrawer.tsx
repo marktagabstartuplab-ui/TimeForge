@@ -1,7 +1,9 @@
 "use client";
 
+import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { CloudUpload, Info } from "lucide-react";
 import {
   Dialog,
@@ -21,17 +23,18 @@ import { FieldLabel, IconInput } from "@/features/auth/components/fields";
 import { FieldError } from "@/features/auth/components/FormMessages";
 import { Textarea } from "@/components/ui/textarea";
 import { leaveRequestSchema, LEAVE_TYPES, type LeaveRequestValues } from "../schemas/leave.schema";
+import { ApiError } from "@/lib/api/client";
+import {
+  createLeaveRequest,
+  getLeaveBalances,
+  type LeaveType,
+} from "../api/leave.service";
 
-/**
- * BACKEND GAP — Leave management has no API module yet (no /leave endpoints,
- * no balance or request models). This drawer is a design-complete,
- * validation-complete UI; submission stays disabled until the backend ships.
- */
-const BALANCES: { label: string; value: string }[] = [
-  { label: "Annual", value: "—" },
-  { label: "Sick", value: "—" },
-  { label: "Personal", value: "—" },
-];
+const BALANCE_LABELS: Record<LeaveType, string> = {
+  ANNUAL: "Annual",
+  SICK: "Sick",
+  PERSONAL: "Personal",
+};
 
 interface RequestLeaveDrawerProps {
   open: boolean;
@@ -39,19 +42,56 @@ interface RequestLeaveDrawerProps {
 }
 
 export function RequestLeaveDrawer({ open, onOpenChange }: RequestLeaveDrawerProps) {
+  const queryClient = useQueryClient();
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [successMessage, setSuccessMessage] = useState<string | null>(null);
+
+  const { data: balances } = useQuery({
+    queryKey: ["leave", "balances"],
+    queryFn: getLeaveBalances,
+    enabled: open,
+  });
+
   const {
     register,
     control,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<LeaveRequestValues>({
     resolver: zodResolver(leaveRequestSchema),
     defaultValues: { leaveType: "", startDate: "", endDate: "", reason: "" },
   });
 
-  // Validation runs so the form UX is demonstrably complete; the actual
-  // submit is a no-op until a leave endpoint exists.
-  const onSubmit = () => undefined;
+  useEffect(() => {
+    if (open) {
+      reset({ leaveType: "", startDate: "", endDate: "", reason: "" });
+      setErrorMessage(null);
+      setSuccessMessage(null);
+    }
+  }, [open, reset]);
+
+  const mutation = useMutation({
+    mutationFn: (values: LeaveRequestValues) =>
+      createLeaveRequest({
+        type: values.leaveType as LeaveType,
+        startDate: values.startDate,
+        endDate: values.endDate,
+        reason: values.reason,
+      }),
+    onSuccess: () => {
+      setErrorMessage(null);
+      setSuccessMessage("Leave request submitted for approval.");
+      queryClient.invalidateQueries({ queryKey: ["leave"] });
+      queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] });
+      setTimeout(() => onOpenChange(false), 1200);
+    },
+    onError: (err) => {
+      setErrorMessage(err instanceof ApiError ? err.message : "Failed to submit leave request.");
+    },
+  });
+
+  const onSubmit = (values: LeaveRequestValues) => mutation.mutate(values);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -67,33 +107,46 @@ export function RequestLeaveDrawer({ open, onOpenChange }: RequestLeaveDrawerPro
           className="flex min-h-0 flex-1 flex-col"
         >
           <div className="flex-1 space-y-5 overflow-y-auto px-6 py-5">
-            <div
-              role="status"
-              className="flex items-start gap-2 rounded-[10px] border border-brand/20 bg-brand-cyan/10 p-3 text-[13px] text-brand-navy"
-            >
-              <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
-              <span>
-                Leave management is not available yet — the backend has no leave module. This form
-                will activate once the API ships.
-              </span>
-            </div>
+            {errorMessage && (
+              <div
+                role="alert"
+                className="flex items-start gap-2 rounded-[10px] border border-red-300 bg-red-50 p-3 text-[13px] text-red-700"
+              >
+                <Info className="mt-0.5 h-4 w-4 shrink-0" aria-hidden="true" />
+                <span>{errorMessage}</span>
+              </div>
+            )}
+            {successMessage && (
+              <div
+                role="status"
+                className="flex items-start gap-2 rounded-[10px] border border-brand/20 bg-brand-cyan/10 p-3 text-[13px] text-brand-navy"
+              >
+                <Info className="mt-0.5 h-4 w-4 shrink-0 text-brand" aria-hidden="true" />
+                <span>{successMessage}</span>
+              </div>
+            )}
 
             <div>
               <p className="mb-2 text-xs font-bold uppercase tracking-[1px] text-brand-muted">
                 Your Balances
               </p>
               <div className="grid grid-cols-3 gap-3">
-                {BALANCES.map((b) => (
-                  <div
-                    key={b.label}
-                    className="flex flex-col items-center gap-1 rounded-[12px] border border-[#c3c6d2]/50 bg-[#f0eff0] px-3 py-4"
-                  >
-                    <span className="text-[10px] font-bold uppercase tracking-[1px] text-brand-muted">
-                      {b.label}
-                    </span>
-                    <span className="text-2xl font-bold text-brand-muted/60">{b.value}</span>
-                  </div>
-                ))}
+                {LEAVE_TYPES.map((t) => {
+                  const balance = balances?.find((b) => b.type === t.value);
+                  return (
+                    <div
+                      key={t.value}
+                      className="flex flex-col items-center gap-1 rounded-[12px] border border-[#c3c6d2]/50 bg-[#f0eff0] px-3 py-4"
+                    >
+                      <span className="text-[10px] font-bold uppercase tracking-[1px] text-brand-muted">
+                        {BALANCE_LABELS[t.value as LeaveType]}
+                      </span>
+                      <span className="text-2xl font-bold text-brand-navy">
+                        {balance ? balance.remainingDays : "—"}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
             </div>
 
@@ -166,7 +219,7 @@ export function RequestLeaveDrawer({ open, onOpenChange }: RequestLeaveDrawerPro
                 type="button"
                 id="leave-attachments"
                 aria-disabled="true"
-                title="File upload requires the leave backend"
+                title="Attachment upload is coming soon"
                 className="flex w-full cursor-not-allowed flex-col items-center justify-center gap-1.5 rounded-[12px] border-2 border-dashed border-[#c3c6d2] bg-white px-6 py-8 text-center"
               >
                 <CloudUpload className="h-6 w-6 text-brand" aria-hidden="true" />
@@ -183,11 +236,10 @@ export function RequestLeaveDrawer({ open, onOpenChange }: RequestLeaveDrawerPro
             </DialogClose>
             <button
               type="submit"
-              aria-disabled="true"
-              title="Unavailable — leave backend not implemented"
-              className="cursor-not-allowed rounded-[10px] bg-brand px-6 py-2.5 text-sm font-bold text-white opacity-70"
+              disabled={mutation.isPending}
+              className="rounded-[10px] bg-brand px-6 py-2.5 text-sm font-bold text-white transition-opacity hover:bg-[#1467d6] disabled:cursor-not-allowed disabled:opacity-70"
             >
-              Submit Request
+              {mutation.isPending ? "Submitting…" : "Submit Request"}
             </button>
           </div>
         </form>

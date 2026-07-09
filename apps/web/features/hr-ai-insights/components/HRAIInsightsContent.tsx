@@ -36,7 +36,7 @@ import { getHrAiInsights } from "../api/hr-ai-insights.service";
 import type { HrAiInsightsResponse } from "../api/hr-ai-insights.service";
 
 function formatCurrency(n: number): string {
-  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  return `₱${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
 function formatDateShort(iso: string): string {

@@ -93,7 +93,7 @@ export function PayrollOversightContent() {
   const totals = dashboard?.cards;
 
   const chartData = distribution?.departments ?? [];
-  const totalSpendFormatted = distribution ? `$${(distribution.totalSpend / 1000000).toFixed(1)}M` : "$0.0M";
+  const totalSpendFormatted = distribution ? `₱${(distribution.totalSpend / 1000000).toFixed(1)}M` : "₱0.0M";
 
   return (
     <div className="flex flex-col gap-6">
@@ -142,7 +142,7 @@ export function PayrollOversightContent() {
           </div>
           <p className="mt-4 text-sm font-medium text-brand-muted">Total Org Payroll</p>
           <p className="mt-1 text-2xl font-bold text-brand-ink">
-            {isDashboardLoading ? "..." : `$${(totals?.totalPayroll.value ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
+            {isDashboardLoading ? "..." : `₱${(totals?.totalPayroll.value ?? 0).toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`}
           </p>
         </div>
 
@@ -157,7 +157,6 @@ export function PayrollOversightContent() {
           <p className="mt-1 text-2xl font-bold text-brand-ink">
             {isDashboardLoading ? "..." : totals?.activePayruns.value ?? 0}
           </p>
-          {/* Progress Bar mockup */}
           <div className="mt-3 w-full bg-gray-100 rounded-full h-1.5">
             <div className="bg-[#0052cc] h-1.5 rounded-full" style={{ width: "70%" }}></div>
           </div>
@@ -252,7 +251,7 @@ export function PayrollOversightContent() {
                         </td>
                         <td className="py-4 px-4 text-brand-muted">{run.department}</td>
                         <td className="py-4 px-4 font-semibold text-brand-ink">
-                          {run.grossTotal > 0 ? `$${run.grossTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "$0.00"}
+                          {run.grossTotal > 0 ? `₱${run.grossTotal.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}` : "₱0.00"}
                         </td>
                         <td className="py-4 px-4">
                           <StatusBadge label={run.status} tone={badgeTone} />
@@ -358,7 +357,7 @@ export function PayrollOversightContent() {
                 </div>
                 <div className="flex items-center gap-4 text-right">
                   <span className="text-xs text-brand-muted font-medium">
-                    ${dept.amount.toLocaleString("en-US", { maximumFractionDigits: 0 })}
+                    ₱{dept.amount.toLocaleString("en-US", { maximumFractionDigits: 0 })}
                   </span>
                   <span className="font-bold text-brand-ink w-8">{dept.value}%</span>
                 </div>

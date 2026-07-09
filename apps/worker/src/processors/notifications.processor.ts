@@ -1,17 +1,55 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
 import { Job } from 'bullmq';
+import { PrismaService } from '../../../api/src/common/prisma/prisma.service';
+import { MailerService } from '../../../api/src/infra/mailer.service';
 
-/**
- * Example queue consumer. Jobs are idempotent (deterministic jobId) so retries
- * never duplicate side effects (Phase 2 §19).
- */
+export interface NotificationDeliveryJobData {
+  notificationId: string;
+  tenantId: string;
+  organizationId: string;
+  userId: string;
+  email: string;
+  title: string;
+  message: string;
+  channel: 'IN_APP' | 'EMAIL';
+}
+
 @Processor('notifications')
 export class NotificationsProcessor extends WorkerHost {
   private readonly logger = new Logger(NotificationsProcessor.name);
 
-  async process(job: Job): Promise<void> {
-    this.logger.log(`Processing notification job ${job.id} (${job.name})`);
-    // Phase 6+: deliver in-app / email notifications from domain events.
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly mailer: MailerService,
+  ) {
+    super();
+  }
+
+  async process(job: Job<NotificationDeliveryJobData>): Promise<void> {
+    const { notificationId, title, message, email, channel } = job.data;
+    this.logger.log(`Processing notification job ${job.id}: "${title}" (channel: ${channel})`);
+
+    try {
+      if (channel === 'EMAIL') {
+        await this.mailer.send(email, title, message);
+      }
+
+      await this.prisma.notification.update({
+        where: { id: notificationId },
+        data: { status: 'SENT' },
+      });
+
+      this.logger.log(`Notification ${notificationId} delivered (${channel})`);
+    } catch (err: unknown) {
+      this.logger.error(
+        `Failed to deliver notification ${notificationId}: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      await this.prisma.notification.update({
+        where: { id: notificationId },
+        data: { status: 'FAILED' },
+      }).catch(() => {});
+      throw err;
+    }
   }
 }

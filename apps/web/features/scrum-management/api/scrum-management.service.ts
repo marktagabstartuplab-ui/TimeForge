@@ -103,6 +103,7 @@ export interface ScrumEntryDetail {
   createdAt: string;
   updatedAt: string;
   version: number;
+  recurringBlocker?: boolean;
   user: {
     id: string;
     firstName: string;

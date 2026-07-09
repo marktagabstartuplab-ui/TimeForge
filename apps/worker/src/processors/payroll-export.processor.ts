@@ -166,7 +166,7 @@ async function buildPeriodPdf(startDate: Date, endDate: Date, lineItems: LineIte
     doc.fontSize(10);
     for (const item of lineItems) {
       doc.text(
-        `${item.user.firstName} ${item.user.lastName} (${item.user.email}) — Approved: ${item.approvedHours}h, OT: ${item.overtimeHours}h, Rate: $${item.hourlyRate}/hr, Est. Pay: $${item.estimatedPay}`,
+        `${item.user.firstName} ${item.user.lastName} (${item.user.email}) — Approved: ${item.approvedHours}h, OT: ${item.overtimeHours}h, Rate: ₱${item.hourlyRate}/hr, Est. Pay: ₱${item.estimatedPay}`,
       );
     }
     doc.end();
@@ -181,8 +181,8 @@ async function buildPeriodExcel(lineItems: LineItemRow[]): Promise<Buffer> {
     { header: 'Email', key: 'email', width: 30 },
     { header: 'Approved Hours', key: 'approved', width: 16 },
     { header: 'Overtime Hours', key: 'overtime', width: 16 },
-    { header: 'Hourly Rate', key: 'rate', width: 14 },
-    { header: 'Estimated Pay', key: 'pay', width: 16 },
+    { header: 'Hourly Rate', key: 'rate', width: 14, style: { numFmt: '"₱"#,##0.00' } },
+    { header: 'Estimated Pay', key: 'pay', width: 16, style: { numFmt: '"₱"#,##0.00' } },
   ];
   sheet.getRow(1).font = { bold: true };
   for (const item of lineItems) {
@@ -221,7 +221,7 @@ async function buildOrgPdf(periods: PeriodSummaryRow[]): Promise<Buffer> {
     doc.fontSize(10);
     for (const p of periods) {
       const t = totalsOf(p);
-      doc.text(`${formatDate(p.startDate)} – ${formatDate(p.endDate)} (${p.type}) — Status: ${p.status} — Headcount: ${t.headcount} — Total: $${t.totalEstimatedPay.toFixed(2)}`);
+      doc.text(`${formatDate(p.startDate)} – ${formatDate(p.endDate)} (${p.type}) — Status: ${p.status} — Headcount: ${t.headcount} — Total: ₱${t.totalEstimatedPay.toFixed(2)}`);
     }
     doc.end();
   });

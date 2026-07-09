@@ -105,6 +105,19 @@ enum AuditAction {
   PAYROLL_SENT_TO_BANK
 }
 
+enum LeaveType {
+  ANNUAL
+  SICK
+  PERSONAL
+}
+
+enum LeaveRequestStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  CANCELLED
+}
+
 enum TimeEntrySource {
   TIMER
   MANUAL
@@ -208,6 +221,8 @@ model Organization {
   kpiTemplates   KpiTemplate[]
   payrollPeriods PayrollPeriod[]
   shifts         Shift[]
+  leaveRequests  LeaveRequest[]
+  leaveBalances  LeaveBalance[]
 
   @@unique([tenantId, slug])
   @@unique([tenantId, id])
@@ -271,26 +286,34 @@ model User {
   failedLoginAttempts Int       @default(0) @map("failed_login_attempts")
   lockoutUntil        DateTime? @map("lockout_until") @db.Timestamptz
 
-  organization       Organization      @relation(fields: [tenantId, organizationId], references: [tenantId, id])
-  department         Department?       @relation(fields: [departmentId], references: [id])
-  team               Team?             @relation(fields: [teamId], references: [id])
-  roles              UserRole[]
-  refreshTokens      RefreshToken[]
-  timeEntries        TimeEntry[]
-  timesheets         Timesheet[]
-  scrumEntries       ScrumEntry[]
-  scrumTasks         ScrumTask[]
-  workSessions       WorkSession[]
-  kpiProgress        KpiProgress[]
-  approvals          Approval[]        @relation("SupervisorApprovals")
-  payrollLineItems   PayrollLineItem[]
-  notifications      Notification[]
-  sentNotifications  Notification[]    @relation("NotificationSender")
-  departmentsManaged Department[]      @relation("DepartmentManager")
-  securityLogs       SecurityLog[]
-  securityAlerts     SecurityAlert[]
-  generatedReports   GeneratedReport[]
-  shifts             Shift[]
+  emailVerificationToken     String?   @map("email_verification_token")
+  emailVerificationExpiresAt DateTime? @map("email_verification_expires_at") @db.Timestamptz
+  passwordResetToken         String?   @map("password_reset_token")
+  passwordResetExpiresAt     DateTime? @map("password_reset_expires_at") @db.Timestamptz
+
+  organization          Organization      @relation(fields: [tenantId, organizationId], references: [tenantId, id])
+  department            Department?       @relation(fields: [departmentId], references: [id])
+  team                  Team?             @relation(fields: [teamId], references: [id])
+  roles                 UserRole[]
+  refreshTokens         RefreshToken[]
+  timeEntries           TimeEntry[]
+  timesheets            Timesheet[]
+  scrumEntries          ScrumEntry[]
+  scrumTasks            ScrumTask[]
+  workSessions          WorkSession[]
+  kpiProgress           KpiProgress[]
+  approvals             Approval[]        @relation("SupervisorApprovals")
+  payrollLineItems      PayrollLineItem[]
+  notifications         Notification[]
+  sentNotifications     Notification[]    @relation("NotificationSender")
+  departmentsManaged    Department[]      @relation("DepartmentManager")
+  securityLogs          SecurityLog[]
+  securityAlerts        SecurityAlert[]
+  generatedReports      GeneratedReport[]
+  shifts                Shift[]
+  leaveRequests         LeaveRequest[]    @relation("LeaveRequestUser")
+  leaveRequestsReviewed LeaveRequest[]    @relation("LeaveRequestReviewer")
+  leaveBalances         LeaveBalance[]    @relation("LeaveBalanceUser")
 
   @@unique([tenantId, email])
   @@unique([tenantId, id])
@@ -335,6 +358,7 @@ model RolePermission {
   permission Permission @relation(fields: [permissionId], references: [id], onDelete: Cascade)
 
   @@id([roleId, permissionId])
+  @@index([permissionId])
   @@map("role_permissions")
 }
 
@@ -346,6 +370,7 @@ model UserRole {
   role Role @relation(fields: [roleId], references: [id], onDelete: Cascade)
 
   @@id([userId, roleId])
+  @@index([roleId])
   @@map("user_roles")
 }
 
@@ -422,6 +447,7 @@ model Department {
   teams        Team[]
   projects     Project[]
   shifts       Shift[]
+  timeEntries  TimeEntry[]
 
   @@unique([tenantId, organizationId, name])
   @@index([tenantId, organizationId])
@@ -567,8 +593,11 @@ model TimeEntry {
   startTime       DateTime        @map("start_time") @db.Timestamptz
   endTime         DateTime?       @map("end_time") @db.Timestamptz
   durationMinutes Int?            @map("duration_minutes")
+  task            String?
   description     String?
+  departmentId    String?         @map("department_id") @db.Uuid
   referenceLinks  Json?           @map("reference_links")
+  attachments     Json?           @map("attachments")
   createdBy       String?         @map("created_by") @db.Uuid
   updatedBy       String?         @map("updated_by") @db.Uuid
   createdAt       DateTime        @default(now()) @map("created_at") @db.Timestamptz
@@ -578,6 +607,7 @@ model TimeEntry {
 
   organization Organization  @relation(fields: [tenantId, organizationId], references: [tenantId, id])
   user         User          @relation(fields: [userId], references: [id])
+  department   Department?   @relation(fields: [departmentId], references: [id])
   project      Project?      @relation(fields: [projectId], references: [id])
   client       Client?       @relation(fields: [clientId], references: [id])
   workCategory WorkCategory? @relation(fields: [workCategoryId], references: [id])
@@ -586,6 +616,9 @@ model TimeEntry {
 
   @@index([tenantId, userId, startTime])
   @@index([tenantId, organizationId])
+  @@index([tenantId, departmentId])
+  @@index([tenantId, projectId])
+  @@index([tenantId, clientId])
   @@index([timesheetId])
   @@index([workSessionId])
   @@map("time_entries")
@@ -869,6 +902,59 @@ model Approval {
   @@map("approvals")
 }
 
+// ─── Leave Management ─────────────────────────────────────────────────────
+
+model LeaveRequest {
+  id             String             @id @default(uuid()) @db.Uuid
+  tenantId       String             @map("tenant_id") @db.Uuid
+  organizationId String             @map("organization_id") @db.Uuid
+  userId         String             @map("user_id") @db.Uuid
+  type           LeaveType
+  startDate      DateTime           @map("start_date") @db.Date
+  endDate        DateTime           @map("end_date") @db.Date
+  days           Decimal            @db.Decimal(5, 2)
+  reason         String
+  status         LeaveRequestStatus @default(PENDING)
+  reviewedBy     String?            @map("reviewed_by") @db.Uuid
+  reviewedAt     DateTime?          @map("reviewed_at") @db.Timestamptz
+  reviewNote     String?            @map("review_note")
+  attachmentKey  String?            @map("attachment_key")
+  createdBy      String?            @map("created_by") @db.Uuid
+  updatedBy      String?            @map("updated_by") @db.Uuid
+  createdAt      DateTime           @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime           @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?          @map("deleted_at") @db.Timestamptz
+  version        Int                @default(0)
+
+  organization Organization @relation(fields: [tenantId, organizationId], references: [tenantId, id])
+  user         User         @relation("LeaveRequestUser", fields: [userId], references: [id])
+  reviewer     User?        @relation("LeaveRequestReviewer", fields: [reviewedBy], references: [id])
+
+  @@index([tenantId, userId, status])
+  @@index([tenantId, organizationId, status])
+  @@map("leave_requests")
+}
+
+model LeaveBalance {
+  id             String    @id @default(uuid()) @db.Uuid
+  tenantId       String    @map("tenant_id") @db.Uuid
+  organizationId String    @map("organization_id") @db.Uuid
+  userId         String    @map("user_id") @db.Uuid
+  type           LeaveType
+  year           Int
+  allocatedDays  Decimal   @default(0) @map("allocated_days") @db.Decimal(5, 2)
+  usedDays       Decimal   @default(0) @map("used_days") @db.Decimal(5, 2)
+  createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  version        Int       @default(0)
+
+  organization Organization @relation(fields: [tenantId, organizationId], references: [tenantId, id])
+  user         User         @relation("LeaveBalanceUser", fields: [userId], references: [id])
+
+  @@unique([tenantId, userId, type, year])
+  @@map("leave_balances")
+}
+
 // ─── KPI — Phase 9 ───────────────────────────────────────────────────────────
 
 model KpiTemplate {
@@ -924,31 +1010,31 @@ model KpiProgress {
 // ─── Payroll Preparation — Phase 9 ───────────────────────────────────────────
 
 model PayrollPeriod {
-  id             String              @id @default(uuid()) @db.Uuid
-  tenantId       String              @map("tenant_id") @db.Uuid
-  organizationId String              @map("organization_id") @db.Uuid
-  type           PayrollPeriodType
-  status         PayrollPeriodStatus @default(OPEN)
-  startDate      DateTime            @map("start_date") @db.Date
-  endDate        DateTime            @map("end_date") @db.Date
-  lockedAt           DateTime?               @map("locked_at") @db.Timestamptz
-  exportedAt         DateTime?               @map("exported_at") @db.Timestamptz
-  processingStatus   PayrollProcessingStatus @default(DRAFT) @map("processing_status")
-  validatedAt        DateTime?               @map("validated_at") @db.Timestamptz
-  validatedBy        String?                 @map("validated_by") @db.Uuid
-  approvedAt         DateTime?               @map("approved_at") @db.Timestamptz
-  approvedBy         String?                 @map("approved_by") @db.Uuid
-  rejectedAt         DateTime?               @map("rejected_at") @db.Timestamptz
-  rejectedBy         String?                 @map("rejected_by") @db.Uuid
-  rejectionReason    String?                 @map("rejection_reason")
-  sentToBankAt       DateTime?               @map("sent_to_bank_at") @db.Timestamptz
-  sentToBankBy       String?                 @map("sent_to_bank_by") @db.Uuid
-  createdBy          String?                 @map("created_by") @db.Uuid
-  updatedBy      String?             @map("updated_by") @db.Uuid
-  createdAt      DateTime            @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime            @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt      DateTime?           @map("deleted_at") @db.Timestamptz
-  version        Int                 @default(0)
+  id               String                  @id @default(uuid()) @db.Uuid
+  tenantId         String                  @map("tenant_id") @db.Uuid
+  organizationId   String                  @map("organization_id") @db.Uuid
+  type             PayrollPeriodType
+  status           PayrollPeriodStatus     @default(OPEN)
+  startDate        DateTime                @map("start_date") @db.Date
+  endDate          DateTime                @map("end_date") @db.Date
+  lockedAt         DateTime?               @map("locked_at") @db.Timestamptz
+  exportedAt       DateTime?               @map("exported_at") @db.Timestamptz
+  processingStatus PayrollProcessingStatus @default(DRAFT) @map("processing_status")
+  validatedAt      DateTime?               @map("validated_at") @db.Timestamptz
+  validatedBy      String?                 @map("validated_by") @db.Uuid
+  approvedAt       DateTime?               @map("approved_at") @db.Timestamptz
+  approvedBy       String?                 @map("approved_by") @db.Uuid
+  rejectedAt       DateTime?               @map("rejected_at") @db.Timestamptz
+  rejectedBy       String?                 @map("rejected_by") @db.Uuid
+  rejectionReason  String?                 @map("rejection_reason")
+  sentToBankAt     DateTime?               @map("sent_to_bank_at") @db.Timestamptz
+  sentToBankBy     String?                 @map("sent_to_bank_by") @db.Uuid
+  createdBy        String?                 @map("created_by") @db.Uuid
+  updatedBy        String?                 @map("updated_by") @db.Uuid
+  createdAt        DateTime                @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt        DateTime                @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt        DateTime?               @map("deleted_at") @db.Timestamptz
+  version          Int                     @default(0)
 
   organization Organization    @relation(fields: [tenantId, organizationId], references: [tenantId, id])
   reports      PayrollReport[]
@@ -978,6 +1064,7 @@ model PayrollReport {
   lineItems PayrollLineItem[]
 
   @@index([tenantId, payrollPeriodId])
+  @@index([tenantId, organizationId])
   @@map("payroll_reports")
 }
 
@@ -1004,6 +1091,7 @@ model PayrollLineItem {
 
   @@unique([payrollReportId, userId])
   @@index([tenantId, payrollReportId])
+  @@index([tenantId, organizationId])
   @@map("payroll_line_items")
 }
 
@@ -1116,6 +1204,7 @@ enum AiFeature {
   BLOCKER_DETECTION
   PRODUCTIVITY_INSIGHT
   SUPERVISOR_ADVISORY
+  FINANCE_REPORT
 
   @@map("ai_feature")
 }
@@ -1232,6 +1321,7 @@ model SecurityLog {
   @@index([severity])
   @@index([createdAt])
   @@index([userId])
+  @@index([tenantId, organizationId])
   @@map("security_logs")
 }
 
@@ -1254,6 +1344,7 @@ model SecurityAlert {
   @@index([severity])
   @@index([createdAt])
   @@index([userId])
+  @@index([tenantId, organizationId])
   @@map("security_alerts")
 }
 
@@ -1292,5 +1383,6 @@ model GeneratedReport {
   @@index([organizationId])
   @@index([category])
   @@index([createdAt])
+  @@index([tenantId, organizationId])
   @@map("generated_reports")
 }

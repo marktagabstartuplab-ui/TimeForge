@@ -6,7 +6,7 @@ import { cn } from "@/lib/utils";
 
 export interface ToastState {
   message: string;
-  tone?: "success" | "error";
+  tone?: "success" | "error" | "info";
 }
 
 interface ToastProps {

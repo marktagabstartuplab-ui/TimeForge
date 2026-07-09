@@ -15,6 +15,8 @@ export interface Me {
   organization: { id: string; name: string };
   avatarUrl: string | null;
   lastLoginAt: string | null;
+  createdAt: string;
+  supervisor: { id: string; firstName: string; lastName: string; email: string; avatarUrl: string | null } | null;
   roles: { role: { key: string; name: string } }[];
 }
 

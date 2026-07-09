@@ -1,8 +1,8 @@
 import type { Metadata } from "next";
-import { ReportsDashboardContent } from "@/features/reports/components/ReportsDashboardContent";
+import { FinanceReportsContent } from "@/features/finance-reports/components/FinanceReportsContent";
 
-export const metadata: Metadata = { title: "Reports & Analytics | TimeForge" };
+export const metadata: Metadata = { title: "Finance Reports | TimeForge" };
 
 export default function FinanceReportsPage() {
-  return <ReportsDashboardContent />;
+  return <FinanceReportsContent />;
 }

@@ -15,9 +15,9 @@ export function SectionCard({ title, action, children, className }: SectionCardP
         className,
       )}
     >
-      <div className="flex items-center justify-between">
+      <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
         <h3 className="text-xl text-brand-navy">{title}</h3>
-        {action}
+        {action ? <div className="min-w-0">{action}</div> : null}
       </div>
       {children}
     </div>

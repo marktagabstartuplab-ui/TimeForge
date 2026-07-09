@@ -103,7 +103,7 @@ export function PayslipsContent() {
       header: "Gross Pay",
       render: (item) =>
         rate != null ? (
-          `$${(hoursOf(item) * rate).toFixed(2)}`
+          `₱${(hoursOf(item) * rate).toFixed(2)}`
         ) : (
           <Tooltip>
             <TooltipTrigger
@@ -215,7 +215,7 @@ export function PayslipsContent() {
               <MetricCard
                 icon={TrendingUp}
                 label="Base Rate"
-                value={`$${rate.toFixed(2)}`}
+                value={`₱${rate.toFixed(2)}`}
                 valueSuffix="/ hr"
               />
             ) : (
@@ -231,7 +231,7 @@ export function PayslipsContent() {
               <MetricCard
                 icon={Landmark}
                 label="Est. Total Payout (Gross)"
-                value={`$${(accumulatedHours * rate).toFixed(2)}`}
+                value={`₱${(accumulatedHours * rate).toFixed(2)}`}
                 emphasis
               />
             ) : (

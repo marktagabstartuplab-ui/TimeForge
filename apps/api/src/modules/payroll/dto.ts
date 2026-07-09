@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 import { Type } from 'class-transformer';
 import { PayrollPeriodType } from '@prisma/client';
 
@@ -48,6 +48,21 @@ export interface PayrollRateQuery {
 }
 
 export class RejectPayrollDto {
+  @IsString()
+  reason!: string;
+}
+
+// -- Finance Payroll Processing (validate/approve/reject/send-to-bank pipeline) --
+
+export class PayrollActionDto {
+  @IsUUID()
+  periodId!: string;
+}
+
+export class PayrollRejectActionDto {
+  @IsUUID()
+  periodId!: string;
+
   @IsString()
   reason!: string;
 }

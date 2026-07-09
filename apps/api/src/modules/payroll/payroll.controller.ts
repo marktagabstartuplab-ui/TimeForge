@@ -14,7 +14,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { PayrollService } from './payroll.service';
-import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, RunActionDto, PayrollExportRequestDto } from './dto';
+import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, RunActionDto, PayrollExportRequestDto, PayrollActionDto, PayrollRejectActionDto } from './dto';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
 @Controller({ path: 'payroll', version: '1' })
@@ -210,5 +210,96 @@ export class PayrollController {
     @Body() dto: PayrollExportRequestDto,
   ) {
     return this.svc.queueExport(u, dto.format, dto.periodId);
+  }
+
+  // -- Finance Payroll Processing (validate/approve/reject/send-to-bank pipeline) --
+
+  @Get('processing/:periodId')
+  @RequirePermissions('payroll:read')
+  getProcessingDashboard(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('periodId', ParseUUIDPipe) periodId: string,
+  ) {
+    return this.svc.getProcessingDashboard(u, periodId);
+  }
+
+  @Get('employees')
+  @RequirePermissions('payroll:read_employees')
+  getPayrollEmployees(
+    @CurrentUser() u: AuthPrincipal,
+  ) {
+    return this.svc.getPayrollEmployees(u);
+  }
+
+  @Get('audit-log')
+  @RequirePermissions('payroll:read')
+  getPayrollAuditLog(
+    @CurrentUser() u: AuthPrincipal,
+  ) {
+    return this.svc.getPayrollAuditLog(u);
+  }
+
+  @Get('next-deadline')
+  @RequirePermissions('payroll:read')
+  getNextDeadline(
+    @CurrentUser() u: AuthPrincipal,
+  ) {
+    return this.svc.getNextDeadline(u);
+  }
+
+  @Post('validate')
+  @HttpCode(200)
+  @RequirePermissions('payroll:validate')
+  validatePayroll(
+    @CurrentUser() u: AuthPrincipal,
+    @Body() dto: PayrollActionDto,
+    @Headers('Idempotency-Key') idempotencyKey: string,
+  ) {
+    if (!idempotencyKey?.trim()) {
+      throw new UnprocessableEntityException('Idempotency-Key header is required');
+    }
+    return this.svc.validatePayroll(u, dto.periodId, idempotencyKey.trim());
+  }
+
+  @Post('approve')
+  @HttpCode(200)
+  @RequirePermissions('payroll:approve')
+  approvePayroll(
+    @CurrentUser() u: AuthPrincipal,
+    @Body() dto: PayrollActionDto,
+    @Headers('Idempotency-Key') idempotencyKey: string,
+  ) {
+    if (!idempotencyKey?.trim()) {
+      throw new UnprocessableEntityException('Idempotency-Key header is required');
+    }
+    return this.svc.approvePayroll(u, dto.periodId, idempotencyKey.trim());
+  }
+
+  @Post('reject')
+  @HttpCode(200)
+  @RequirePermissions('payroll:reject')
+  rejectPayroll(
+    @CurrentUser() u: AuthPrincipal,
+    @Body() dto: PayrollRejectActionDto,
+    @Headers('Idempotency-Key') idempotencyKey: string,
+  ) {
+    if (!idempotencyKey?.trim()) {
+      throw new UnprocessableEntityException('Idempotency-Key header is required');
+    }
+    return this.svc.rejectPayroll(u, dto.periodId, dto.reason, idempotencyKey.trim());
+  }
+
+  @Post('send')
+  @HttpCode(200)
+  @RequirePermissions('payroll:send_to_bank')
+  sendToBank(
+    @CurrentUser() u: AuthPrincipal,
+    @Body() dto: PayrollActionDto,
+    @Headers('Idempotency-Key') idempotencyKey: string,
+  ) {
+    if (!idempotencyKey?.trim()) {
+      throw new UnprocessableEntityException('Idempotency-Key header is required');
+    }
+    return this.svc.sendToBank(u, dto.periodId, idempotencyKey.trim());
   }
 }

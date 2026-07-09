@@ -28,6 +28,8 @@ const MENU_CATALOG: MenuItemDef[] = [
   { id: 'timesheets',   label: 'Timesheets',   icon: 'file-text',    route: '/timesheets',         section: 'WORKSPACE',        permission: 'timesheet:read',            badge: 'pendingTimesheets' },
   { id: 'schedules',    label: 'Team Schedules', icon: 'calendar-days', route: '/schedules',       section: 'MANAGEMENT',       permission: 'schedule:read_team' },
   { id: 'kpi-dashboard', label: 'KPI Dashboard', icon: 'target',       route: '/kpi-dashboard',   section: 'MANAGEMENT',       permission: 'kpi_progress:read_team' },
+  { id: 'supervisor-ai-insights', label: 'AI Insights', icon: 'sparkles', route: '/supervisor/ai-insights', section: 'MANAGEMENT', permission: 'ai:trigger_team' },
+  { id: 'supervisor-leave', label: 'Leave Management', icon: 'calendar-clock', route: '/supervisor/leave', section: 'MANAGEMENT', permission: 'leave_request:decide' },
   // ── MANAGEMENT ──
   { id: 'employees',    label: 'Employees',    icon: 'users',        route: '/admin/employees',    section: 'MANAGEMENT',       permission: 'user:read' },
   { id: 'departments',  label: 'Departments',  icon: 'building-2',   route: '/admin/departments',  section: 'MANAGEMENT',       permission: 'org:read_dashboard' },
@@ -42,10 +44,11 @@ const MENU_CATALOG: MenuItemDef[] = [
   // ── FINANCE WORKSPACE (entry points) ──
   { id: 'finance-dashboard',    label: 'Finance Dashboard',    icon: 'layout-grid',      route: '/finance/dashboard',         section: 'FINANCE',  permission: 'payroll:read' },
   { id: 'finance-payroll',      label: 'Payroll Processing',   icon: 'wallet',           route: '/finance/payroll-processing', section: 'FINANCE',  permission: 'payroll:read' },
-  { id: 'finance-reports',      label: 'Reports',              icon: 'bar-chart-3',      route: '/finance/reports',            section: 'FINANCE',  permission: 'payroll:read' },
+  { id: 'finance-reports',      label: 'Finance Report',        icon: 'bar-chart-3',      route: '/finance/reports',            section: 'FINANCE',  permission: 'payroll:read' },
   { id: 'finance-ai-insights',  label: 'AI Insights',          icon: 'sparkles',         route: '/finance/ai-insights',        section: 'FINANCE',  permission: 'payroll:read' },
   // ── SYSTEM ──
   { id: 'system-logs',  label: 'System Logs',  icon: 'scroll-text',  route: '/admin/security',     section: 'SYSTEM',           permission: 'audit:read_org' },
+  { id: 'ai-config',    label: 'AI Settings',  icon: 'sparkles',     route: '/admin/ai-config',    section: 'SYSTEM',           permission: 'org:read' },
 ];
 
 // ─── Response shapes ────────────────────────────────────────────────────────────
@@ -93,6 +96,9 @@ export class NavigationService {
       if (isSupervisorOnly && (item.id === 'employees' || item.id === 'reports')) return false;
       // HR runs payroll processing (payroll_period:read), not the self-payslip view (payroll:read_self).
       if (item.id === 'payroll') return isAdmin || permissions.includes(item.permission) || permissions.includes('payroll_period:read');
+      // The Finance workspace (its own dedicated shell/sidebar) is for the FINANCE role only —
+      // HR and Admin also hold payroll:read, which would otherwise duplicate this section for them.
+      if (item.section === 'FINANCE') return user.roles.includes('FINANCE');
       return isAdmin || permissions.includes(item.permission);
     });
 

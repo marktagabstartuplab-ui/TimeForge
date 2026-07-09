@@ -134,6 +134,12 @@ export function TeamScrumSubmissionsContent() {
                   <span className="text-xs text-brand-muted">
                     {item.user.department?.name || "Unassigned"} • {new Date(item.entryDate).toLocaleDateString()}
                   </span>
+                  {item.recurringBlocker ? (
+                    <span className="inline-flex items-center gap-1 rounded-full bg-red-100 px-2.5 py-0.5 text-xs font-semibold text-red-700">
+                      <AlertCircle className="h-3 w-3" />
+                      Recurring Blocker
+                    </span>
+                  ) : null}
                   <StatusBadge
                     label={item.status === "BLOCKED" ? "Blocked" : "On Track"}
                     tone={item.status === "BLOCKED" ? "danger" : "success"}

@@ -1,10 +1,10 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Link2, Loader2, NotebookPen, Paperclip, X, Zap } from "lucide-react";
+import { Download, FileText, Link2, Loader2, NotebookPen, Paperclip, Upload, X, Zap } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -16,10 +16,18 @@ import { Textarea } from "@/components/ui/textarea";
 import { FieldLabel, IconInput } from "@/features/auth/components/fields";
 import { FieldError, FormBanner } from "@/features/auth/components/FormMessages";
 import type { ToastState } from "@/components/shared/Toast";
+import { Button } from "@/components/ui/button";
 import { listClients, listProjects, listWorkCategories } from "../api/catalog.service";
-import { updateTimeEntry, type TimeEntry } from "../api/time-entries.service";
+import {
+  updateTimeEntry,
+  uploadAttachment,
+  removeAttachment,
+  getAttachmentSignedUrl,
+  type TimeEntry,
+  type TimeEntryAttachment,
+} from "../api/time-entries.service";
 import { workDetailsSchema, type WorkDetailsValues } from "../schemas/time-entry.schema";
-import { composeDescription, splitDescription, type WorkTask } from "../lib/task-select";
+import { type WorkTask } from "../lib/task-select";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
@@ -28,27 +36,38 @@ interface WorkDetailsCardProps {
   running: TimeEntry | null;
   /** Quick Select choice — populates the form when it changes. */
   selectedTask: WorkTask | null;
-  /** Employee's department name (auto from profile, read-only). */
-  departmentName: string | null;
+  /** User's profile department ID (default when entry has none). */
+  profileDepartmentId: string | null;
+  /** Available departments for the dropdown. */
+  departments: { id: string; name: string }[];
   onToast: (toast: ToastState) => void;
 }
 
 /**
  * Section 3 — Work Details. Saves context onto the *running* time entry via
- * PATCH /time-entries/:id: Task + Work Description are composed into the
- * single `description` field (first line = task, rest = description), and
- * Attachments map to `referenceLinks` (URL list).
- *
- * BACKEND GAPS — Department is a profile attribute (not per-entry), so it's
- * shown read-only; file uploads have no employee-facing endpoint, so
- * attachments accept URLs only. TODO: wire real uploads when available.
+ * PATCH /time-entries/:id: Task and Work Description are stored as separate
+ * fields (`task` and `description`). File attachments upload via
+ * POST /time-entries/:id/attachments, stored in the `attachments` JSON column;
+ * URL links still use `referenceLinks`.
  */
-export function WorkDetailsCard({ running, selectedTask, departmentName, onToast }: WorkDetailsCardProps) {
+export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, departments, onToast }: WorkDetailsCardProps) {
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [links, setLinks] = useState<string[]>(running?.referenceLinks ?? []);
   const [newLink, setNewLink] = useState("");
   const [linkError, setLinkError] = useState<string | null>(null);
+
+  const [attachments, setAttachments] = useState<TimeEntryAttachment[]>(running?.attachments ?? []);
+  const [currentVersion, setCurrentVersion] = useState(running?.version ?? 0);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement>(null);
+
+  useEffect(() => {
+    if (!running) return;
+    setLinks(running.referenceLinks ?? []);
+    setAttachments(running.attachments ?? []);
+    setCurrentVersion(running.version);
+  }, [running]);
 
   const { data: clients } = useQuery({ queryKey: ["catalog", "clients"], queryFn: listClients });
   const { data: projects } = useQuery({ queryKey: ["catalog", "projects"], queryFn: listProjects });
@@ -57,7 +76,8 @@ export function WorkDetailsCard({ running, selectedTask, departmentName, onToast
     queryFn: listWorkCategories,
   });
 
-  const initial = splitDescription(running?.description ?? null);
+  const initialTask = running?.task ?? "";
+  const initialDescription = running?.description ?? "";
 
   const {
     register,
@@ -68,8 +88,9 @@ export function WorkDetailsCard({ running, selectedTask, departmentName, onToast
   } = useForm<WorkDetailsValues>({
     resolver: zodResolver(workDetailsSchema),
     defaultValues: {
-      task: initial.task,
-      workDescription: initial.details,
+      task: initialTask,
+      workDescription: initialDescription,
+      departmentId: running?.departmentId ?? profileDepartmentId ?? "",
       clientId: running?.clientId ?? "",
       projectId: running?.projectId ?? "",
       workCategoryId: running?.workCategoryId ?? "",
@@ -82,6 +103,7 @@ export function WorkDetailsCard({ running, selectedTask, departmentName, onToast
     reset({
       task: selectedTask.title,
       workDescription: selectedTask.details,
+      departmentId: running?.departmentId ?? profileDepartmentId ?? "",
       clientId: selectedTask.clientId ?? "",
       projectId: selectedTask.projectId ?? "",
       workCategoryId: selectedTask.workCategoryId ?? "",
@@ -95,13 +117,16 @@ export function WorkDetailsCard({ running, selectedTask, departmentName, onToast
         projectId: values.projectId || undefined,
         clientId: values.clientId || undefined,
         workCategoryId: values.workCategoryId || undefined,
-        description: composeDescription(values.task ?? "", values.workDescription ?? ""),
+        departmentId: values.departmentId || undefined,
+        task: values.task || undefined,
+        description: values.workDescription || undefined,
         referenceLinks: links,
-        version: running.version,
+        version: currentVersion,
       });
     },
-    onSuccess: () => {
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+      setCurrentVersion(updated.version);
       setServerError(null);
       onToast({ message: "Work details saved to the running session." });
     },
@@ -110,12 +135,63 @@ export function WorkDetailsCard({ running, selectedTask, departmentName, onToast
     },
   });
 
+  const uploadFile = useMutation({
+    mutationFn: async (file: File) => {
+      if (!running) throw new Error("No running session");
+      return uploadAttachment(running.id, currentVersion, file);
+    },
+    onSuccess: (updated) => {
+      setAttachments(updated.attachments ?? []);
+      setCurrentVersion(updated.version);
+      setUploadError(null);
+      queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+      onToast({ message: "File uploaded." });
+    },
+    onError: (err) => {
+      const msg = err instanceof ApiError ? err.message : "Upload failed";
+      setUploadError(msg);
+      onToast({ message: msg, tone: "error" });
+    },
+  });
+
+  const deleteFile = useMutation({
+    mutationFn: async (key: string) => {
+      if (!running) throw new Error("No running session");
+      return removeAttachment(running.id, key, currentVersion);
+    },
+    onSuccess: (updated) => {
+      setAttachments(updated.attachments ?? []);
+      setCurrentVersion(updated.version);
+      queryClient.invalidateQueries({ queryKey: ["time-entries"] });
+    },
+    onError: (err) => {
+      onToast({ message: err instanceof ApiError ? err.message : "Remove failed", tone: "error" });
+    },
+  });
+
+  const handleFilePick = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    uploadFile.mutate(file);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const handleDownload = async (attachment: TimeEntryAttachment) => {
+    if (!running) return;
+    try {
+      const { url } = await getAttachmentSignedUrl(running.id, attachment.key);
+      window.open(url, "_blank");
+    } catch {
+      onToast({ message: "Download failed", tone: "error" });
+    }
+  };
+
   const addLink = () => {
     const candidate = newLink.trim();
     if (!candidate) return;
     try {
       const url = new URL(candidate);
-      if (!["http:", "https:"].includes(url.protocol)) throw new Error();
+      if (!["http:", "https:"].includes(url.protocol)) throw new Error("Invalid URL protocol");
     } catch {
       setLinkError("Enter a valid http(s) URL");
       return;
@@ -191,20 +267,32 @@ export function WorkDetailsCard({ running, selectedTask, departmentName, onToast
             ))}
             </div>
 
-            {/* Department (profile, read-only) */}
+            {/* Department (editable override, defaults to profile) */}
             <div className="mt-4">
               <FieldLabel htmlFor="wd-department">Department</FieldLabel>
-              <input
-                id="wd-department"
-                type="text"
-                disabled
-                value={departmentName ?? "No Department Assigned"}
-                className={cn(
-                  "h-11 w-full rounded-[10px] border border-[#c3c6d2] bg-[#f6f3f4] px-3.5 text-[15px] text-brand-muted",
-                  "cursor-not-allowed",
+              <Controller
+                control={control}
+                name="departmentId"
+                render={({ field }) => (
+                  <Select
+                    value={field.value ?? ""}
+                    onValueChange={(v) => field.onChange(v ?? "")}
+                  >
+                    <SelectTrigger id="wd-department" aria-label="Department" className={selectClass}>
+                      <SelectValue placeholder="Select..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="">Use profile department</SelectItem>
+                      {departments.map((d) => (
+                        <SelectItem key={d.id} value={d.id}>
+                          {d.name}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
                 )}
               />
-              <p className="mt-1 text-xs text-brand-muted/70">Auto-filled from your profile.</p>
+              <p className="mt-1 text-xs text-brand-muted/70">Defaults to your profile department. Override if this work is for another team.</p>
             </div>
           </div>
 
@@ -272,9 +360,76 @@ export function WorkDetailsCard({ running, selectedTask, departmentName, onToast
               <FieldError message={errors.workDescription?.message} />
             </div>
 
-          {/* Attachments — reference links on the time entry. */}
+          {/* Attachments — file uploads on the time entry. */}
           <div>
-            <FieldLabel htmlFor="wd-attachment">Attachments</FieldLabel>
+            <FieldLabel htmlFor="wd-file-upload">Attachments</FieldLabel>
+            {attachments.length > 0 ? (
+              <ul className="mb-2 flex flex-col gap-1.5">
+                {attachments.map((att) => (
+                  <li
+                    key={att.key}
+                    className="flex items-center gap-2 rounded-[8px] bg-[#f6f3f4] px-3 py-1.5 text-xs"
+                  >
+                    <FileText className="h-3.5 w-3.5 shrink-0 text-brand" aria-hidden="true" />
+                    <span className="min-w-0 flex-1 truncate text-brand-navy">{att.filename}</span>
+                    <span className="shrink-0 text-[10px] text-brand-muted">
+                      {att.size > 1024 * 1024
+                        ? `${(att.size / (1024 * 1024)).toFixed(1)} MB`
+                        : `${Math.round(att.size / 1024)} KB`}
+                    </span>
+                    <button
+                      type="button"
+                      aria-label={`Download ${att.filename}`}
+                      onClick={() => handleDownload(att)}
+                      className="rounded-full p-0.5 text-brand-muted hover:text-brand"
+                    >
+                      <Download className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                    <button
+                      type="button"
+                      aria-label={`Remove ${att.filename}`}
+                      onClick={() => deleteFile.mutate(att.key)}
+                      disabled={deleteFile.isPending}
+                      className="rounded-full p-0.5 text-brand-muted hover:text-red-600 disabled:opacity-50"
+                    >
+                      <X className="h-3.5 w-3.5" aria-hidden="true" />
+                    </button>
+                  </li>
+                ))}
+              </ul>
+            ) : null}
+            <div className="flex gap-2">
+              <input
+                ref={fileRef}
+                type="file"
+                id="wd-file-upload"
+                className="hidden"
+                onChange={handleFilePick}
+              />
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                disabled={uploadFile.isPending}
+                onClick={() => fileRef.current?.click()}
+              >
+                {uploadFile.isPending ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Upload className="h-4 w-4" />
+                )}
+                <span className="ml-1">{uploadFile.isPending ? "Uploading..." : "Upload File"}</span>
+              </Button>
+            </div>
+            {uploadError ? <FieldError message={uploadError} /> : null}
+            <p className="mt-1 text-xs text-brand-muted/70">
+              Max 10 MB · PNG, JPEG, WebP, GIF, PDF, CSV, DOCX, XLSX, ZIP, JSON
+            </p>
+          </div>
+
+          {/* Reference links — URL links on the time entry. */}
+          <div>
+            <FieldLabel htmlFor="wd-link">Reference Links</FieldLabel>
             {links.length > 0 ? (
               <ul className="mb-2 flex flex-col gap-1.5">
                 {links.map((link) => (
@@ -305,7 +460,7 @@ export function WorkDetailsCard({ running, selectedTask, departmentName, onToast
             ) : null}
             <div className="flex gap-2">
               <IconInput
-                id="wd-attachment"
+                id="wd-link"
                 type="url"
                 icon={Paperclip}
                 placeholder="Paste a link (design, PR, doc)..."
@@ -330,15 +485,6 @@ export function WorkDetailsCard({ running, selectedTask, departmentName, onToast
               </button>
             </div>
             {linkError ? <FieldError message={linkError} /> : null}
-            {/*
-             * TODO: Replace URL-only attachments with real file upload once an
-             * employee-facing POST /storage/upload endpoint is available. The backend
-             * UploadService exists (apps/api/src/modules/storage/upload.service.ts)
-             * but is not exposed via an employee-scoped controller.
-             */}
-            <p className="mt-1 text-xs text-brand-muted/70">
-              Links are saved with this session. File uploads need backend support.
-            </p>
           </div>
           </div>
 

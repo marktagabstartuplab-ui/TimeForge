@@ -4,13 +4,18 @@ const schema = z
   .object({
     NODE_ENV: z.string().default('development'),
     API_PORT: z.coerce.number().default(3000),
-    DATABASE_URL: z.string().min(1),
+    DATABASE_URL: z.string().min(1, 'DATABASE_URL is required'),
     DIRECT_URL: z.string().min(1).optional(),
     REDIS_URL: z.string().default('redis://localhost:6379'),
-    JWT_ACCESS_SECRET: z.string().min(8),
-    JWT_REFRESH_SECRET: z.string().min(8),
+    JWT_ACCESS_SECRET: z.string().min(8, 'JWT_ACCESS_SECRET must be at least 8 characters'),
+    JWT_REFRESH_SECRET: z.string().min(8, 'JWT_REFRESH_SECRET must be at least 8 characters'),
     JWT_ACCESS_TTL: z.coerce.number().default(900),
     JWT_REFRESH_TTL: z.coerce.number().default(1209600),
+    CORS_ORIGINS: z.string().min(1, 'CORS_ORIGINS is required — comma-separated allowed origins'),
+    COOKIE_SECURE: z
+      .string()
+      .default('false')
+      .refine((v) => v === 'true' || v === 'false', 'COOKIE_SECURE must be "true" or "false"'),
     // Storage (Supabase optional; required only when STORAGE_DRIVER=supabase)
     STORAGE_DRIVER: z.enum(['local', 'supabase']).default('local'),
     SUPABASE_URL: z.string().url().optional(),
@@ -23,6 +28,7 @@ const schema = z
     SMTP_USER: z.string().optional(),
     SMTP_PASS: z.string().optional(),
     SMTP_FROM: z.string().default('TimeForge Team <no-reply@timeforge.com>'),
+    ARGON2_MEMORY_COST: z.coerce.number().positive().default(65536),
   })
   .superRefine((cfg, ctx) => {
     if (cfg.STORAGE_DRIVER === 'supabase' && (!cfg.SUPABASE_URL || !cfg.SUPABASE_SERVICE_ROLE_KEY)) {
@@ -30,6 +36,20 @@ const schema = z
         code: z.ZodIssueCode.custom,
         message: 'SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY are required when STORAGE_DRIVER=supabase',
         path: ['SUPABASE_URL'],
+      });
+    }
+    if (cfg.NODE_ENV === 'production' && cfg.COOKIE_SECURE !== 'true') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'COOKIE_SECURE must be "true" in production (HTTPS required)',
+        path: ['COOKIE_SECURE'],
+      });
+    }
+    if (cfg.NODE_ENV === 'production' && cfg.REDIS_URL === 'redis://localhost:6379') {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'REDIS_URL must point to a remote Redis instance in production',
+        path: ['REDIS_URL'],
       });
     }
   });

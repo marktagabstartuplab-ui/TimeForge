@@ -2,6 +2,7 @@ import {
   BadRequestException,
   Injectable,
   Logger,
+  NotFoundException,
 } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { ApprovalsService } from '../approvals/approvals.service';
@@ -292,6 +293,36 @@ export class AdminService {
     const result: BulkResult = { results };
     await this.saveIdempotency(caller.tenantId, `approve:${idempotencyKey}`, result);
     return result;
+  }
+
+  // ─── GET /admin/ai-config ─────────────────────────────────────────────────
+
+  async getAiConfig(tenantId: string, organizationId: string) {
+    const settings = await this.organizationService.getSettings(tenantId, organizationId);
+    const aiKeys = settings.filter((s) => s.key.startsWith('ai.'));
+    const result: Record<string, { value: unknown; type: string }> = {};
+    for (const s of aiKeys) {
+      result[s.key] = { value: s.value, type: s.type };
+    }
+    return result;
+  }
+
+  // ─── PUT /admin/ai-config/toggles ─────────────────────────────────────────
+
+  async updateAiToggles(
+    tenantId: string,
+    organizationId: string,
+    actorId: string,
+    toggles: Record<string, boolean>,
+  ) {
+    return this.organizationService.upsertSetting(
+      tenantId,
+      organizationId,
+      actorId,
+      'ai.toggles',
+      toggles,
+      'json',
+    );
   }
 
   // ─── GET /admin/feature-flags ─────────────────────────────────────────────

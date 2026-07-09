@@ -153,7 +153,7 @@ export function AttendanceReportsContent() {
             <Select
               value={departmentId || "ALL"}
               onValueChange={(v) => {
-                setDepartmentId(v === "ALL" ? "" : v);
+                setDepartmentId(v === "ALL" ? "" : (v ?? ""));
                 setPage(1);
               }}
             >
@@ -175,7 +175,7 @@ export function AttendanceReportsContent() {
             <Select
               value={payrollPeriodId || "ALL"}
               onValueChange={(v) => {
-                setPayrollPeriodId(v === "ALL" ? "" : v);
+                setPayrollPeriodId(v === "ALL" ? "" : (v ?? ""));
                 setPage(1);
               }}
             >

@@ -6,8 +6,11 @@ export default () => ({
   redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',
   cookieSecure: (process.env.COOKIE_SECURE ?? 'false') === 'true',
   jwt: {
-    accessSecret: process.env.JWT_ACCESS_SECRET ?? 'dev-access',
-    refreshSecret: process.env.JWT_REFRESH_SECRET ?? 'dev-refresh',
+    // Intentionally no ?? fallback — Zod env.validation.ts requires min(8) and
+    // will throw at boot if these are missing. A silent fallback would defeat
+    // that check and create a critical auth-bypass vulnerability.
+    accessSecret: process.env.JWT_ACCESS_SECRET!,
+    refreshSecret: process.env.JWT_REFRESH_SECRET!,
     accessTtl: parseInt(process.env.JWT_ACCESS_TTL ?? '900', 10),
     refreshTtl: parseInt(process.env.JWT_REFRESH_TTL ?? '1209600', 10),
   },
@@ -21,24 +24,27 @@ export default () => ({
   },
   ai: {
     provider: process.env.AI_PROVIDER ?? 'OPENAI',
-    openaiApiKey:  process.env.OPENAI_API_KEY   ?? '',
-    openaiModel:   process.env.OPENAI_MODEL      ?? 'gpt-4o-mini',
+    openaiApiKey:  process.env.OPENAI_API_KEY!,
+    openaiModel:   process.env.OPENAI_MODEL      ?? 'qwen/qwen3.6-plus',
     openaiBaseUrl: process.env.OPENAI_BASE_URL   ?? 'https://api.openai.com/v1',
   },
   storage: {
-    driver: process.env.STORAGE_DRIVER ?? 'local', // 'local' | 'supabase'
+    driver: process.env.STORAGE_DRIVER ?? 'local',
+  },
+  argon2: {
+    memoryCost: parseInt(process.env.ARGON2_MEMORY_COST ?? '65536', 10),
   },
   supabase: {
-    url: process.env.SUPABASE_URL ?? '',
-    anonKey: process.env.SUPABASE_ANON_KEY ?? '',
-    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY ?? '',
+    url: process.env.SUPABASE_URL,
+    anonKey: process.env.SUPABASE_ANON_KEY,
+    serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     bucket: process.env.SUPABASE_STORAGE_BUCKET ?? 'timeforge',
   },
   smtp: {
     host: process.env.SMTP_HOST ?? 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT ?? '587', 10),
-    user: process.env.SMTP_USER ?? '',
-    pass: process.env.SMTP_PASS ?? '',
+    user: process.env.SMTP_USER,
+    pass: process.env.SMTP_PASS,
     from: process.env.SMTP_FROM ?? 'TimeForge Team <no-reply@timeforge.com>',
   },
 });

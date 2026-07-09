@@ -1,8 +1,11 @@
 import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Patch, Post, Query } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { WorkCategoriesService } from './work-categories.service';
 import { CreateWorkCategoryDto, UpdateWorkCategoryDto } from './dto';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
+@ApiTags('Work Categories')
+@ApiBearerAuth()
 @Controller({ path: 'work-categories', version: '1' })
 export class WorkCategoriesController {
   constructor(private readonly svc: WorkCategoriesService) {}

@@ -14,6 +14,8 @@ const TENANT_MODELS = new Set([
   'Notification',
   'AiJob',
   'AiResult',
+  'LeaveRequest',
+  'LeaveBalance',
 ]);
 
 const READ_ACTIONS = ['findMany', 'findFirst', 'count', 'aggregate', 'groupBy'];

@@ -109,6 +109,20 @@ async function main() {
     { key: 'payroll.overtime', value: { dailyThresholdHours: 8 }, type: 'json' },
     { key: 'schedule.workweek', value: ['MON', 'TUE', 'WED', 'THU', 'FRI'], type: 'json' },
     { key: 'ai.provider', value: 'OPENAI', type: 'scalar' },
+    {
+      key: 'ai.toggles',
+      value: {
+        DAILY_SUMMARY: true,
+        WEEKLY_SUMMARY: true,
+        TIMESHEET_SUMMARY: true,
+        BLOCKER_DETECTION: true,
+        PRODUCTIVITY_INSIGHT: true,
+        SUPERVISOR_ADVISORY: true,
+        KPI_ANALYSIS: true,
+        PAYROLL_VALIDATION: true,
+      },
+      type: 'json',
+    },
   ];
   for (const s of settings) {
     await prisma.organizationSetting.upsert({

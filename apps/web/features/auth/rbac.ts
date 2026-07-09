@@ -18,6 +18,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "payroll:read_self",
     "dashboard:read_self",
     "project:read", "client:read", "work_category:read", "department:read", "team:read",
+    "leave_request:create", "leave_request:read", "leave_request:cancel", "leave_balance:read",
   ],
   SUPERVISOR: [
     "user:read",
@@ -29,6 +30,10 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "payroll:read_status_team",
     "dashboard:read_self", "dashboard:read_team",
     "project:read", "client:read", "work_category:read", "department:read", "team:read",
+    "schedule:read_team",
+    "ai:trigger_team",
+    "leave_request:create", "leave_request:read", "leave_request:cancel", "leave_balance:read",
+    "leave_request:read_team", "leave_request:decide",
   ],
   HR: [
     "user:read",
@@ -38,6 +43,9 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "payroll_period:read",
     "dashboard:read_org",
     "project:read", "client:read", "work_category:read", "department:read", "team:read",
+    "org:read_dashboard",
+    "org:read",
+    "leave_request:read_org", "leave_request:decide", "leave_balance:read_org",
   ],
   FINANCE: [
     "user:read",
@@ -47,6 +55,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "payroll:generate", "payroll:export", "payroll_rate:read", "payroll_rate:update",
     "dashboard:read_org",
     "project:read", "client:read", "work_category:read", "department:read", "team:read",
+    "org:read",
   ],
 };
 

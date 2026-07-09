@@ -38,7 +38,7 @@ const STATUS_TONE: Record<string, BadgeTone> = { OPTIMIZED: "success", ON_TRACK:
 const STATUS_LABEL: Record<string, string> = { OPTIMIZED: "Optimized", ON_TRACK: "On Track", NEEDS_REVIEW: "Needs Review" };
 
 function formatCurrency(n: number): string {
-  return `$${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
+  return `₱${n.toLocaleString(undefined, { maximumFractionDigits: 0 })}`;
 }
 
 function formatDateShort(iso: string): string {

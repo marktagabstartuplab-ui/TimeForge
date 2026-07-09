@@ -4,20 +4,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { NotificationsService } from '../notifications/notifications.service';
-
-export interface SecurityLogsQuery {
-  q?: string;
-  status?: SecurityStatus;
-  severity?: SecuritySeverity;
-  timeRange?: '24h' | '7d' | '30d' | 'all';
-  limit?: string;
-  cursor?: string;
-}
-
-export interface SecurityExportDto {
-  format: 'CSV';
-  periodId?: string;
-}
+import { SecurityLogsQuery, SecurityExportDto } from './dto';
 
 @Injectable()
 export class SecurityService {
@@ -179,15 +166,9 @@ export class SecurityService {
     ]);
 
     return {
-      uptimePercent: 99.98,
       uptimeSeconds: process.uptime(),
       criticalAlerts: criticalAlertsCount,
       totalSecurityLogs: totalLogs,
-      compliance: {
-        soc2: 'Compliant',
-        gdpr: 'Compliant',
-        lastAuditDate: '2026-06-15T00:00:00.000Z',
-      },
       lockoutPolicy: {
         maxAttempts: 5,
         lockoutDurationMinutes: 30,

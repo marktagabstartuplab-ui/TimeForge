@@ -1,7 +1,6 @@
 import {
   Injectable,
   UnauthorizedException,
-  NotImplementedException,
   ConflictException,
   NotFoundException,
 } from '@nestjs/common';
@@ -45,6 +44,10 @@ export class AuthService {
 
   private jwtCfg(): JwtConfig {
     return this.config.get<JwtConfig>('jwt')!;
+  }
+
+  private argon2Cfg(): { memoryCost: number } {
+    return this.config.get<{ memoryCost: number }>('argon2')!;
   }
 
   private sha256(value: string): string {
@@ -291,7 +294,7 @@ export class AuthService {
     const role = await this.prisma.role.findFirst({ where: { tenantId: tenant.id, key: 'EMPLOYEE' } });
     if (!role) throw new NotFoundException("Role 'EMPLOYEE' not found");
 
-    const passwordHash = await argon2.hash(dto.password);
+    const passwordHash = await argon2.hash(dto.password, { memoryCost: this.argon2Cfg().memoryCost });
 
     const user = await this.prisma.user.create({
       data: {
@@ -307,7 +310,6 @@ export class AuthService {
         employmentType: EmploymentType.EMPLOYEE,
         status: UserStatus.PENDING,
         isApproved: false,
-        emailVerifiedAt: new Date(),
       },
     });
     await this.prisma.userRole.create({ data: { userId: user.id, roleId: role.id } });
@@ -318,8 +320,13 @@ export class AuthService {
       console.error('[AuthService] Admin notification failed silently:', err),
     );
 
-    // Send welcome email asynchronously — failure must NOT roll back account creation.
+    // Send verification email asynchronously — failure must NOT roll back registration.
     const fullName = `${dto.firstName} ${dto.lastName}`;
+    void this.sendVerificationEmail(user.id, tenant.id, email).catch((err: unknown) =>
+      console.error('[AuthService] Verification email failed silently:', err),
+    );
+
+    // Send welcome email asynchronously.
     void this.mailer
       .send(
         email,
@@ -330,6 +337,7 @@ export class AuthService {
           'Thank you for registering with TimeForge!',
           '',
           'Your account has been created successfully and is currently pending administrator approval.',
+          'Please check your email for a verification link and click it to verify your address.',
           'You will receive another email as soon as your account is approved and ready to use.',
           '',
           'If you did not create this account, please ignore this email.',
@@ -339,7 +347,6 @@ export class AuthService {
         ].join('\n'),
       )
       .catch((err: unknown) =>
-        // Log but do not propagate — email failure must not affect registration response
         console.error('[AuthService] Welcome email failed silently:', err),
       );
   }
@@ -367,18 +374,133 @@ export class AuthService {
     return departments;
   }
 
-  // Email verification / password reset: token plumbing lands with the Users
-  // module in Phase 6; the contracts exist here so the routes are wired.
-  async forgotPassword(_email: string): Promise<void> {
-    return;
+  // ─── Password Reset ───────────────────────────────────────────────────────
+
+  async forgotPassword(email: string): Promise<void> {
+    const normalized = email.toLowerCase();
+    const user = await this.prisma.user.findFirst({
+      where: { email: normalized, deletedAt: null },
+    });
+    // Always return 202 — don't reveal whether the email exists
+    if (!user || user.status !== 'ACTIVE') return;
+
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = this.sha256(token);
+    const expiresAt = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordResetToken: tokenHash,
+        passwordResetExpiresAt: expiresAt,
+      },
+    });
+
+    await this.audit(user.tenantId, user.id, AuditAction.ADMIN_ACTION);
+
+    const resetUrl = `${this.config.get<string>('corsOrigins')?.split(',')[0] ?? 'http://localhost:3001'}/reset-password?token=${token}`;
+    void this.mailer
+      .send(
+        normalized,
+        'Reset Your TimeForge Password',
+        [
+          'You requested a password reset.',
+          '',
+          `Click the link below to reset your password. This link expires in 1 hour:`,
+          '',
+          resetUrl,
+          '',
+          'If you did not request this, please ignore this email.',
+          '',
+          'The TimeForge Team',
+        ].join('\n'),
+      )
+      .catch((err: unknown) =>
+        console.error('[AuthService] Password reset email failed:', err),
+      );
   }
 
-  async resetPassword(_token: string, _password: string): Promise<void> {
-    throw new NotImplementedException('Password reset is implemented with the Users module (Phase 6)');
+  async resetPassword(token: string, password: string): Promise<void> {
+    const tokenHash = this.sha256(token);
+    const user = await this.prisma.user.findFirst({
+      where: {
+        passwordResetToken: tokenHash,
+        deletedAt: null,
+      },
+    });
+    if (!user || !user.passwordResetExpiresAt || user.passwordResetExpiresAt < new Date()) {
+      throw new UnauthorizedException('Invalid or expired reset token');
+    }
+
+    const passwordHash = await argon2.hash(password, { memoryCost: this.argon2Cfg().memoryCost });
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        passwordHash,
+        passwordResetToken: null,
+        passwordResetExpiresAt: null,
+        failedLoginAttempts: 0,
+        lockoutUntil: null,
+      },
+    });
+
+    await this.audit(user.tenantId, user.id, AuditAction.PASSWORD_CHANGE);
   }
 
-  async verifyEmail(_token: string): Promise<void> {
-    throw new NotImplementedException('Email verification is implemented with the Users module (Phase 6)');
+  // ─── Email Verification ───────────────────────────────────────────────────
+
+  async sendVerificationEmail(userId: string, tenantId: string, email: string): Promise<void> {
+    const token = randomBytes(32).toString('hex');
+    const tokenHash = this.sha256(token);
+    const expiresAt = new Date(Date.now() + 48 * 60 * 60 * 1000); // 48 hours
+
+    await this.prisma.user.update({
+      where: { id: userId },
+      data: {
+        emailVerificationToken: tokenHash,
+        emailVerificationExpiresAt: expiresAt,
+      },
+    });
+
+    const verifyUrl = `${this.config.get<string>('corsOrigins')?.split(',')[0] ?? 'http://localhost:3001'}/verify-email?token=${token}`;
+    void this.mailer
+      .send(email, 'Verify Your TimeForge Email', [
+        'Welcome to TimeForge!',
+        '',
+        `Please verify your email address by clicking the link below. This link expires in 48 hours:`,
+        '',
+        verifyUrl,
+        '',
+        'The TimeForge Team',
+      ].join('\n'))
+      .catch((err: unknown) =>
+        console.error('[AuthService] Verification email failed:', err),
+      );
+  }
+
+  async verifyEmail(token: string): Promise<void> {
+    const tokenHash = this.sha256(token);
+    const user = await this.prisma.user.findFirst({
+      where: {
+        emailVerificationToken: tokenHash,
+        deletedAt: null,
+      },
+    });
+    if (!user || !user.emailVerificationExpiresAt || user.emailVerificationExpiresAt < new Date()) {
+      throw new UnauthorizedException('Invalid or expired verification token');
+    }
+
+    await this.prisma.user.update({
+      where: { id: user.id },
+      data: {
+        emailVerifiedAt: new Date(),
+        emailVerificationToken: null,
+        emailVerificationExpiresAt: null,
+      },
+    });
+
+    await this.audit(user.tenantId, user.id, AuditAction.ADMIN_ACTION);
   }
 
   private async audit(tenantId: string, actorId: string, action: AuditAction): Promise<void> {

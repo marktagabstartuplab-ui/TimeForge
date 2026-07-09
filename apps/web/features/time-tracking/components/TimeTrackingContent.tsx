@@ -139,7 +139,7 @@ export function TimeTrackingContent() {
           <div className="flex min-w-0 flex-col gap-4">
             <CurrentSessionCard
               selectedTask={selectedTask}
-              runningDescription={summary.running?.description ?? null}
+              runningTask={summary.running?.task ?? null}
               loading={entriesQuery.isFetching}
               onTimeOut={() => setEodOpen(true)}
             />
@@ -154,7 +154,8 @@ export function TimeTrackingContent() {
               key={summary.running?.id ?? "idle"}
               running={summary.running}
               selectedTask={selectedTask}
-              departmentName={departmentName}
+              profileDepartmentId={meQuery.data?.departmentId ?? null}
+              departments={departmentsQuery.data ?? []}
               onToast={onToast}
             />
 

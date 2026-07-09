@@ -1,18 +1,21 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
-import { useRouter } from "next/navigation";
+import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/providers/auth-provider";
 import { refresh as refreshSession } from "@/features/auth/api/auth.service";
 import { getMe } from "@/features/account/api/account.service";
 import { ProfileAccountModal } from "@/features/account/components/ProfileAccountModal";
 import { NotificationCenterModal } from "@/features/notifications/components/NotificationCenterModal";
 import { setAccessToken } from "@/lib/api/client";
+import { PermissionGuard } from "@/features/auth/components/PermissionGuard";
+import { getRequiredPermission } from "@/features/auth/route-permissions";
 import { AppTopBar } from "@/features/app-shell/components/AppTopBar";
 import { FinanceSidebar } from "./FinanceSidebar";
 
 export function FinanceAppShell({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const pathname = usePathname();
   const { user, setSession } = useAuth();
   const [restoreFailed, setRestoreFailed] = useState(false);
   const attempted = useRef(false);
@@ -57,7 +60,9 @@ export function FinanceAppShell({ children }: { children: React.ReactNode }) {
       <FinanceSidebar />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
         <AppTopBar />
-        <main className="flex-1 overflow-auto bg-white p-4 sm:p-6">{children}</main>
+        <main className="flex-1 overflow-auto bg-white p-4 sm:p-6">
+          <PermissionGuard requiredPermission={getRequiredPermission(pathname)}>{children}</PermissionGuard>
+        </main>
       </div>
       <ProfileAccountModal />
       <NotificationCenterModal />

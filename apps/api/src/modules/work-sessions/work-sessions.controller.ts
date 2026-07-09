@@ -1,8 +1,11 @@
 import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { WorkSessionsService } from './work-sessions.service';
 import { ClockInDto } from './dto';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
+@ApiTags('Work Sessions')
+@ApiBearerAuth()
 @Controller({ path: 'work-sessions', version: '1' })
 export class WorkSessionsController {
   constructor(private readonly svc: WorkSessionsService) {}

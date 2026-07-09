@@ -754,11 +754,41 @@ export class ScrumService {
       },
     });
 
+    // Attach recurring blocker indicator
+    await this.attachRecurringBlockerFlag(items as any);
+
     return {
       data: items,
       total: count,
       limit,
     };
+  }
+
+  /**
+   * For each entry, compute whether the employee has reported blockers on
+   * 3+ of their last 5 scrum entries (excluding the current one).
+   */
+  private async attachRecurringBlockerFlag(
+    entries: (ScrumEntry & { user: any; tasks: any[]; blockerItems: any[] })[],
+  ): Promise<void> {
+    const userIds = [...new Set(entries.map((e) => e.userId))];
+    const promises = userIds.map(async (userId) => {
+      const recent = await this.prisma.scrumEntry.findMany({
+        where: { tenantId: entries[0].tenantId, userId, deletedAt: null },
+        orderBy: { entryDate: 'desc' },
+        take: 5,
+        include: { blockerItems: { where: { status: 'OPEN' } } },
+      });
+
+      const blockedCount = recent.filter((r) => r.blockerItems.length > 0).length;
+      return { userId, recurringBlocker: blockedCount >= 3 };
+    });
+    const flags = await Promise.all(promises);
+    const flagMap = Object.fromEntries(flags.map((f) => [f.userId, f.recurringBlocker]));
+
+    for (const entry of entries) {
+      (entry as any).recurringBlocker = flagMap[entry.userId] ?? false;
+    }
   }
 
   /**

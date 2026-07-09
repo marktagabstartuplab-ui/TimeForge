@@ -269,11 +269,11 @@ export class OrganizationService {
     const since = new Date(Date.now() - 30 * 24 * 60 * 60 * 1000);
     const entries = await this.prisma.timeEntry.findMany({
       where: { tenantId, organizationId, deletedAt: null, startTime: { gte: since } },
-      select: { durationMinutes: true, user: { select: { departmentId: true } } },
+      select: { durationMinutes: true, departmentId: true, user: { select: { departmentId: true } } },
     });
     const minutesByDept = new Map<string, number>();
     for (const entry of entries) {
-      const deptId = entry.user.departmentId;
+      const deptId = entry.departmentId ?? entry.user.departmentId;
       if (!deptId) continue;
       minutesByDept.set(deptId, (minutesByDept.get(deptId) ?? 0) + (entry.durationMinutes ?? 0));
     }

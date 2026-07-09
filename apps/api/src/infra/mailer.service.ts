@@ -68,29 +68,22 @@ export class MailerService {
 
   private async sendViaEdgeFunction(to: string, subject: string, body: string): Promise<void> {
     this.logger.log(`[EdgeFn] Sending email to ${to}: "${subject}"`);
-    try {
-      const response = await fetch(this.edgeFunctionUrl!, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          Authorization: `Bearer ${this.serviceRoleKey}`,
-        },
-        body: JSON.stringify({ to, subject, body }),
-      });
+    const response = await fetch(this.edgeFunctionUrl!, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        Authorization: `Bearer ${this.serviceRoleKey}`,
+      },
+      body: JSON.stringify({ to, subject, body }),
+    });
 
-      if (!response.ok) {
-        const error = await response.text().catch(() => response.statusText);
-        throw new Error(`Edge function responded ${response.status}: ${error}`);
-      }
-
-      const result = (await response.json()) as { messageId?: string };
-      this.logger.log(`[EdgeFn] Delivered to ${to}. MessageId: ${result.messageId ?? 'n/a'}`);
-    } catch (err: unknown) {
-      this.logger.error(
-        `[EdgeFn] Failed to deliver email to ${to}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-      // Failure is logged but not re-thrown — must not affect the calling operation
+    if (!response.ok) {
+      const error = await response.text().catch(() => response.statusText);
+      throw new Error(`Edge function responded ${response.status}: ${error}`);
     }
+
+    const result = (await response.json()) as { messageId?: string };
+    this.logger.log(`[EdgeFn] Delivered to ${to}. MessageId: ${result.messageId ?? 'n/a'}`);
   }
 
   // ─── Strategy 2: Direct Gmail SMTP ───────────────────────────────────────
@@ -98,14 +91,8 @@ export class MailerService {
   private async sendViaSMTP(to: string, subject: string, body: string): Promise<void> {
     const smtpFrom = this.config.get<{ from: string }>('smtp')?.from ?? 'TimeForge Team';
     this.logger.log(`[SMTP] Sending email to ${to}: "${subject}"`);
-    try {
-      const info = await this.transporter!.sendMail({ from: smtpFrom, to, subject, text: body });
-      this.logger.log(`[SMTP] Delivered to ${to}. MessageId: ${info.messageId}`);
-    } catch (err: unknown) {
-      this.logger.error(
-        `[SMTP] Failed to deliver email to ${to}: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
+    const info = await this.transporter!.sendMail({ from: smtpFrom, to, subject, text: body });
+    this.logger.log(`[SMTP] Delivered to ${to}. MessageId: ${info.messageId}`);
   }
 
   // ─── Strategy 3: Console mock ─────────────────────────────────────────────

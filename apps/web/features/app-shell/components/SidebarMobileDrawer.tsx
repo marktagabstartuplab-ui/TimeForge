@@ -14,6 +14,8 @@ interface SidebarMobileDrawerProps {
   sidebarData: SidebarResponse | null;
   sections: { section: string; items: SidebarMenuItem[] }[];
   unreadNotifications: number;
+  /** Where the logo links — defaults to the generic dashboard; scoped shells (e.g. Finance) should pass their own home route. */
+  homeHref?: string;
 }
 
 /**
@@ -25,7 +27,7 @@ interface SidebarMobileDrawerProps {
  * - Focus trap
  * - Always expanded (no collapsed mode)
  */
-export function SidebarMobileDrawer({ sidebarData, sections, unreadNotifications }: SidebarMobileDrawerProps) {
+export function SidebarMobileDrawer({ sidebarData, sections, unreadNotifications, homeHref = "/dashboard" }: SidebarMobileDrawerProps) {
   const isMobileOpen = useSidebarStore((s) => s.isMobileOpen);
   const closeMobile = useSidebarStore((s) => s.closeMobile);
   const drawerRef = useRef<HTMLDivElement>(null);
@@ -86,7 +88,7 @@ export function SidebarMobileDrawer({ sidebarData, sections, unreadNotifications
           >
             {/* Header */}
             <div className="flex items-center justify-between px-4 pt-5">
-              <Logo href="/dashboard" />
+              <Logo href={homeHref} />
               <button
                 type="button"
                 onClick={closeMobile}

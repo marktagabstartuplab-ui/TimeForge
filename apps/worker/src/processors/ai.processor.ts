@@ -1,5 +1,6 @@
 import { Processor, WorkerHost } from '@nestjs/bullmq';
 import { Logger } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { Job } from 'bullmq';
 import { PrismaService } from '../../../api/src/common/prisma/prisma.service';
 import { OpenAiProvider } from '../ai/openai.provider';
@@ -23,6 +24,7 @@ export class AiProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly openAi: OpenAiProvider,
+    private readonly config: ConfigService,
   ) {
     super();
   }
@@ -78,6 +80,8 @@ export class AiProcessor extends WorkerHost {
         where: { id: jobId },
         data: {
           status: 'SUCCEEDED',
+          provider: this.config.get<string>('ai.provider') ?? 'OPENAI',
+          model: this.config.get<string>('ai.openaiModel') ?? 'unknown',
           latencyMs: completion.latencyMs,
           totalTokens: completion.totalTokens,
           updatedBy: triggeredBy,

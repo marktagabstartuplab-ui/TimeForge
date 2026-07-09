@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { AuditAction, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, ListQuery, PageResult } from '../../common/crud/crud.service';
 import { CreateWorkCategoryDto, UpdateWorkCategoryDto } from './dto';
@@ -28,9 +29,11 @@ export class WorkCategoriesService {
 
   async create(tenantId: string, orgId: string, actorId: string, dto: CreateWorkCategoryDto): Promise<WorkCategory> {
     try {
-      return await this.prisma.workCategory.create({
+      const created = await this.prisma.workCategory.create({
         data: { tenantId, organizationId: orgId, name: dto.name, createdBy: actorId, updatedBy: actorId },
       });
+      await this.audit(tenantId, actorId, AuditAction.ADMIN_ACTION, 'work_category', created.id, { event: 'WORK_CATEGORY_CREATED', name: created.name });
+      return created;
     } catch (err: unknown) { handleP2002(err); }
   }
 
@@ -39,7 +42,9 @@ export class WorkCategoriesService {
     if (existing.version !== dto.version) throw new ConflictException('Version mismatch');
     const { version, ...rest } = dto;
     try {
-      return await this.prisma.workCategory.update({ where: { id }, data: { ...rest, updatedBy: actorId, version: { increment: 1 } } });
+      const updated = await this.prisma.workCategory.update({ where: { id }, data: { ...rest, updatedBy: actorId, version: { increment: 1 } } });
+      await this.audit(tenantId, actorId, AuditAction.ADMIN_ACTION, 'work_category', id, { event: 'WORK_CATEGORY_UPDATED', name: existing.name });
+      return updated;
     } catch (err: unknown) { handleP2002(err); }
   }
 
@@ -47,6 +52,11 @@ export class WorkCategoriesService {
     const existing = await this.findOne(tenantId, orgId, id);
     if (existing.version !== version) throw new ConflictException('Version mismatch');
     await this.prisma.workCategory.update({ where: { id }, data: { deletedAt: new Date(), updatedBy: actorId, version: { increment: 1 } } });
+    await this.audit(tenantId, actorId, AuditAction.ADMIN_ACTION, 'work_category', id, { event: 'WORK_CATEGORY_DELETED', name: existing.name });
+  }
+
+  private async audit(tenantId: string, actorId: string, action: AuditAction, entityType: string, entityId: string, metadata: Prisma.InputJsonValue) {
+    await this.prisma.auditLog.create({ data: { tenantId, actorId, action, entityType, entityId, metadata } });
   }
 }
 

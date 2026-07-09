@@ -4,6 +4,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Clock, FileClock, PalmtreeIcon, Target } from "lucide-react";
 import { getDashboardSummary } from "../api/dashboard.service";
 import { getMe } from "@/features/account/api/account.service";
+import { getLeaveBalances } from "@/features/leave/api/leave.service";
 import { StatCard } from "@/components/shared/StatCard";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -19,8 +20,13 @@ export function DashboardContent() {
     queryKey: ["dashboard", "summary"],
     queryFn: getDashboardSummary,
   });
+  const { data: leaveBalances, isLoading: isLeaveLoading } = useQuery({
+    queryKey: ["leave", "balances"],
+    queryFn: getLeaveBalances,
+  });
 
   const kpi = summary?.kpi?.[0];
+  const totalRemainingLeave = leaveBalances?.reduce((sum, b) => sum + b.remainingDays, 0);
   const pendingCount = summary?.timesheets.byStatus["SUBMITTED"] ?? 0;
 
   return (
@@ -38,7 +44,11 @@ export function DashboardContent() {
           label="Pending Timesheets"
           value={isLoading ? "…" : String(pendingCount)}
         />
-        <StatCard icon={PalmtreeIcon} label="Leave Balance" value="—" disabled />
+        <StatCard
+          icon={PalmtreeIcon}
+          label="Leave Balance"
+          value={isLeaveLoading ? "…" : `${totalRemainingLeave ?? 0}d`}
+        />
         <StatCard
           icon={Target}
           label={kpi ? kpi.kpiTemplate.name : "KPI Progress"}

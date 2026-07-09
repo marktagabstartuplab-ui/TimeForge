@@ -48,8 +48,11 @@ import { SecurityModule } from './modules/security/security.module';
 import { PerformanceModule } from './modules/performance/performance.module';
 import { ReportsModule } from './modules/reports/reports.module';
 import { SupervisorModule } from './modules/supervisor/supervisor.module';
+import { SupervisorAiModule } from './modules/supervisor-ai/supervisor-ai.module';
 import { SchedulesModule } from './modules/schedules/schedules.module';
 import { FinanceModule } from './modules/finance/finance.module';
+import { FinanceAiModule } from './modules/finance-ai/finance-ai.module';
+import { LeaveModule } from './modules/leave/leave.module';
 
 @Module({
   imports: [
@@ -111,8 +114,11 @@ import { FinanceModule } from './modules/finance/finance.module';
     PerformanceModule,
     ReportsModule,
     SupervisorModule,
+    SupervisorAiModule,
     SchedulesModule,
     FinanceModule,
+    FinanceAiModule,
+    LeaveModule,
   ],
   controllers: [HealthController],
   providers: [

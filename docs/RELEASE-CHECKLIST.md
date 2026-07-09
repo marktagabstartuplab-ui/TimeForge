@@ -16,28 +16,30 @@
 - [ ] `OPENAI_API_KEY` — set (or intentionally left empty for stub mode)
 - [ ] `SUPABASE_URL` / `SUPABASE_ANON_KEY` — set if storage enabled
 - [ ] `NODE_ENV=production` — for prod deployments
+- [x] `ARGON2_MEMORY_COST` — wired and configurable (default 65536)
 
 ## API Contract
-- [ ] `PATCH /payroll/rates/:userId` (was incorrectly `POST` — fixed)
-- [ ] All Phase 4 endpoints implemented and match spec
-- [ ] HTTP status codes correct (201 creates, 200 updates, 202 async, 204 deletes)
-- [ ] Idempotency-Key required on bulk and AI trigger endpoints
-- [ ] Cursor-based pagination on all list endpoints
+- [x] `PATCH /payroll/rates/:userId` (was incorrectly `POST` — fixed)
+- [x] All Phase 4 endpoints implemented and match spec
+- [x] HTTP status codes correct (201 creates, 200 updates, 202 async, 204 deletes)
+- [x] Idempotency-Key required on bulk and AI trigger endpoints
+- [x] Cursor-based pagination on all list endpoints
 
 ## Swagger (`http://localhost:3000/api/docs`)
-- [ ] All module tags visible: Auth, RBAC, Users, Organization, Departments, Teams, Clients, Projects, Work Categories, Time Tracking, Timesheets, Scrum, Approvals, KPI, Payroll, Notifications, Audit Logs, Dashboard, Reports, Admin, AI
-- [ ] Every endpoint has `@ApiBearerAuth` and `@ApiOperation`
-- [ ] Query parameters documented with `@ApiQuery`
-- [ ] Request bodies documented with DTOs
+- [x] All module tags visible: Auth, RBAC, Users, Organization, Departments, Teams, Clients, Projects, Work Categories, Time Tracking, Timesheets, Scrum, Approvals, KPI, Payroll, Notifications, Audit Logs, Dashboard, Reports, Admin, AI, Security, Work Sessions
+- [x] Every endpoint has `@ApiBearerAuth` and `@ApiOperation`
+- [x] Query parameters documented with `@ApiQuery`
+- [x] Request bodies documented with DTOs
+- [x] Security DTOs converted to class-validator classes (`dto.ts`)
 
 ## Security
-- [ ] JWT guard active on all non-public routes
-- [ ] RBAC (`@RequirePermissions`) on every mutation
-- [ ] Tenant isolation — all queries scoped to `tenantId`
-- [ ] Soft deletes — `deletedAt: null` filter on all reads
-- [ ] Audit log written on: login, logout, approvals, payroll export, AI usage, bulk admin actions, role changes
-- [ ] Rate limiting active (`ThrottlerGuard` — 120 req/min default)
-- [ ] `OPENAI_API_KEY` never logged
+- [x] JWT guard active on all non-public routes
+- [x] RBAC (`@RequirePermissions`) on every mutation
+- [x] Tenant isolation — all queries scoped to `tenantId`
+- [x] Soft deletes — `deletedAt: null` filter on all reads
+- [x] Audit log written on: login, logout, approvals, payroll export, AI usage, bulk admin actions, role changes, teams, work categories, work sessions, time entries
+- [x] Rate limiting active (`ThrottlerGuard` — 120 req/min default; login/refresh 10/min; forgot-password 3/min; reset-password/verify-email 5/min; register 5/hour; logout 10/min; departments 30/min)
+- [x] `OPENAI_API_KEY` never logged
 
 ## Core Workflows (smoke test)
 - [ ] `POST /auth/login` → JWT returned
@@ -52,11 +54,13 @@
 - [ ] `GET /admin/health` → returns `{ status: "healthy" }`
 
 ## Quality
-- [ ] `npx tsc --noEmit` → 0 errors (API + Worker)
-- [ ] `npx prisma validate` → schema valid
+- [x] `npx tsc --noEmit` → 0 errors (API + Worker + Frontend)
+- [x] `npx prisma validate` → schema valid
 - [ ] No circular dependency warnings on startup
-- [ ] No unused providers in any module
-- [ ] Worker reconnects to Redis on connection drop (BullMQ handles this)
+- [x] No unused providers in any module
+- [x] Worker reconnects to Redis on connection drop (BullMQ handles this; `removeOnComplete`/`removeOnFail` configured)
+- [x] Email retry: `mailer.send()` propagates errors → BullMQ retries + notification marked FAILED
+- [x] `throw new Error()` calls all have messages (no bare `Error()` in production code)
 
 ## Frontend Integration Handoff
 - [ ] Swagger JSON exported: `http://localhost:3000/api/docs-json`

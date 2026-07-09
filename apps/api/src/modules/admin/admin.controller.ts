@@ -8,6 +8,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   UnprocessableEntityException,
 } from '@nestjs/common';
 import {
@@ -150,6 +151,25 @@ export class AdminController {
   ) {
     if (!idempotencyKey?.trim()) throw new UnprocessableEntityException('Idempotency-Key header is required');
     return this.svc.bulkApprove(u, dto, idempotencyKey.trim());
+  }
+
+  // ─── AI Configuration ────────────────────────────────────────────────────
+
+  @Get('ai-config')
+  @RequirePermissions('org:read')
+  @ApiOperation({ summary: 'Read AI configuration (provider, model, toggles, token budget)' })
+  getAiConfig(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.getAiConfig(u.tenantId, u.organizationId);
+  }
+
+  @Put('ai-config/toggles')
+  @RequirePermissions('org:update')
+  @ApiOperation({ summary: 'Update AI feature toggles (enable/disable individual features)' })
+  updateAiToggles(
+    @CurrentUser() u: AuthPrincipal,
+    @Body() dto: Record<string, boolean>,
+  ) {
+    return this.svc.updateAiToggles(u.tenantId, u.organizationId, u.userId, dto);
   }
 
   // ─── Feature flags ────────────────────────────────────────────────────────

@@ -17,6 +17,9 @@ async function bootstrap() {
   app.use(helmet());
   app.use(cookieParser());
 
+  // Trust proxy for correct IP detection behind reverse proxies (affects rate limiting + security logs)
+  (app as any).set('trust proxy', 1);
+
   app.setGlobalPrefix('api');
   app.enableVersioning({ type: VersioningType.URI, defaultVersion: '1' });
 
@@ -30,11 +33,13 @@ async function bootstrap() {
     }),
   );
 
-  const origins = String(config.get('corsOrigins') ?? '')
-    .split(',')
-    .map((o) => o.trim())
-    .filter(Boolean);
-  app.enableCors({ origin: origins.length ? origins : true, credentials: true });
+  const originsStr = String(config.get('corsOrigins') ?? '').trim();
+  if (!originsStr) {
+    app.get(Logger).warn('CORS_ORIGINS is empty — CORS disabled');
+  } else {
+    const origins = originsStr.split(',').map((o) => o.trim()).filter(Boolean);
+    app.enableCors({ origin: origins, credentials: true });
+  }
 
   const swaggerConfig = new DocumentBuilder()
     .setTitle('TimeForge API')

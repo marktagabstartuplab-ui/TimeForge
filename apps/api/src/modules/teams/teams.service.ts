@@ -1,4 +1,5 @@
 import { ConflictException, Injectable, NotFoundException } from '@nestjs/common';
+import { AuditAction, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, ListQuery, PageResult } from '../../common/crud/crud.service';
 import { CreateTeamDto, UpdateTeamDto } from './dto';
@@ -34,9 +35,11 @@ export class TeamsService {
       if (!dept) throw new NotFoundException('Department not found');
     }
     try {
-      return await this.prisma.team.create({
+      const created = await this.prisma.team.create({
         data: { tenantId, organizationId: orgId, ...dto, createdBy: actorId, updatedBy: actorId },
       });
+      await this.audit(tenantId, actorId, AuditAction.ADMIN_ACTION, 'team', created.id, { event: 'TEAM_CREATED', name: created.name });
+      return created;
     } catch (err: unknown) { handleP2002(err); }
   }
 
@@ -49,7 +52,9 @@ export class TeamsService {
     }
     const { version, ...rest } = dto;
     try {
-      return await this.prisma.team.update({ where: { id }, data: { ...rest, updatedBy: actorId, version: { increment: 1 } } });
+      const updated = await this.prisma.team.update({ where: { id }, data: { ...rest, updatedBy: actorId, version: { increment: 1 } } });
+      await this.audit(tenantId, actorId, AuditAction.ADMIN_ACTION, 'team', id, { event: 'TEAM_UPDATED', name: existing.name });
+      return updated;
     } catch (err: unknown) { handleP2002(err); }
   }
 
@@ -57,6 +62,11 @@ export class TeamsService {
     const existing = await this.findOne(tenantId, orgId, id);
     if (existing.version !== version) throw new ConflictException('Version mismatch');
     await this.prisma.team.update({ where: { id }, data: { deletedAt: new Date(), updatedBy: actorId, version: { increment: 1 } } });
+    await this.audit(tenantId, actorId, AuditAction.ADMIN_ACTION, 'team', id, { event: 'TEAM_DELETED', name: existing.name });
+  }
+
+  private async audit(tenantId: string, actorId: string, action: AuditAction, entityType: string, entityId: string, metadata: Prisma.InputJsonValue) {
+    await this.prisma.auditLog.create({ data: { tenantId, actorId, action, entityType, entityId, metadata } });
   }
 }
 

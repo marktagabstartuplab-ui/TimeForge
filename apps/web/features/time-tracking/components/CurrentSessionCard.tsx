@@ -10,7 +10,7 @@ import {
   startBreak,
 } from "../api/work-sessions.service";
 import { listClients, listProjects } from "../api/catalog.service";
-import { splitDescription, type WorkTask } from "../lib/task-select";
+import { type WorkTask } from "../lib/task-select";
 import { formatStopwatch, formatClockTime, formatMinutes } from "@/lib/time";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
@@ -18,8 +18,8 @@ import { cn } from "@/lib/utils";
 interface CurrentSessionCardProps {
   /** Quick Select choice — Clock In starts the session with this context. */
   selectedTask: WorkTask | null;
-  /** Description of the currently running time entry, for the "Working on" tile. */
-  runningDescription: string | null;
+  /** Task name of the currently running time entry, for the "Working on" tile. */
+  runningTask: string | null;
   loading: boolean;
   /** Opens the End of Day Review (the only path that stops AND reviews). */
   onTimeOut: () => void;
@@ -33,7 +33,7 @@ interface CurrentSessionCardProps {
  */
 export function CurrentSessionCard({
   selectedTask,
-  runningDescription,
+  runningTask,
   loading,
   onTimeOut,
 }: CurrentSessionCardProps) {
@@ -115,7 +115,7 @@ export function CurrentSessionCard({
     (id && list?.find((item) => item.id === id)?.name) || null;
 
   const clockInAt = session?.clockIn ?? null;
-  const currentTask = running ? splitDescription(runningDescription ?? "").task : "";
+  const currentTask = running ? (runningTask ?? "") : "";
   const breakStatus = onBreak
     ? `On break — ${formatMinutes(Math.max(0, (now - new Date(session!.currentBreakStartedAt!).getTime()) / 60_000))}`
     : (session?.breakCount ?? 0) > 0

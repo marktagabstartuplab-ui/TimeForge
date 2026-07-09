@@ -10,7 +10,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { ReportsService, ReportsQuery, AttendanceReportQuery } from './reports.service';
-import { AuthPrincipal, CurrentUser } from '../../common/decorators';
+import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ReportCategory } from '@prisma/client';
 
 export class GenerateReportDto {
@@ -28,6 +28,7 @@ export class ReportsController {
   constructor(private readonly svc: ReportsService) {}
 
   @Get('dashboard')
+  @RequirePermissions('dashboard:read_team')
   async getDashboard(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: ReportsQuery,
@@ -36,6 +37,7 @@ export class ReportsController {
   }
 
   @Get('attendance')
+  @RequirePermissions('attendance:read_org')
   async getAttendance(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: ReportsQuery,
@@ -44,6 +46,7 @@ export class ReportsController {
   }
 
   @Get('attendance-report')
+  @RequirePermissions('attendance:read_org')
   async getAttendanceReport(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: AttendanceReportQuery,
@@ -52,6 +55,7 @@ export class ReportsController {
   }
 
   @Get('attendance-report/export')
+  @RequirePermissions('attendance:read_org')
   @Header('Content-Type', 'text/csv')
   @Header('Content-Disposition', 'attachment')
   async exportAttendanceReport(
@@ -63,6 +67,7 @@ export class ReportsController {
   }
 
   @Get('payroll')
+  @RequirePermissions('payroll:read')
   async getPayroll(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: ReportsQuery,
@@ -71,6 +76,7 @@ export class ReportsController {
   }
 
   @Get('timesheets')
+  @RequirePermissions('timesheet:read_org')
   async getTimesheets(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: ReportsQuery,
@@ -79,6 +85,7 @@ export class ReportsController {
   }
 
   @Get('labor-cost')
+  @RequirePermissions('payroll:read')
   async getLaborCost(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: ReportsQuery,
@@ -87,6 +94,7 @@ export class ReportsController {
   }
 
   @Get('compliance')
+  @RequirePermissions('dashboard:read_org')
   async getCompliance(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: ReportsQuery,
@@ -95,6 +103,7 @@ export class ReportsController {
   }
 
   @Get('departments')
+  @RequirePermissions('org:read_dashboard')
   async getDepartments(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: ReportsQuery,
@@ -103,6 +112,7 @@ export class ReportsController {
   }
 
   @Get('history')
+  @RequirePermissions('dashboard:read_team')
   async getHistory(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: ReportsQuery,
@@ -111,6 +121,7 @@ export class ReportsController {
   }
 
   @Post('generate')
+  @RequirePermissions('dashboard:read_org')
   async generateReport(
     @CurrentUser() u: AuthPrincipal,
     @Body() dto: GenerateReportDto,
@@ -126,6 +137,7 @@ export class ReportsController {
 
   @Post('export')
   @HttpCode(200)
+  @RequirePermissions('audit:read_scoped')
   async auditDownload(
     @CurrentUser() u: AuthPrincipal,
     @Body() dto: { reportId: string },
@@ -134,6 +146,7 @@ export class ReportsController {
   }
 
   @Delete(':id')
+  @RequirePermissions('dashboard:read_admin')
   async deleteReport(
     @CurrentUser() u: AuthPrincipal,
     @Param('id') id: string,
@@ -142,6 +155,7 @@ export class ReportsController {
   }
 
   @Get('team-productivity')
+  @RequirePermissions('dashboard:read_team')
   async getTeamProductivity(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: ReportsQuery,
@@ -150,10 +164,40 @@ export class ReportsController {
   }
 
   @Get('team-productivity/summary')
+  @RequirePermissions('dashboard:read_team')
   async getTeamProductivitySummary(
     @CurrentUser() u: AuthPrincipal,
     @Query() query: ReportsQuery,
   ) {
     return this.svc.getTeamProductivitySummary(u, query);
+  }
+
+  // ─── Finance Reports Endpoints ──────────────────────────────────────────────
+
+  @Get('finance/dashboard')
+  @RequirePermissions('dashboard:read_org')
+  async getFinanceDashboard(
+    @CurrentUser() u: AuthPrincipal,
+    @Query() query: ReportsQuery,
+  ) {
+    return this.svc.getFinanceDashboard(u, query);
+  }
+
+  @Get('finance/payroll-report')
+  @RequirePermissions('payroll:read')
+  async getFinancePayrollReport(
+    @CurrentUser() u: AuthPrincipal,
+    @Query() query: ReportsQuery,
+  ) {
+    return this.svc.getFinancePayrollReport(u, query);
+  }
+
+  @Get('finance/overtime')
+  @RequirePermissions('payroll:read')
+  async getOvertimeAnalysis(
+    @CurrentUser() u: AuthPrincipal,
+    @Query() query: ReportsQuery,
+  ) {
+    return this.svc.getOvertimeAnalysis(u, query);
   }
 }

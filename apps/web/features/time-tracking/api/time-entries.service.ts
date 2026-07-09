@@ -12,6 +12,13 @@ export interface Page<T> {
   page: PageMeta;
 }
 
+export interface TimeEntryAttachment {
+  key: string;
+  filename: string;
+  contentType: string;
+  size: number;
+}
+
 export interface TimeEntry {
   id: string;
   userId: string;
@@ -19,12 +26,15 @@ export interface TimeEntry {
   projectId: string | null;
   clientId: string | null;
   workCategoryId: string | null;
+  departmentId: string | null;
   source: "MANUAL" | "TIMER";
   startTime: string;
   endTime: string | null;
   durationMinutes: number | null;
+  task: string | null;
   description: string | null;
   referenceLinks?: string[];
+  attachments?: TimeEntryAttachment[];
   version: number;
 }
 
@@ -42,7 +52,9 @@ export interface CreateTimeEntryPayload {
   projectId?: string;
   clientId?: string;
   workCategoryId?: string;
+  departmentId?: string;
   description?: string;
+  task?: string;
   referenceLinks?: string[];
 }
 
@@ -50,7 +62,9 @@ export interface StartTimerPayload {
   projectId?: string;
   clientId?: string;
   workCategoryId?: string;
+  departmentId?: string;
   description?: string;
+  task?: string;
 }
 
 export async function listTimeEntries(query: TimeEntryQuery = {}): Promise<Page<TimeEntry>> {
@@ -106,7 +120,9 @@ export interface UpdateTimeEntryPayload {
   projectId?: string;
   clientId?: string;
   workCategoryId?: string;
+  departmentId?: string;
   description?: string;
+  task?: string;
   referenceLinks?: string[];
   /** Optimistic-lock version — required by UpdateTimeEntryDto. */
   version: number;
@@ -119,4 +135,40 @@ export async function updateTimeEntry(id: string, payload: UpdateTimeEntryPayloa
 
 export async function deleteTimeEntry(id: string, version: number): Promise<void> {
   await apiClient.delete(`/time-entries/${id}`, { params: { version } });
+}
+
+export async function uploadAttachment(
+  id: string,
+  version: number,
+  file: File,
+): Promise<TimeEntry> {
+  const formData = new FormData();
+  formData.append("file", file);
+  const { data } = await apiClient.post<TimeEntry>(`/time-entries/${id}/attachments`, formData, {
+    params: { version },
+    headers: { "Content-Type": "multipart/form-data" },
+  });
+  return data;
+}
+
+export async function removeAttachment(
+  id: string,
+  key: string,
+  version: number,
+): Promise<TimeEntry> {
+  const { data } = await apiClient.delete<TimeEntry>(`/time-entries/${id}/attachments`, {
+    params: { key, version },
+  });
+  return data;
+}
+
+export async function getAttachmentSignedUrl(
+  id: string,
+  key: string,
+): Promise<{ url: string; filename: string }> {
+  const { data } = await apiClient.get<{ url: string; filename: string }>(
+    `/time-entries/${id}/attachments/signed-url`,
+    { params: { key } },
+  );
+  return data;
 }

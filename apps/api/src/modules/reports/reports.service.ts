@@ -44,13 +44,13 @@ export class ReportsService {
 
   // ─── RBAC Checks ──────────────────────────────────────────────────────────
 
-  private requireAdminOrHR(p: AuthPrincipal) {
-    const isAllowed = p.permissions.includes('*') || 
-                      p.roles.includes('ADMIN') || 
-                      p.roles.includes('HR') || 
-                      p.permissions.includes('org:read_dashboard');
+  private requireFinanceOrAdmin(p: AuthPrincipal) {
+    const isAllowed = p.permissions.includes('*') ||
+                      p.roles.includes('ADMIN') ||
+                      p.roles.includes('FINANCE') ||
+                      p.permissions.includes('payroll:read');
     if (!isAllowed) {
-      throw new ForbiddenException('Only Administrators and HR can access organization-wide reports.');
+      throw new ForbiddenException('Only Finance and Administrators can access finance reports.');
     }
   }
 
@@ -263,7 +263,7 @@ export class ReportsService {
   }
 
   async getAttendanceReport(p: AuthPrincipal, query: AttendanceReportQuery = {}) {
-    this.requireAdminOrHR(p);
+    this.requireFinanceOrAdmin(p);
 
     const { from, to } = await this.resolveDateRange(p, query);
 
@@ -413,7 +413,7 @@ export class ReportsService {
   }
 
   async exportAttendanceReport(p: AuthPrincipal, query: AttendanceReportQuery & { format: 'CSV' | 'XLSX' | 'PDF' }) {
-    this.requireAdminOrHR(p);
+    this.requireFinanceOrAdmin(p);
 
     const report = await this.getAttendanceReport(p, query);
 
@@ -505,7 +505,7 @@ export class ReportsService {
     });
 
     const monthlyLaborCost = lineItems.reduce((acc, li) => acc + Number(li.estimatedPay || 0), 0);
-    return { monthlyLaborCost, currency: 'USD' };
+    return { monthlyLaborCost, currency: 'PHP' };
   }
 
   /** Real compliance signal derived from timesheet outcomes (rejection/revision rate). This app
@@ -641,7 +641,7 @@ export class ReportsService {
       format,
       actorId: p.userId,
       query,
-    });
+    }, { attempts: 2, backoff: { type: 'exponential', delay: 2000 } });
 
     return report;
   }
@@ -846,6 +846,293 @@ export class ReportsService {
       totalPendingHours: Math.round((totalPendingMins / 60) * 100) / 100,
       payrollLiability: Math.round(totalPayrollLiability * 100) / 100,
       changePercent: '+4.2%',
+    };
+  }
+
+  // ─── Finance Reports Dashboard (with previous period comparison) ─────────────
+
+  async getFinanceDashboard(p: AuthPrincipal, query: ReportsQuery) {
+    this.requireFinanceOrAdmin(p);
+
+    const cacheKey = `reports:finance-dash:org:${p.organizationId}:d:${query.departmentId || 'all'}`;
+    const cached = await this.cache.get<any>(cacheKey);
+    if (cached) return cached;
+
+    const now = new Date();
+    const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthEnd = new Date(now.getFullYear(), now.getMonth() + 1, 0);
+    const prevMonthStart = new Date(now.getFullYear(), now.getMonth() - 1, 1);
+    const prevMonthEnd = new Date(now.getFullYear(), now.getMonth(), 0);
+
+    const baseWhere = { tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null };
+    const deptFilter = query.departmentId ? { departmentId: query.departmentId } : {};
+
+    // --- Attendance ---
+    const [currentTimesheets, prevTimesheets] = await Promise.all([
+      this.prisma.timesheet.findMany({
+        where: {
+          ...baseWhere,
+          periodStart: { gte: monthStart },
+          periodEnd: { lte: monthEnd },
+          ...(query.departmentId ? { user: { departmentId: query.departmentId } } : {}),
+        },
+      }),
+      this.prisma.timesheet.findMany({
+        where: {
+          ...baseWhere,
+          periodStart: { gte: prevMonthStart },
+          periodEnd: { lte: prevMonthEnd },
+          ...(query.departmentId ? { user: { departmentId: query.departmentId } } : {}),
+        },
+      }),
+    ]);
+
+    const calcAttendance = (sheets: typeof currentTimesheets) => {
+      if (sheets.length === 0) return 0;
+      const approved = sheets.filter((s) => s.status === 'APPROVED' || s.status === 'PAYROLL_READY').length;
+      return Math.round((approved / sheets.length) * 100);
+    };
+    const attendanceValue = calcAttendance(currentTimesheets);
+    const prevAttendanceValue = calcAttendance(prevTimesheets);
+    const attendanceChange = prevAttendanceValue > 0
+      ? Number((((attendanceValue - prevAttendanceValue) / prevAttendanceValue) * 100).toFixed(1))
+      : 0;
+
+    // --- Labor Cost ---
+    const [currentLabor, prevLabor] = await Promise.all([
+      this.prisma.payrollLineItem.aggregate({
+        where: {
+          tenantId: p.tenantId,
+          organizationId: p.organizationId,
+          user: { employmentType: { not: 'INTERN' }, deletedAt: null, ...deptFilter },
+          payrollReport: {
+            period: { startDate: { lte: monthEnd }, endDate: { gte: monthStart } },
+          },
+        },
+        _sum: { estimatedPay: true },
+      }),
+      this.prisma.payrollLineItem.aggregate({
+        where: {
+          tenantId: p.tenantId,
+          organizationId: p.organizationId,
+          user: { employmentType: { not: 'INTERN' }, deletedAt: null, ...deptFilter },
+          payrollReport: {
+            period: { startDate: { lte: prevMonthEnd }, endDate: { gte: prevMonthStart } },
+          },
+        },
+        _sum: { estimatedPay: true },
+      }),
+    ]);
+
+    const laborValue = Number(currentLabor._sum.estimatedPay ?? 0);
+    const prevLaborValue = Number(prevLabor._sum.estimatedPay ?? 0);
+    const laborChange = prevLaborValue > 0
+      ? Number((((laborValue - prevLaborValue) / prevLaborValue) * 100).toFixed(1))
+      : 0;
+
+    // --- Payroll ---
+    const [currentPayroll, prevPayroll] = await Promise.all([
+      this.prisma.payrollPeriod.aggregate({
+        where: {
+          ...baseWhere,
+          status: { in: ['GENERATED', 'LOCKED', 'EXPORTED'] },
+          startDate: { gte: monthStart },
+          endDate: { lte: monthEnd },
+        },
+        _count: { id: true },
+      }),
+      this.prisma.payrollPeriod.aggregate({
+        where: {
+          ...baseWhere,
+          status: { in: ['GENERATED', 'LOCKED', 'EXPORTED'] },
+          startDate: { gte: prevMonthStart },
+          endDate: { lte: prevMonthEnd },
+        },
+        _count: { id: true },
+      }),
+    ]);
+
+    const payrollValue = currentPayroll._count.id;
+    const prevPayrollValue = prevPayroll._count.id;
+    const payrollChange = prevPayrollValue > 0
+      ? Number((((payrollValue - prevPayrollValue) / prevPayrollValue) * 100).toFixed(1))
+      : 0;
+
+    // --- Compliance ---
+    const [currentCompliance, prevCompliance] = await Promise.all([
+      this.prisma.timesheet.findMany({
+        where: {
+          ...baseWhere,
+          status: { not: 'DRAFT' },
+          periodStart: { gte: monthStart },
+          periodEnd: { lte: monthEnd },
+          ...(query.departmentId ? { user: { departmentId: query.departmentId } } : {}),
+        },
+      }),
+      this.prisma.timesheet.findMany({
+        where: {
+          ...baseWhere,
+          status: { not: 'DRAFT' },
+          periodStart: { gte: prevMonthStart },
+          periodEnd: { lte: prevMonthEnd },
+          ...(query.departmentId ? { user: { departmentId: query.departmentId } } : {}),
+        },
+      }),
+    ]);
+
+    const calcCompliance = (sheets: typeof currentCompliance) => {
+      if (sheets.length === 0) return 100;
+      const flagged = sheets.filter((s) => s.status === 'REJECTED' || s.status === 'REVISION_REQUESTED').length;
+      return Math.round(((sheets.length - flagged) / sheets.length) * 100);
+    };
+    const complianceValue = calcCompliance(currentCompliance);
+    const prevComplianceValue = calcCompliance(prevCompliance);
+    const complianceChange = prevComplianceValue > 0
+      ? Number((((complianceValue - prevComplianceValue) / prevComplianceValue) * 100).toFixed(1))
+      : 0;
+
+    const data = {
+      attendance: { value: attendanceValue, previous: prevAttendanceValue, change: attendanceChange },
+      laborCost: { value: laborValue, previous: prevLaborValue, change: laborChange },
+      payroll: { value: payrollValue, previous: prevPayrollValue, change: payrollChange },
+      compliance: { value: complianceValue, previous: prevComplianceValue, change: complianceChange },
+    };
+
+    await this.cache.set(cacheKey, data, 60);
+    return data;
+  }
+
+  // ─── Payroll Report with filters (Finance) ───────────────────────────────────
+
+  async getFinancePayrollReport(p: AuthPrincipal, query: ReportsQuery) {
+    this.requireFinanceOrAdmin(p);
+
+    const where: Prisma.PayrollPeriodWhereInput = {
+      tenantId: p.tenantId,
+      organizationId: p.organizationId,
+      deletedAt: null,
+    };
+
+    if (query.from || query.to) {
+      where.startDate = { ...(query.from ? { gte: new Date(query.from) } : {}) };
+      where.endDate = { ...(query.to ? { lte: new Date(query.to) } : {}) };
+    }
+
+    const periods = await this.prisma.payrollPeriod.findMany({
+      where,
+      orderBy: { startDate: 'desc' },
+      take: Math.min(Number(query.limit ?? 20), 100),
+      include: {
+        reports: {
+          include: {
+            lineItems: {
+              include: {
+                user: {
+                  select: {
+                    id: true, firstName: true, lastName: true, email: true,
+                    jobTitle: true, employmentType: true, hourlyRate: true,
+                    department: { select: { name: true } },
+                  },
+                },
+              },
+              ...(query.userId ? { where: { userId: query.userId } } : {}),
+              ...(query.departmentId ? { where: { user: { departmentId: query.departmentId } } } : {}),
+            },
+          },
+        },
+      },
+    });
+
+    const lineItems = periods.flatMap((p) => p.reports.flatMap((r) => r.lineItems));
+    const totalGrossPayroll = lineItems.reduce((acc, li) => acc + Number(li.estimatedPay), 0);
+    const totalEmployees = new Set(lineItems.map((li) => li.userId)).size;
+
+    return {
+      totalGrossPayroll,
+      totalEmployees,
+      periods: periods.map((p) => ({
+        id: p.id,
+        type: p.type,
+        status: p.status,
+        startDate: p.startDate,
+        endDate: p.endDate,
+      })),
+      lineItems: lineItems.map((li) => ({
+        id: li.id,
+        userId: li.userId,
+        employee: `${li.user.firstName} ${li.user.lastName}`,
+        department: li.user.department?.name ?? null,
+        hourlyRate: Number(li.hourlyRate),
+        approvedHours: Number(li.approvedHours),
+        overtimeHours: Number(li.overtimeHours),
+        estimatedPay: Number(li.estimatedPay),
+        employmentType: li.user.employmentType,
+      })),
+    };
+  }
+
+  // ─── Overtime Analysis (Finance) ──────────────────────────────────────────────
+
+  async getOvertimeAnalysis(p: AuthPrincipal, query: ReportsQuery) {
+    this.requireFinanceOrAdmin(p);
+
+    const { from, to } = query.from && query.to
+      ? { from: new Date(query.from), to: new Date(query.to) }
+      : (() => {
+          const now = new Date();
+          return {
+            from: new Date(now.getFullYear(), now.getMonth(), 1),
+            to: new Date(now.getFullYear(), now.getMonth() + 1, 0),
+          };
+        })();
+
+    const lineItems = await this.prisma.payrollLineItem.findMany({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        overtimeHours: { gt: 0 },
+        ...(query.departmentId ? { user: { departmentId: query.departmentId } } : {}),
+        payrollReport: {
+          period: { startDate: { lte: to }, endDate: { gte: from } },
+        },
+      },
+      include: {
+        user: {
+          select: {
+            id: true, firstName: true, lastName: true,
+            department: { select: { name: true } },
+          },
+        },
+      },
+    });
+
+    const totalOvertimeHours = lineItems.reduce((acc, li) => acc + Number(li.overtimeHours), 0);
+    const totalOvertimeCost = lineItems.reduce((acc, li) => {
+      const rate = Number(li.hourlyRate);
+      const otHours = Number(li.overtimeHours);
+      return acc + otHours * rate * 1.25;
+    }, 0);
+
+    const deptMap = new Map<string, { hours: number; cost: number; employees: Set<string> }>();
+    for (const li of lineItems) {
+      const dept = li.user.department?.name ?? 'Unassigned';
+      const entry = deptMap.get(dept) ?? { hours: 0, cost: 0, employees: new Set<string>() };
+      entry.hours += Number(li.overtimeHours);
+      entry.cost += Number(li.overtimeHours) * Number(li.hourlyRate) * 1.25;
+      entry.employees.add(li.userId);
+      deptMap.set(dept, entry);
+    }
+
+    return {
+      totalOvertimeHours: Number(totalOvertimeHours.toFixed(2)),
+      totalOvertimeCost: Number(totalOvertimeCost.toFixed(2)),
+      affectedEmployees: lineItems.length,
+      byDepartment: Array.from(deptMap.entries()).map(([name, data]) => ({
+        department: name,
+        hours: Number(data.hours.toFixed(2)),
+        cost: Number(data.cost.toFixed(2)),
+        employeeCount: data.employees.size,
+      })),
     };
   }
 }

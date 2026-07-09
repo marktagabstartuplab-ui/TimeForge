@@ -7,10 +7,14 @@ import {
   Query,
   Res,
 } from '@nestjs/common';
+import { ApiBearerAuth, ApiTags } from '@nestjs/swagger';
 import { Response } from 'express';
-import { SecurityService, SecurityLogsQuery, SecurityExportDto } from './security.service';
+import { SecurityService } from './security.service';
+import { SecurityLogsQuery, SecurityExportDto } from './dto';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
+@ApiTags('Security')
+@ApiBearerAuth()
 @Controller({ path: 'security', version: '1' })
 @RequirePermissions('*') // Admins only (wildcard matches admin permissions)
 export class SecurityController {

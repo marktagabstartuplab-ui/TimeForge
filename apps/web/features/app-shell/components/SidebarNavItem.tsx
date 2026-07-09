@@ -16,6 +16,7 @@ import {
   CalendarDays,
   Target,
   ClipboardCheck,
+  Sparkles,
   type LucideIcon,
 } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -36,6 +37,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   "calendar-days": CalendarDays,
   "target": Target,
   "clipboard-check": ClipboardCheck,
+  "sparkles": Sparkles,
 };
 
 interface SidebarNavItemProps {

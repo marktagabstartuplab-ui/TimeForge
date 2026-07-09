@@ -288,7 +288,7 @@ const payrollValidation: FeatureHandler = async (prisma, ctx) => {
   const report = period.reports[0];
   const lines = report.lineItems.map((li) => {
     const name = `${li.user.firstName} ${li.user.lastName}`;
-    return `${name} [${li.user.employmentType}]: approved=${li.approvedHours}h, pending=${li.pendingHours}h, overtime=${li.overtimeHours}h, rate=$${li.hourlyRate}, estPay=$${li.estimatedPay}`;
+    return `${name} [${li.user.employmentType}]: approved=${li.approvedHours}h, pending=${li.pendingHours}h, overtime=${li.overtimeHours}h, rate=₱${li.hourlyRate}, estPay=₱${li.estimatedPay}`;
   });
 
   // Flag outliers (overtime > 20h or pending > approved)

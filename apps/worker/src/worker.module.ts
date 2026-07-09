@@ -14,8 +14,10 @@ import { PayrollExportProcessor } from './processors/payroll-export.processor';
 import { PerformanceExportProcessor } from './processors/performance-export.processor';
 import { ReportsExportProcessor } from './processors/reports-export.processor';
 import { FinanceAnalyticsProcessor } from './processors/finance-analytics.processor';
+import { FinanceAiProcessor } from './processors/finance-ai.processor';
 import { OpenAiProvider } from './ai/openai.provider';
 import { StorageModule } from '../../api/src/modules/storage/storage.module';
+import { InfraModule } from '../../api/src/infra/infra.module';
 
 @Module({
   imports: [
@@ -32,6 +34,10 @@ import { StorageModule } from '../../api/src/modules/storage/storage.module';
             password: url.password || undefined,
             maxRetriesPerRequest: null,
           },
+          defaultJobOptions: {
+            removeOnComplete: { age: 86400 },
+            removeOnFail: { age: 604800 },
+          },
         };
       },
     }),
@@ -42,8 +48,10 @@ import { StorageModule } from '../../api/src/modules/storage/storage.module';
     BullModule.registerQueue({ name: 'performance-export' }),
     BullModule.registerQueue({ name: 'reports-export' }),
     BullModule.registerQueue({ name: 'finance-analytics' }),
+    BullModule.registerQueue({ name: 'finance-ai' }),
     PrismaModule,
     StorageModule,
+    InfraModule,
   ],
   providers: [
     NotificationsService,
@@ -55,6 +63,7 @@ import { StorageModule } from '../../api/src/modules/storage/storage.module';
     PerformanceExportProcessor,
     ReportsExportProcessor,
     FinanceAnalyticsProcessor,
+    FinanceAiProcessor,
     OpenAiProvider,
   ],
 })

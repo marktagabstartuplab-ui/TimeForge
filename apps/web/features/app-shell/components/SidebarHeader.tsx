@@ -10,9 +10,11 @@ import type { SidebarOrganization } from "../api/navigation.service";
 
 interface SidebarHeaderProps {
   organization: SidebarOrganization | null;
+  /** Where the logo links — defaults to the generic dashboard; scoped shells (e.g. Finance) should pass their own home route. */
+  homeHref?: string;
 }
 
-export function SidebarHeader({ organization }: SidebarHeaderProps) {
+export function SidebarHeader({ organization, homeHref = "/dashboard" }: SidebarHeaderProps) {
   const isCollapsed = useSidebarStore((s) => s.isCollapsed);
   const toggleCollapse = useSidebarStore((s) => s.toggleCollapse);
 
@@ -27,13 +29,13 @@ export function SidebarHeader({ organization }: SidebarHeaderProps) {
       >
         {!isCollapsed ? (
           <div>
-            <Logo href="/dashboard" />
+            <Logo href={homeHref} />
             <p className="mt-1 text-[10px] font-normal uppercase tracking-[1px] text-brand-muted/70">
               Workforce Management
             </p>
           </div>
         ) : (
-          <Logo href="/dashboard" className="[&_span:last-child]:hidden" />
+          <Logo href={homeHref} className="[&_span:last-child]:hidden" />
         )}
 
         {/* Collapse toggle — always visible on desktop */}
