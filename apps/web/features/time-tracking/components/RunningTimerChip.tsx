@@ -6,6 +6,7 @@ import { useQuery } from "@tanstack/react-query";
 import { Timer } from "lucide-react";
 import { getCurrentWorkSession } from "../api/work-sessions.service";
 import { formatStopwatch } from "@/lib/time";
+import { useAuth } from "@/providers/auth-provider";
 
 /**
  * Persistent running-session indicator for the top bar: ticking elapsed time
@@ -20,11 +21,16 @@ import { formatStopwatch } from "@/lib/time";
  */
 export function RunningTimerChip() {
   const [now, setNow] = useState(() => Date.now());
+  const { user } = useAuth();
+  // Finance doesn't do daily time tracking (no time_entry:* permission) — polling this
+  // endpoint for them just retries a permanent 403 forever. Everyone else does track time.
+  const canHaveWorkSession = !(user?.roles.includes("FINANCE") && !user.roles.includes("ADMIN"));
 
   const { data: workSession } = useQuery({
     queryKey: ["work-session", "current"],
     queryFn: getCurrentWorkSession,
     refetchInterval: 30_000,
+    enabled: canHaveWorkSession,
   });
 
   const session = workSession?.session ?? null;

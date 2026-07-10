@@ -9,11 +9,10 @@ import { ApprovalsService } from '../approvals/approvals.service';
 import { UsersService } from '../users/users.service';
 import { OrganizationService } from '../organization/organization.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { IDEMPOTENCY_TTL_MS } from '../../common/constants';
 import { BulkApproveDto, BulkImportUsersDto } from './dto';
 import { ApproveUserDto, RejectUserDto } from '../users/dto';
 import { AuditAction } from '@prisma/client';
-
-const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
 const MAX_BULK_SIZE = 100;
 
 export interface BulkResult<T = unknown> {

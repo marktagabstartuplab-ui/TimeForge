@@ -440,12 +440,12 @@ export class TimesheetsService {
   }
 
   /**
-   * DRAFT | REVISION_REQUESTED -> SUBMITTED.
+   * DRAFT | REVISION_REQUESTED | REJECTED -> SUBMITTED.
    * Recalculates totalMinutes from currently attached, non-deleted entries.
    */
   async submit(p: AuthPrincipal, id: string, dto: SubmitTimesheetDto): Promise<Timesheet> {
     const sheet = await this.ownSheet(p, id);
-    if (sheet.status !== 'DRAFT' && sheet.status !== 'REVISION_REQUESTED') {
+    if (sheet.status !== 'DRAFT' && sheet.status !== 'REVISION_REQUESTED' && sheet.status !== 'REJECTED') {
       throw new ConflictException(
         `Cannot submit a timesheet with status ${sheet.status}`,
       );

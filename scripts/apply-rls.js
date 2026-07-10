@@ -1,6 +1,7 @@
 /* eslint-disable */
 // Applies prisma/sql/rls.sql using the privileged DIRECT_URL connection.
 // Usage: npm run db:rls   (requires DIRECT_URL in the environment / .env)
+require('dotenv').config({ path: require('path').join(__dirname, '..', '.env') });
 const fs = require('fs');
 const path = require('path');
 const { Client } = require('pg');

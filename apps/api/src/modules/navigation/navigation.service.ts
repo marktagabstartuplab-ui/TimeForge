@@ -1,6 +1,5 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
-import { RbacService } from '../rbac/rbac.service';
 import { AuthPrincipal } from '../../common/decorators';
 
 // ─── Menu item definition ──────────────────────────────────────────────────────
@@ -44,7 +43,7 @@ const MENU_CATALOG: MenuItemDef[] = [
   // ── FINANCE WORKSPACE (entry points) ──
   { id: 'finance-dashboard',    label: 'Finance Dashboard',    icon: 'layout-grid',      route: '/finance/dashboard',         section: 'FINANCE',  permission: 'payroll:read' },
   { id: 'finance-payroll',      label: 'Payroll Processing',   icon: 'wallet',           route: '/finance/payroll-processing', section: 'FINANCE',  permission: 'payroll:read' },
-  { id: 'finance-reports',      label: 'Finance Report',        icon: 'bar-chart-3',      route: '/finance/reports',            section: 'FINANCE',  permission: 'payroll:read' },
+  { id: 'finance-reports',      label: 'Financial Reports',     icon: 'bar-chart-3',      route: '/finance/reports',            section: 'FINANCE',  permission: 'payroll:read' },
   { id: 'finance-ai-insights',  label: 'AI Insights',          icon: 'sparkles',         route: '/finance/ai-insights',        section: 'FINANCE',  permission: 'payroll:read' },
   // ── SYSTEM ──
   { id: 'system-logs',  label: 'System Logs',  icon: 'scroll-text',  route: '/admin/security',     section: 'SYSTEM',           permission: 'audit:read_org' },
@@ -75,13 +74,12 @@ export interface SidebarResponse {
 
 @Injectable()
 export class NavigationService {
-  constructor(
-    private readonly prisma: PrismaService,
-    private readonly rbac: RbacService,
-  ) {}
+  constructor(private readonly prisma: PrismaService) {}
 
   async getSidebar(user: AuthPrincipal): Promise<SidebarResponse> {
-    const permissions = this.rbac.resolvePermissions(user.roles);
+    // Already resolved (DB-backed) by JwtStrategy and attached to the request
+    // principal — no need to re-resolve from roles here.
+    const permissions = user.permissions;
     const isAdmin = permissions.includes('*');
 
     const isSupervisorOnly = user.roles.includes('SUPERVISOR') && !isAdmin;
@@ -94,6 +92,12 @@ export class NavigationService {
       if (item.id === 'kpi-dashboard') return user.roles.includes('SUPERVISOR');
       // Supervisors get a focused workspace: no org-wide Employees/Reports sections.
       if (isSupervisorOnly && (item.id === 'employees' || item.id === 'reports')) return false;
+      // Finance has its own dedicated workspace (section 'FINANCE' below, exactly 4 items:
+      // Dashboard, Payroll Processing, Financial Reports, AI Insights). Finance's broad
+      // permission set (payroll_period:read, dashboard:read_org, user:read, org:read, etc.)
+      // would otherwise leak unrelated WORKSPACE/MANAGEMENT/FINANCE_REPORTS/SYSTEM items in —
+      // exclude everything outside the FINANCE section for Finance-only users.
+      if (user.roles.includes('FINANCE') && !isAdmin) return item.section === 'FINANCE';
       // HR runs payroll processing (payroll_period:read), not the self-payslip view (payroll:read_self).
       if (item.id === 'payroll') return isAdmin || permissions.includes(item.permission) || permissions.includes('payroll_period:read');
       // The Finance workspace (its own dedicated shell/sidebar) is for the FINANCE role only —
@@ -125,7 +129,7 @@ export class NavigationService {
       }
       // HR runs the dedicated Payroll Processing wizard, not the Finance oversight page.
       if (item.id === 'payroll' && user.roles.includes('HR') && !isAdmin) {
-        route = '/admin/payroll-processing';
+        route = '/hr/payroll-processing';
         label = 'Payroll Processing';
       }
       if (item.id === 'reports' && (isAdmin || permissions.includes('dashboard:read_team') || permissions.includes('org:read_dashboard'))) {

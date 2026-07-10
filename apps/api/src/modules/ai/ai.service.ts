@@ -10,6 +10,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { AuditAction } from '@prisma/client';
 import { buildPage, decodeCursor } from '../../common/crud/crud.service';
+import { IDEMPOTENCY_TTL_MS } from '../../common/constants';
 import {
   ALL_AI_FEATURES,
   AiFeatureKey,
@@ -19,8 +20,6 @@ import {
 } from './dto';
 
 export const AI_QUEUE = 'ai';
-
-const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
 
 @Injectable()
 export class AiService {
@@ -43,16 +42,25 @@ export class AiService {
 
   // ─── Idempotency helpers ──────────────────────────────────────────────────
 
-  private async checkIdempotency(tenantId: string, key: string): Promise<string | null> {
-    const existing = await (this.prisma as any).idempotencyKey.findFirst({
+  private async checkIdempotency(
+    tx: any,
+    tenantId: string,
+    key: string,
+  ): Promise<string | null> {
+    const existing = await tx.idempotencyKey.findFirst({
       where: { tenantId, key, expiresAt: { gt: new Date() } },
     });
     return existing?.resultRef ?? null;
   }
 
-  private async saveIdempotency(tenantId: string, key: string, jobId: string): Promise<void> {
+  private async saveIdempotency(
+    tx: any,
+    tenantId: string,
+    key: string,
+    jobId: string,
+  ): Promise<void> {
     const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
-    await (this.prisma as any).idempotencyKey.upsert({
+    await tx.idempotencyKey.upsert({
       where: { tenantId_key: { tenantId, key } } as any,
       update: { resultRef: jobId, expiresAt },
       create: { tenantId, key, resultRef: jobId, expiresAt },
@@ -135,46 +143,59 @@ export class AiService {
     // Feature toggle check
     await this.checkFeatureEnabled(user.tenantId, user.organizationId, dto.feature);
 
-    // Idempotency: return cached jobId if key already used
-    const idemKey = `ai:${idempotencyKey}`;
-    const cached = await this.checkIdempotency(user.tenantId, idemKey);
-    if (cached) {
-      const job = await (this.prisma as any).aiJob.findFirst({
-        where: { id: cached, tenantId: user.tenantId },
-        select: { id: true, status: true },
-      });
-      if (job) return { jobId: job.id, status: job.status };
-    }
-
     // Validate subject exists and belongs to tenant
     await this.validateSubject(user.tenantId, dto.subjectType, dto.subjectId);
 
-    // Create AiJob record
-    const aiJob = await (this.prisma as any).aiJob.create({
-      data: {
-        tenantId: user.tenantId,
-        feature: dto.feature,
-        subjectId: dto.subjectId,
-        subjectType: dto.subjectType,
-        status: 'QUEUED',
-        createdBy: user.userId,
-        updatedBy: user.userId,
-      },
+    // Atomic transaction: idempotency check + job creation + idempotency key save + audit log
+    const idemKey = `ai:${idempotencyKey}`;
+
+    const aiJob = await (this.prisma as any).$transaction(async (tx: any) => {
+      // Idempotency: return cached jobId if key already used
+      const cached = await this.checkIdempotency(tx, user.tenantId, idemKey);
+      if (cached) {
+        const job = await tx.aiJob.findFirst({
+          where: { id: cached, tenantId: user.tenantId },
+          select: { id: true, status: true },
+        });
+        if (job) return job; // caller handles via isCached flag
+      }
+
+      // Create AiJob record
+      const newJob = await tx.aiJob.create({
+        data: {
+          tenantId: user.tenantId,
+          feature: dto.feature,
+          subjectId: dto.subjectId,
+          subjectType: dto.subjectType,
+          status: 'QUEUED',
+          createdBy: user.userId,
+          updatedBy: user.userId,
+        },
+      });
+
+      // Save idempotency key
+      await this.saveIdempotency(tx, user.tenantId, idemKey, newJob.id);
+
+      // Audit log
+      await tx.auditLog.create({
+        data: {
+          tenantId: user.tenantId,
+          actorId: user.userId,
+          action: AuditAction.AI_USAGE,
+          entityType: 'ai_job',
+          entityId: newJob.id,
+          metadata: {
+            feature: dto.feature,
+            subjectType: dto.subjectType,
+            subjectId: dto.subjectId,
+          },
+        },
+      });
+
+      return newJob;
     });
 
-    // Audit log
-    await this.prisma.auditLog.create({
-      data: {
-        tenantId: user.tenantId,
-        actorId: user.userId,
-        action: AuditAction.AI_USAGE,
-        entityType: 'ai_job',
-        entityId: aiJob.id,
-        metadata: { feature: dto.feature, subjectType: dto.subjectType, subjectId: dto.subjectId },
-      },
-    });
-
-    // Enqueue BullMQ job
+    // ── Enqueue BullMQ job (outside transaction) ────────────────────────────
     await this.aiQueue.add(
       'process',
       {
@@ -188,8 +209,6 @@ export class AiService {
       },
       { jobId: aiJob.id, attempts: 3, backoff: { type: 'exponential', delay: 5000 } },
     );
-
-    await this.saveIdempotency(user.tenantId, idemKey, aiJob.id);
 
     return { jobId: aiJob.id, status: 'QUEUED' };
   }

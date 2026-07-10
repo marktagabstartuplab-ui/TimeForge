@@ -5,8 +5,10 @@ import {
   HttpCode,
   Query,
   Param,
+  Headers,
   ParseUUIDPipe,
 } from '@nestjs/common';
+import { ApiHeader, ApiOperation } from '@nestjs/swagger';
 import { FinanceAiService, FinanceAiQuery } from './finance-ai.service';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
@@ -37,7 +39,7 @@ export class FinanceAiController {
   @RequirePermissions('payroll:read')
   reviewAlert(
     @CurrentUser() u: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.svc.reviewAlert(u, id);
   }
@@ -69,13 +71,19 @@ export class FinanceAiController {
   @Post('report')
   @HttpCode(200)
   @RequirePermissions('payroll:read')
-  report(@CurrentUser() u: AuthPrincipal, @Query('type') type?: string) {
-    return this.svc.report(u, type);
+  @ApiOperation({ summary: 'Queue an AI financial report. Optional Idempotency-Key prevents duplicate generation.' })
+  @ApiHeader({ name: 'Idempotency-Key', required: false, description: 'Dedup key to prevent duplicate report generation' })
+  report(
+    @CurrentUser() u: AuthPrincipal,
+    @Query('type') type?: string,
+    @Headers('Idempotency-Key') idempotencyKey?: string,
+  ) {
+    return this.svc.report(u, type, idempotencyKey?.trim());
   }
 
   @Get('reports/:id')
   @RequirePermissions('payroll:read')
-  getReport(@CurrentUser() u: AuthPrincipal, @Param('id') id: string) {
+  getReport(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {
     return this.svc.getReport(u, id);
   }
 }

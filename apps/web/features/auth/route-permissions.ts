@@ -37,7 +37,7 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   // additional routes not in MENU_CATALOG but still protected
   '/admin/timesheets': 'timesheet:read_org',
   '/admin/payroll': 'payroll:read',
-  '/admin/payroll-processing': 'payroll_period:read',
+  '/hr/payroll-processing': 'payroll_period:read',
   '/admin/reports': 'dashboard:read_org',
   '/admin/performance': 'dashboard:read_self',
   '/admin/audit-logs': 'audit:read_org',

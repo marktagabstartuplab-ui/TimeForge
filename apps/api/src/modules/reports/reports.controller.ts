@@ -6,20 +6,42 @@ import {
   HttpCode,
   Header,
   Param,
+  ParseUUIDPipe,
   Post,
   Query,
 } from '@nestjs/common';
+import { IsEnum, IsISO8601, IsOptional, IsUUID } from 'class-validator';
 import { ReportsService, ReportsQuery, AttendanceReportQuery } from './reports.service';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 import { ReportCategory } from '@prisma/client';
 
+const REPORT_FORMATS = ['PDF', 'CSV', 'XLSX'] as const;
+
 export class GenerateReportDto {
+  @IsEnum(ReportCategory)
   category!: ReportCategory;
+
+  @IsEnum(REPORT_FORMATS)
   format!: 'PDF' | 'CSV' | 'XLSX';
+
+  @IsOptional()
+  @IsUUID()
   userId?: string;
+
+  @IsOptional()
+  @IsUUID()
   departmentId?: string;
+
+  @IsOptional()
+  @IsUUID()
   teamId?: string;
+
+  @IsOptional()
+  @IsISO8601()
   from?: string;
+
+  @IsOptional()
+  @IsISO8601()
   to?: string;
 }
 
@@ -149,7 +171,7 @@ export class ReportsController {
   @RequirePermissions('dashboard:read_admin')
   async deleteReport(
     @CurrentUser() u: AuthPrincipal,
-    @Param('id') id: string,
+    @Param('id', ParseUUIDPipe) id: string,
   ) {
     return this.svc.deleteReport(u, id);
   }

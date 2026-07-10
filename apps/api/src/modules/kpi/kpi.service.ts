@@ -193,32 +193,36 @@ export class KpiService {
       const now = new Date();
       const periodKey = this.buildPeriodKey(tpl.period, now);
 
-      await this.prisma.kpiProgress.upsert({
-        where: {
-          tenantId_kpiTemplateId_userId_periodKey: {
+      // Not a native Prisma .upsert(): the unique constraint backing this lookup is a
+      // partial index (WHERE deleted_at IS NULL, see migration 20260710000000_soft_delete_partial_unique_indexes)
+      // so Postgres can't use it as an ON CONFLICT arbiter. find-then-branch instead.
+      const existing = await this.prisma.kpiProgress.findFirst({
+        where: { tenantId, kpiTemplateId: tpl.id, userId, periodKey, deletedAt: null },
+      });
+      if (existing) {
+        await this.prisma.kpiProgress.update({
+          where: { id: existing.id },
+          data: {
+            currentValue: { increment: approvedHours },
+            updatedBy: userId,
+            version: { increment: 1 },
+          },
+        });
+      } else {
+        await this.prisma.kpiProgress.create({
+          data: {
             tenantId,
+            organizationId,
             kpiTemplateId: tpl.id,
             userId,
             periodKey,
+            currentValue: approvedHours,
+            targetValue: tpl.targetValue,
+            createdBy: userId,
+            updatedBy: userId,
           },
-        },
-        create: {
-          tenantId,
-          organizationId,
-          kpiTemplateId: tpl.id,
-          userId,
-          periodKey,
-          currentValue: approvedHours,
-          targetValue: tpl.targetValue,
-          createdBy: userId,
-          updatedBy: userId,
-        },
-        update: {
-          currentValue: { increment: approvedHours },
-          updatedBy: userId,
-          version: { increment: 1 },
-        },
-      });
+        });
+      }
     }
   }
 

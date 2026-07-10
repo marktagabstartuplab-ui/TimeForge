@@ -13,6 +13,7 @@ import { Queue } from 'bullmq';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
+import { IDEMPOTENCY_TTL_MS } from '../../common/constants';
 import { AuthPrincipal } from '../../common/decorators';
 import { PERMISSIONS } from '@timeforge/shared';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -30,8 +31,6 @@ export interface PayrollExportJobData {
 const OVERTIME_DAILY_THRESHOLD_HOURS = 8;
 /** Work days in a payroll half-period (for OT calculation baseline). */
 const HALF_PERIOD_WORK_DAYS = 13;
-/** M2: idempotency key TTL, matches the AI/Admin money-mutation pattern. */
-const IDEMPOTENCY_TTL_MS = 24 * 60 * 60 * 1000; // 24 h
 
 @Injectable()
 export class PayrollService {
@@ -1092,7 +1091,8 @@ export class PayrollService {
       return { periodId, processingStatus: cachedPeriod.processingStatus };
     }
 
-    if (period.processingStatus !== 'DRAFT' && period.processingStatus !== 'VALIDATING') {
+    const fromRejected = period.processingStatus === 'REJECTED';
+    if (period.processingStatus !== 'DRAFT' && period.processingStatus !== 'VALIDATING' && !fromRejected) {
       throw new ConflictException(`Cannot validate payroll with processing status ${period.processingStatus}. Must be DRAFT.`);
     }
 
@@ -1105,6 +1105,7 @@ export class PayrollService {
           validatedBy: p.userId,
           updatedBy: p.userId,
           version: { increment: 1 },
+          ...(fromRejected ? { rejectedAt: null, rejectedBy: null, rejectionReason: null } : {}),
         },
       });
 

@@ -4,6 +4,7 @@ import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { randomUUID } from 'node:crypto';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { IDEMPOTENCY_TTL_MS } from '../../common/constants';
 import { AuthPrincipal } from '../../common/decorators';
 import { CacheService } from '../../infra/cache.service';
 import { FinanceService } from '../finance/finance.service';
@@ -655,7 +656,7 @@ export class FinanceAiService {
     };
   }
 
-  async report(p: AuthPrincipal, type?: string) {
+  async report(p: AuthPrincipal, type?: string, idempotencyKey?: string) {
     this.requireFinanceOrAdmin(p);
 
     // Get real data for the report
@@ -682,21 +683,62 @@ export class FinanceAiService {
       alertSummary: { total: alertCount, critical: criticalAlerts },
     };
 
-    const jobId = randomUUID();
+    const idemKey = idempotencyKey ? `finance-ai:${idempotencyKey}` : undefined;
 
-    // Create AiJob record immediately so polling endpoints can find it
-    await this.prisma.aiJob.create({
-      data: {
-        id: jobId,
-        tenantId: p.tenantId,
-        feature: 'FINANCE_REPORT' as any,
-        status: 'QUEUED',
-        subjectId: p.organizationId,
-        subjectType: 'organization',
-        createdBy: p.userId,
-      },
+    // Atomic transaction: idempotency check + job creation + audit log
+    const { jobId } = await this.prisma.$transaction(async (tx) => {
+      if (idemKey) {
+        const cached = await (tx as any).idempotencyKey.findFirst({
+          where: { tenantId: p.tenantId, key: idemKey, expiresAt: { gt: new Date() } },
+        });
+        if (cached?.resultRef) {
+          const existingJob = await (tx as any).aiJob.findFirst({
+            where: { id: cached.resultRef, tenantId: p.tenantId },
+            select: { id: true },
+          });
+          if (existingJob) return { jobId: existingJob.id };
+        }
+      }
+
+      const newJobId = randomUUID();
+
+      await (tx as any).aiJob.create({
+        data: {
+          id: newJobId,
+          tenantId: p.tenantId,
+          feature: 'FINANCE_REPORT' as any,
+          status: 'QUEUED',
+          subjectId: p.organizationId,
+          subjectType: 'organization',
+          createdBy: p.userId,
+          updatedBy: p.userId,
+        },
+      });
+
+      if (idemKey) {
+        const expiresAt = new Date(Date.now() + IDEMPOTENCY_TTL_MS);
+        await (tx as any).idempotencyKey.upsert({
+          where: { tenantId_key: { tenantId: p.tenantId, key: idemKey } } as any,
+          update: { resultRef: newJobId, expiresAt },
+          create: { tenantId: p.tenantId, key: idemKey, resultRef: newJobId, expiresAt },
+        }).catch(() => { /* non-fatal */ });
+      }
+
+      await (tx as any).auditLog.create({
+        data: {
+          tenantId: p.tenantId,
+          actorId: p.userId,
+          action: AuditAction.ADMIN_ACTION,
+          entityType: 'finance_ai_report',
+          entityId: newJobId,
+          metadata: { alertCount, criticalAlerts },
+        },
+      });
+
+      return { jobId: newJobId };
     });
 
+    // Enqueue BullMQ job (outside transaction)
     await this.aiQueue.add('generate-report', {
       jobId,
       tenantId: p.tenantId,
@@ -705,45 +747,6 @@ export class FinanceAiService {
       type: type ?? 'GENERAL',
       reportData,
     }, { jobId, attempts: 2, backoff: { type: 'exponential', delay: 2000 } });
-
-    // Audit log
-    await this.prisma.auditLog.create({
-      data: {
-        tenantId: p.tenantId,
-        actorId: p.userId,
-        action: AuditAction.ADMIN_ACTION,
-        entityType: 'finance_ai_report',
-        entityId: jobId,
-        metadata: { alertCount, criticalAlerts },
-      },
-    });
-
-    // Notify finance users
-    const financeUsers = await this.prisma.user.findMany({
-      where: {
-        tenantId: p.tenantId,
-        organizationId: p.organizationId,
-        roles: { some: { role: { key: 'FINANCE' } } },
-        deletedAt: null,
-      },
-      select: { id: true },
-    });
-
-    await Promise.all(
-      financeUsers.map((u) =>
-        this.notifications.create({
-          tenantId: p.tenantId,
-          organizationId: p.organizationId,
-          userId: u.id,
-          type: 'ANNOUNCEMENT' as any,
-          category: 'REPORT' as any,
-          title: 'AI Financial Report Ready',
-          message: `AI analysis complete: ${alertCount} alerts found (${criticalAlerts} critical).`,
-          actionUrl: '/finance/ai-insights',
-          actionLabel: 'View Report',
-        }),
-      ),
-    ).catch((err) => this.logger.error('Notification fan-out failed:', err));
 
     return { jobId, type: type ?? 'GENERAL', message: 'AI report generation queued. You will be notified when ready.' };
   }

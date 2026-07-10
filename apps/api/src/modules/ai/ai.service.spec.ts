@@ -15,7 +15,7 @@ const mockPermissiveUser = {
 const mockQueue = { add: jest.fn().mockResolvedValue(undefined) };
 
 function mockPrisma() {
-  return {
+  const prisma: any = {
     organizationSetting: { findFirst: jest.fn() },
     timesheet: { findFirst: jest.fn() },
     user: { findFirst: jest.fn() },
@@ -25,6 +25,10 @@ function mockPrisma() {
     aiJob: { create: jest.fn(), findFirst: jest.fn() },
     idempotencyKey: { findFirst: jest.fn(), upsert: jest.fn().mockResolvedValue(undefined) },
   };
+  // triggerJob wraps idempotency check + job creation in a transaction; the
+  // mock just runs the callback against the same mocked client (tx === prisma).
+  prisma.$transaction = jest.fn((fn: (tx: any) => unknown) => fn(prisma));
+  return prisma;
 }
 
 describe('AiService', () => {

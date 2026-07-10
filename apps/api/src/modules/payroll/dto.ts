@@ -24,7 +24,7 @@ export class RunActionDto {
   @IsEnum(['generate', 'approve'])
   action!: 'generate' | 'approve';
 
-  @IsString()
+  @IsUUID()
   periodId!: string;
 }
 
@@ -32,7 +32,7 @@ export class PayrollExportRequestDto {
   @IsEnum(['PDF', 'CSV', 'XLSX'])
   format!: 'PDF' | 'CSV' | 'XLSX';
 
-  @IsString()
+  @IsUUID()
   @IsOptional()
   periodId?: string;
 }

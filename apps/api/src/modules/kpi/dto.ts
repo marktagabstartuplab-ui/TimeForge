@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  IsUUID,
   MaxLength,
   Min,
   IsInt,
@@ -85,7 +86,7 @@ export interface KpiProgressQuery {
 }
 
 export class SubmitCoachingDto {
-  @IsString()
+  @IsUUID()
   userId!: string;
 
   @IsString()

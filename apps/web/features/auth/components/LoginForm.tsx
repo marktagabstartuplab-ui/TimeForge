@@ -102,7 +102,10 @@ export function LoginForm() {
       const result = await login(values.email, values.password);
       persistRememberedEmail(values.email, rememberMe);
       setSession(result.accessToken, result.user);
-      router.push("/dashboard");
+      // Finance has its own dedicated workspace/shell (see navigation.service.ts) —
+      // the generic /dashboard has no Finance branch and would otherwise render blank.
+      const isFinanceOnly = result.user.roles.includes("FINANCE") && !result.user.roles.includes("ADMIN");
+      router.push(isFinanceOnly ? "/finance/dashboard" : "/dashboard");
     } catch (err) {
       // Surface the backend's own message verbatim (e.g. "Email not verified",
       // "Invalid credentials"), except for the pending-approval case which gets

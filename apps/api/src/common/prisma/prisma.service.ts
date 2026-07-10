@@ -2,8 +2,13 @@ import { Injectable, OnModuleInit, OnModuleDestroy } from '@nestjs/common';
 import { PrismaClient } from '@prisma/client';
 import { getContext } from '../context/request-context';
 
-/** Models that carry tenant_id and must be auto-scoped (Phase 2 layer 3). */
-const TENANT_MODELS = new Set([
+/**
+ * Every model that carries tenant_id — auto-scoped (Phase 2 layer 3).
+ * Kept in sync with prisma/schema.prisma; a test asserts this (see
+ * apps/api/src/common/prisma/prisma.service.spec.ts) so an unscoped model
+ * added later fails CI instead of silently relying on developer discipline.
+ */
+export const TENANT_MODELS = new Set([
   'Organization',
   'OrganizationSetting',
   'User',
@@ -11,11 +16,36 @@ const TENANT_MODELS = new Set([
   'RefreshToken',
   'AuditLog',
   'IdempotencyKey',
-  'Notification',
-  'AiJob',
-  'AiResult',
+  'Department',
+  'Team',
+  'Client',
+  'Project',
+  'WorkCategory',
+  'Holiday',
+  'TimeEntry',
+  'Timesheet',
+  'ScrumEntry',
+  'ScrumTask',
+  'ScrumBlocker',
+  'WorkSession',
+  'SessionEvent',
+  'SessionAttachment',
+  'Shift',
+  'Approval',
   'LeaveRequest',
   'LeaveBalance',
+  'KpiTemplate',
+  'KpiProgress',
+  'PayrollPeriod',
+  'PayrollReport',
+  'PayrollLineItem',
+  'Notification',
+  'AiJob',
+  'AiAudit',
+  'AiResult',
+  'SecurityLog',
+  'SecurityAlert',
+  'GeneratedReport',
 ]);
 
 const READ_ACTIONS = ['findMany', 'findFirst', 'count', 'aggregate', 'groupBy'];

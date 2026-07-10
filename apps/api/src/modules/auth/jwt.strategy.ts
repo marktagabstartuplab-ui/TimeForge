@@ -25,12 +25,13 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
 
   async validate(payload: JwtPayload): Promise<AuthPrincipal> {
     const roles = payload.roles ?? [];
+    const permissions = await this.rbac.resolvePermissions(payload.tid, roles);
     return {
       userId: payload.sub,
       tenantId: payload.tid,
       organizationId: payload.oid,
       roles,
-      permissions: this.rbac.resolvePermissions(roles),
+      permissions,
       sessionFamilyId: payload.fid,
     };
   }

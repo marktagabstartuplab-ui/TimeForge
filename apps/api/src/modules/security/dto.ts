@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 import { SecuritySeverity, SecurityStatus } from '@prisma/client';
 
 export class SecurityLogsQuery {
@@ -32,6 +32,6 @@ export class SecurityExportDto {
   format!: 'CSV';
 
   @IsOptional()
-  @IsString()
+  @IsUUID()
   periodId?: string;
 }

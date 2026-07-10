@@ -4,6 +4,7 @@ import { ALL_PERMISSIONS } from '@timeforge/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, ListQuery, PageResult } from '../../common/crud/crud.service';
 import { CreateRoleDto, UpdateRoleDto } from './dto';
+import { RbacService } from './rbac.service';
 
 // ── Shape helpers ────────────────────────────────────────────────────────────
 
@@ -42,7 +43,10 @@ const ROLE_INCLUDE = {
 
 @Injectable()
 export class RolesService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly rbac: RbacService,
+  ) {}
 
   /** List all roles for the tenant (paginated). */
   async findAll(tenantId: string, query: ListQuery): Promise<PageResult<ReturnType<typeof shapeRole>>> {
@@ -77,8 +81,9 @@ export class RolesService {
     const key = dto.name.trim().toUpperCase().replace(/\s+/g, '_').replace(/[^A-Z0-9_]/g, '');
     const permIds = await this.resolvePermissionIds(dto.permissionKeys);
 
+    let result;
     try {
-      return await this.prisma.$transaction(async (tx) => {
+      result = await this.prisma.$transaction(async (tx) => {
         const created = await tx.role.create({
           data: { tenantId, key, name: dto.name.trim(), isSystem: false },
         });
@@ -110,6 +115,11 @@ export class RolesService {
       if (e?.code === 'P2002') throw new ConflictException('A role with this name or key already exists in this tenant');
       throw err;
     }
+
+    // Defensive: covers recreating a role under a key that was previously
+    // soft-deleted and still has a cached (now-stale) permission set.
+    await this.rbac.invalidateRole(tenantId, key);
+    return result;
   }
 
   /**
@@ -125,7 +135,7 @@ export class RolesService {
     const permIds =
       dto.permissionKeys !== undefined ? await this.resolvePermissionIds(dto.permissionKeys) : null;
 
-    return this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       await tx.role.update({
         where: { id },
         data: {
@@ -163,6 +173,11 @@ export class RolesService {
         await tx.role.findUniqueOrThrow({ where: { id }, include: ROLE_INCLUDE }),
       );
     });
+
+    // `key` is immutable, so it's safe to invalidate on `existing.key` regardless
+    // of whether the permission set or name actually changed.
+    await this.rbac.invalidateRole(tenantId, existing.key);
+    return result;
   }
 
   /**
@@ -192,6 +207,10 @@ export class RolesService {
         },
       });
     });
+
+    // Any user still holding this (now-deleted) role loses its permissions on
+    // their very next request instead of waiting out the cache TTL.
+    await this.rbac.invalidateRole(tenantId, existing.key);
   }
 
   /**

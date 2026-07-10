@@ -275,8 +275,8 @@ export class AuthService {
     const tenant = await this.prisma.tenant.findUnique({ where: { slug: defaultTenantSlug } });
     if (!tenant) throw new NotFoundException('Registration is not available');
 
-    const org = await this.prisma.organization.findUnique({
-      where: { tenantId_slug: { tenantId: tenant.id, slug: defaultOrgSlug } },
+    const org = await this.prisma.organization.findFirst({
+      where: { tenantId: tenant.id, slug: defaultOrgSlug },
     });
     if (!org) throw new NotFoundException('Registration is not available');
 
@@ -361,8 +361,8 @@ export class AuthService {
 
     const tenant = await this.prisma.tenant.findUnique({ where: { slug: defaultTenantSlug } });
     if (!tenant) return [];
-    const org = await this.prisma.organization.findUnique({
-      where: { tenantId_slug: { tenantId: tenant.id, slug: defaultOrgSlug } },
+    const org = await this.prisma.organization.findFirst({
+      where: { tenantId: tenant.id, slug: defaultOrgSlug },
     });
     if (!org) return [];
 

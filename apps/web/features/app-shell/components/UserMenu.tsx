@@ -41,11 +41,14 @@ function titleCase(value: string): string {
 
 export function UserMenu() {
   const router = useRouter();
-  const { clearSession } = useAuth();
+  const { user, clearSession } = useAuth();
   const openProfileModal = useProfileModalStore((s) => s.open);
   const openNotifications = useNotificationCenterStore((s) => s.open);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
+  // Finance doesn't do daily time tracking (no time_entry:* permission) — this would
+  // otherwise retry a permanent 403 forever.
+  const canHaveWorkSession = !(user?.roles.includes("FINANCE") && !user.roles.includes("ADMIN"));
 
   const { data: me } = useQuery({ queryKey: ["account", "me"], queryFn: getMe });
   const { data: notifCount } = useQuery({
@@ -56,6 +59,7 @@ export function UserMenu() {
   const { data: workSession } = useQuery({
     queryKey: ["work-session", "current"],
     queryFn: getCurrentWorkSession,
+    enabled: canHaveWorkSession,
   });
 
   // Real global shortcut: "?" opens the shortcuts guide (skipped while typing in a field).

@@ -138,6 +138,7 @@ export function PayrollProcessingContent() {
         message: res.flaggedCount > 0 ? `Flagged ${res.flaggedCount} discrepant record${res.flaggedCount === 1 ? "" : "s"} for follow-up.` : "No discrepancies to flag.",
         tone: res.flaggedCount > 0 ? "success" : "info",
       });
+      invalidateAll();
     },
     onError: (err: any) => setToast({ message: err?.message || "Could not flag discrepancies.", tone: "error" }),
   });

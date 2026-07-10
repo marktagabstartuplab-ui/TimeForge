@@ -1,7 +1,8 @@
 "use client";
 
-import { createContext, useCallback, useContext, useMemo, useState } from "react";
-import { setAccessToken } from "@/lib/api/client";
+import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
+import { useRouter } from "next/navigation";
+import { setAccessToken, setSessionExpiredHandler } from "@/lib/api/client";
 import type { AuthUser } from "@/features/auth/api/auth.service";
 
 interface AuthContextValue {
@@ -19,6 +20,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  * is an httpOnly cookie the backend manages — never touched here.
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
+  const router = useRouter();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setToken] = useState<string | null>(null);
 
@@ -33,6 +35,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setUser(null);
     setAccessToken(null);
   }, []);
+
+  // Bridges the axios client (a plain module, outside React) back into app
+  // state: when a mid-session refresh fails because the refresh token itself
+  // is invalid/expired/reused, drop the session and bounce to /login.
+  useEffect(() => {
+    setSessionExpiredHandler(() => {
+      clearSession();
+      router.replace("/login");
+    });
+    return () => setSessionExpiredHandler(null);
+  }, [clearSession, router]);
 
   const value = useMemo<AuthContextValue>(
     () => ({

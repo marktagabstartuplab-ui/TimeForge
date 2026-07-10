@@ -91,11 +91,20 @@ export class OrganizationService {
     if (type === 'scalar' && typeof value !== 'string' && typeof value !== 'number') {
       throw new UnprocessableEntityException(`Setting '${key}' expects a scalar value`);
     }
-    const result = await this.prisma.organizationSetting.upsert({
-      where: { tenantId_organizationId_key: { tenantId, organizationId, key } },
-      update: { value: value as object, type, updatedBy: actorId, version: { increment: 1 } },
-      create: { tenantId, organizationId, key, value: value as object, type, createdBy: actorId, updatedBy: actorId },
+    // Not a native Prisma .upsert(): the unique constraint backing this lookup is a
+    // partial index (WHERE deleted_at IS NULL, see migration 20260710000000_soft_delete_partial_unique_indexes)
+    // so Postgres can't use it as an ON CONFLICT arbiter. find-then-branch instead.
+    const existingSetting = await this.prisma.organizationSetting.findFirst({
+      where: { tenantId, organizationId, key, deletedAt: null },
     });
+    const result = existingSetting
+      ? await this.prisma.organizationSetting.update({
+          where: { id: existingSetting.id },
+          data: { value: value as object, type, updatedBy: actorId, version: { increment: 1 } },
+        })
+      : await this.prisma.organizationSetting.create({
+          data: { tenantId, organizationId, key, value: value as object, type, createdBy: actorId, updatedBy: actorId },
+        });
     await this.audit(tenantId, actorId, AuditAction.SETTINGS_CHANGE, 'setting', result.id);
     return result;
   }

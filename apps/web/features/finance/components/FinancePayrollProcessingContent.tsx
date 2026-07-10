@@ -199,6 +199,9 @@ export function FinancePayrollProcessingContent() {
   const canReject = processingStatus === "VALIDATED" || processingStatus === "PENDING_APPROVAL";
   const canSendToBank = processingStatus === "APPROVED";
   const isProcessingBusy = validateMutation.isPending || approveMutation.isPending || rejectMutation.isPending || sendToBankMutation.isPending;
+  // Mirrors PayrollProcessingContent's canRecalculate guard — the backend
+  // (payroll.service.ts generateReport, BR-PAY-04) rejects EXPORTED periods either way.
+  const canRecalculate = dashboard?.periodStatus !== "EXPORTED";
 
   return (
     <div className="flex flex-col gap-6">
@@ -375,7 +378,7 @@ export function FinancePayrollProcessingContent() {
                     <SelectItem value="Pending Approval">Pending Approval</SelectItem>
                   </SelectContent>
                 </Select>
-                <Button variant="outline" size="sm" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} className="h-9 text-xs">
+                <Button variant="outline" size="sm" onClick={() => generateMutation.mutate()} disabled={!canRecalculate || generateMutation.isPending} className="h-9 text-xs">
                   <RefreshCw className={`h-3.5 w-3.5 ${generateMutation.isPending ? "animate-spin" : ""}`} /> Recalculate
                 </Button>
               </div>

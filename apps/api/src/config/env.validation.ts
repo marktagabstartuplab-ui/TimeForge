@@ -29,6 +29,17 @@ const schema = z
     SMTP_PASS: z.string().optional(),
     SMTP_FROM: z.string().default('TimeForge Team <no-reply@timeforge.com>'),
     ARGON2_MEMORY_COST: z.coerce.number().positive().default(65536),
+    // Rate limiting
+    RATE_LIMIT_TTL: z.coerce.number().positive().default(60),
+    RATE_LIMIT_MAX: z.coerce.number().positive().default(120),
+    // Registration defaults
+    DEFAULT_TENANT_SLUG: z.string().default('demo'),
+    DEFAULT_ORG_SLUG: z.string().default('demo-org'),
+    // AI provider config
+    AI_PROVIDER: z.enum(['OPENAI', 'ANTHROPIC', 'LOCAL']).default('OPENAI'),
+    OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required when AI_PROVIDER=OPENAI'),
+    OPENAI_MODEL: z.string().default('qwen/qwen3.6-plus'),
+    OPENAI_BASE_URL: z.string().default('https://api.openai.com/v1'),
   })
   .superRefine((cfg, ctx) => {
     if (cfg.STORAGE_DRIVER === 'supabase' && (!cfg.SUPABASE_URL || !cfg.SUPABASE_SERVICE_ROLE_KEY)) {
@@ -50,6 +61,26 @@ const schema = z
         code: z.ZodIssueCode.custom,
         message: 'REDIS_URL must point to a remote Redis instance in production',
         path: ['REDIS_URL'],
+      });
+    }
+    const placeholderSecrets = new Set([
+      'change-me-access-secret',
+      'change-me-refresh-secret',
+      'dev-access-secret-min-8-chars',
+      'dev-refresh-secret-min-8-chars',
+    ]);
+    if (cfg.NODE_ENV === 'production' && placeholderSecrets.has(cfg.JWT_ACCESS_SECRET)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'JWT_ACCESS_SECRET is a placeholder dev value — set a real secret in production',
+        path: ['JWT_ACCESS_SECRET'],
+      });
+    }
+    if (cfg.NODE_ENV === 'production' && placeholderSecrets.has(cfg.JWT_REFRESH_SECRET)) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: 'JWT_REFRESH_SECRET is a placeholder dev value — set a real secret in production',
+        path: ['JWT_REFRESH_SECRET'],
       });
     }
   });

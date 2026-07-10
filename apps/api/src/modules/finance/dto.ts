@@ -1,4 +1,4 @@
-import { IsEnum, IsOptional, IsString } from 'class-validator';
+import { IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export enum FinanceTrendPeriod {
   MONTHLY = 'monthly',
@@ -17,7 +17,7 @@ export class ExportDashboardDto {
   @IsOptional()
   format?: 'PDF' | 'CSV' | 'XLSX';
 
-  @IsString()
+  @IsUUID()
   @IsOptional()
   periodId?: string;
 }

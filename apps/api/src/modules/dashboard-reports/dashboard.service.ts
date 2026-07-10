@@ -1,4 +1,4 @@
-import { ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import { ForbiddenException, Injectable, Logger, NotFoundException } from '@nestjs/common';
 import { AuditAction } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../infra/cache.service';
@@ -22,6 +22,8 @@ type Scope = 'self' | 'team' | 'org';
 
 @Injectable()
 export class DashboardService {
+  private readonly logger = new Logger(DashboardService.name);
+
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
@@ -1487,31 +1489,34 @@ export class DashboardService {
     this.requireAny(user, 'dashboard:read_org');
     const result = await this.hrExecutiveSummary(tenantId, user, true);
 
-    const job = await this.prisma.aiJob.create({
-      data: {
-        tenantId,
-        feature: 'PRODUCTIVITY_INSIGHT',
-        subjectId: user.organizationId,
-        subjectType: 'Organization',
-        status: 'SUCCEEDED',
-      },
-    });
-    await this.prisma.aiResult.create({
-      data: {
-        tenantId,
-        aiJobId: job.id,
-        summary: result.summary,
-        recommendation: result.actionRecommendations.join(' '),
-      },
-    });
-    await this.prisma.auditLog.create({
-      data: {
-        tenantId,
-        actorId: user.userId,
-        action: AuditAction.ADMIN_ACTION,
-        entityType: 'hr_dashboard_report',
-        metadata: { event: 'HR_REPORT_GENERATED', generatedAt: result.generatedAt },
-      },
+    const [job] = await this.prisma.$transaction(async (tx) => {
+      const j = await tx.aiJob.create({
+        data: {
+          tenantId,
+          feature: 'PRODUCTIVITY_INSIGHT',
+          subjectId: user.organizationId,
+          subjectType: 'Organization',
+          status: 'SUCCEEDED',
+        },
+      });
+      await tx.aiResult.create({
+        data: {
+          tenantId,
+          aiJobId: j.id,
+          summary: result.summary,
+          recommendation: result.actionRecommendations.join(' '),
+        },
+      });
+      await tx.auditLog.create({
+        data: {
+          tenantId,
+          actorId: user.userId,
+          action: AuditAction.ADMIN_ACTION,
+          entityType: 'hr_dashboard_report',
+          metadata: { event: 'HR_REPORT_GENERATED', generatedAt: result.generatedAt },
+        },
+      });
+      return [j];
     });
 
     return result;
@@ -1757,7 +1762,13 @@ export class DashboardService {
     });
 
     if (format === 'XLSX') {
-      const ExcelJS = await import('exceljs');
+      let ExcelJS: typeof import('exceljs');
+      try {
+        ExcelJS = await import('exceljs');
+      } catch {
+        this.logger.warn('exceljs not available, falling back to CSV');
+        return this.fallbackCsv(filtered);
+      }
       const workbook = new ExcelJS.Workbook();
       const sheet = workbook.addWorksheet('Attendance');
       sheet.columns = [
@@ -1776,8 +1787,14 @@ export class DashboardService {
     }
 
     if (format === 'PDF') {
-      const { default: PDFDocument } = await import('pdfkit');
-      const doc = new PDFDocument({ margin: 40 });
+      let pdfDoc: any;
+      try {
+        pdfDoc = (await import('pdfkit')).default;
+      } catch {
+        this.logger.warn('pdfkit not available, falling back to CSV');
+        return this.fallbackCsv(filtered);
+      }
+      const doc = new pdfDoc({ margin: 40 });
       const chunks: Buffer[] = [];
       doc.on('data', (c: Buffer) => chunks.push(c));
       doc.fontSize(18).text('Attendance Report', { align: 'center' });
@@ -1787,11 +1804,23 @@ export class DashboardService {
         doc.text(`${r.name} — ${r.department ?? 'Unassigned'} — ${r.daysLogged}/${r.expectedDays} days — ${r.absences} absences — ${r.tardiness} tardy — ${r.attendancePercent}% — ${r.status}`);
       }
       doc.end();
-      const buffer = await new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+      const buffer = await new Promise<Buffer>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('PDF generation timed out')), 30_000);
+        doc.on('end', () => { clearTimeout(timeout); resolve(Buffer.concat(chunks)); });
+        doc.on('error', (err: Error) => { clearTimeout(timeout); reject(err); });
+      });
       return { buffer, contentType: 'application/pdf', filename: 'attendance-report.pdf' };
     }
 
     // CSV (default)
+    const lines = ['Employee,Department,Days Logged,Expected Days,Absences,Tardiness,Attendance %,Status'];
+    for (const r of filtered) {
+      lines.push(`${r.name},${r.department ?? ''},${r.daysLogged},${r.expectedDays},${r.absences},${r.tardiness},${r.attendancePercent}%,${r.status}`);
+    }
+    return { buffer: Buffer.from(lines.join('\n'), 'utf-8'), contentType: 'text/csv', filename: 'attendance-report.csv' };
+  }
+
+  private fallbackCsv(filtered: any[]) {
     const lines = ['Employee,Department,Days Logged,Expected Days,Absences,Tardiness,Attendance %,Status'];
     for (const r of filtered) {
       lines.push(`${r.name},${r.department ?? ''},${r.daysLogged},${r.expectedDays},${r.absences},${r.tardiness},${r.attendancePercent}%,${r.status}`);

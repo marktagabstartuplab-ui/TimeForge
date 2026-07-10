@@ -15,6 +15,8 @@ import { AttachmentsService } from './attachments.service';
 import { CreateAttachmentFileMetaDto, CreateAttachmentLinkDto } from './dto';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10MB
+
 interface UploadedMulterFile {
   buffer: Buffer;
   mimetype: string;
@@ -46,7 +48,7 @@ export class AttachmentsController {
 
   @Post('work-sessions/:id/attachments/file')
   @RequirePermissions('time_entry:update')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE } }))
   createSessionFile(
     @CurrentUser() u: AuthPrincipal,
     @Param('id', ParseUUIDPipe) id: string,
@@ -76,7 +78,7 @@ export class AttachmentsController {
 
   @Post('scrum-entries/tasks/:id/attachments/file')
   @RequirePermissions('scrum:update')
-  @UseInterceptors(FileInterceptor('file'))
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE } }))
   createTaskFile(
     @CurrentUser() u: AuthPrincipal,
     @Param('id', ParseUUIDPipe) id: string,

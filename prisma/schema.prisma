@@ -224,7 +224,11 @@ model Organization {
   leaveRequests  LeaveRequest[]
   leaveBalances  LeaveBalance[]
 
-  @@unique([tenantId, slug])
+  // Uniqueness on (tenantId, slug) is enforced by a partial unique index
+  // (WHERE deleted_at IS NULL) added in migration 20260710000000_soft_delete_partial_unique_indexes —
+  // Prisma's schema DSL can't express a partial @@unique, so this is a plain
+  // index for query support only; the DB constraint is the source of truth.
+  @@index([tenantId, slug])
   @@unique([tenantId, id])
   @@index([tenantId])
   @@map("organizations")
@@ -246,8 +250,9 @@ model OrganizationSetting {
 
   organization Organization @relation(fields: [organizationId], references: [id])
 
-  @@unique([tenantId, organizationId, key])
-  @@index([tenantId, organizationId])
+  // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
+  // see migration 20260710000000_soft_delete_partial_unique_indexes.
+  @@index([tenantId, organizationId, key])
   @@map("organization_settings")
 }
 
@@ -315,10 +320,15 @@ model User {
   leaveRequestsReviewed LeaveRequest[]    @relation("LeaveRequestReviewer")
   leaveBalances         LeaveBalance[]    @relation("LeaveBalanceUser")
 
-  @@unique([tenantId, email])
+  // Uniqueness on (tenantId, email) is enforced by a partial unique index
+  // (WHERE deleted_at IS NULL) — see migration 20260710000000_soft_delete_partial_unique_indexes.
+  @@index([tenantId, email])
   @@unique([tenantId, id])
   @@index([tenantId, organizationId])
   @@index([tenantId, teamId])
+  @@index([tenantId, organizationId, supervisorId])
+  @@index([tenantId, organizationId, status])
+  @@index([tenantId, organizationId, departmentId])
   @@map("users")
 }
 
@@ -336,7 +346,9 @@ model Role {
   permissions RolePermission[]
   users       UserRole[]
 
-  @@unique([tenantId, key])
+  // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
+  // see migration 20260710000000_soft_delete_partial_unique_indexes.
+  @@index([tenantId, key])
   @@map("roles")
 }
 
@@ -391,6 +403,7 @@ model RefreshToken {
   user User @relation(fields: [userId], references: [id], onDelete: Cascade)
 
   @@index([tenantId, userId])
+  @@index([tenantId, expiresAt])
   @@index([familyId])
   @@map("refresh_tokens")
 }
@@ -410,6 +423,8 @@ model AuditLog {
 
   @@index([tenantId, createdAt])
   @@index([tenantId, actorId, createdAt])
+  @@index([tenantId, entityType, entityId])
+  @@index([tenantId, entityType, action, createdAt(sort: Desc)])
   @@map("audit_log")
 }
 
@@ -449,8 +464,9 @@ model Department {
   shifts       Shift[]
   timeEntries  TimeEntry[]
 
-  @@unique([tenantId, organizationId, name])
-  @@index([tenantId, organizationId])
+  // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
+  // see migration 20260710000000_soft_delete_partial_unique_indexes.
+  @@index([tenantId, organizationId, name])
   @@map("departments")
 }
 
@@ -472,8 +488,9 @@ model Team {
   department   Department?  @relation(fields: [departmentId], references: [id])
   users        User[]
 
-  @@unique([tenantId, organizationId, name])
-  @@index([tenantId, organizationId])
+  // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
+  // see migration 20260710000000_soft_delete_partial_unique_indexes.
+  @@index([tenantId, organizationId, name])
   @@map("teams")
 }
 
@@ -495,8 +512,9 @@ model Client {
   timeEntries  TimeEntry[]
   scrumEntries ScrumEntry[]
 
-  @@unique([tenantId, organizationId, name])
-  @@index([tenantId, organizationId])
+  // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
+  // see migration 20260710000000_soft_delete_partial_unique_indexes.
+  @@index([tenantId, organizationId, name])
   @@map("clients")
 }
 
@@ -530,8 +548,9 @@ model Project {
   scrumEntries ScrumEntry[]
   scrumTasks   ScrumTask[]
 
-  @@unique([tenantId, organizationId, code])
-  @@index([tenantId, organizationId])
+  // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
+  // see migration 20260710000000_soft_delete_partial_unique_indexes.
+  @@index([tenantId, organizationId, code])
   @@index([tenantId, organizationId, departmentId])
   @@map("projects")
 }
@@ -551,8 +570,9 @@ model WorkCategory {
   organization Organization @relation(fields: [tenantId, organizationId], references: [tenantId, id])
   timeEntries  TimeEntry[]
 
-  @@unique([tenantId, organizationId, name])
-  @@index([tenantId, organizationId])
+  // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
+  // see migration 20260710000000_soft_delete_partial_unique_indexes.
+  @@index([tenantId, organizationId, name])
   @@map("work_categories")
 }
 
@@ -572,8 +592,9 @@ model Holiday {
 
   organization Organization @relation(fields: [tenantId, organizationId], references: [tenantId, id])
 
-  @@unique([tenantId, organizationId, date, name])
-  @@index([tenantId, organizationId])
+  // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
+  // see migration 20260710000000_soft_delete_partial_unique_indexes.
+  @@index([tenantId, organizationId, date, name])
   @@map("holidays")
 }
 
@@ -695,7 +716,9 @@ model ScrumEntry {
   tasks        ScrumTask[]
   blockerItems ScrumBlocker[]
 
-  @@unique([tenantId, userId, entryDate])
+  // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
+  // see migration 20260710000000_soft_delete_partial_unique_indexes. The plain
+  // index below (same columns) already covers query support.
   @@index([tenantId, organizationId, entryDate])
   @@index([tenantId, userId, entryDate])
   @@index([tenantId, organizationId, submittedAt])
@@ -758,6 +781,7 @@ model ScrumBlocker {
   scrumEntry ScrumEntry @relation(fields: [scrumEntryId], references: [id])
 
   @@index([tenantId, scrumEntryId])
+  @@index([tenantId, organizationId, status])
   @@map("scrum_blockers")
 }
 
@@ -978,8 +1002,10 @@ model KpiTemplate {
   organization Organization  @relation(fields: [tenantId, organizationId], references: [tenantId, id])
   progress     KpiProgress[]
 
-  @@unique([tenantId, organizationId, name])
-  @@index([tenantId, organizationId])
+  // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
+  // see migration 20260710000000_soft_delete_partial_unique_indexes.
+  @@index([tenantId, organizationId, name])
+  @@index([tenantId, organizationId, metricType])
   @@map("kpi_templates")
 }
 
@@ -1002,7 +1028,11 @@ model KpiProgress {
   kpiTemplate KpiTemplate @relation(fields: [kpiTemplateId], references: [id])
   user        User        @relation(fields: [userId], references: [id])
 
-  @@unique([tenantId, kpiTemplateId, userId, periodKey])
+  // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
+  // see migration 20260710000000_soft_delete_partial_unique_indexes. The
+  // upsertProgressFromApproval() caller does a manual find-then-branch instead
+  // of .upsert() because Postgres can't use a partial index as an ON CONFLICT arbiter.
+  @@index([tenantId, kpiTemplateId, userId, periodKey])
   @@index([tenantId, organizationId, userId])
   @@map("kpi_progress")
 }
@@ -1039,7 +1069,9 @@ model PayrollPeriod {
   organization Organization    @relation(fields: [tenantId, organizationId], references: [tenantId, id])
   reports      PayrollReport[]
 
-  @@unique([tenantId, organizationId, startDate, endDate])
+  // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
+  // see migration 20260710000000_soft_delete_partial_unique_indexes.
+  @@index([tenantId, organizationId, startDate, endDate])
   @@index([tenantId, organizationId, status])
   @@map("payroll_periods")
 }
@@ -1092,6 +1124,7 @@ model PayrollLineItem {
   @@unique([payrollReportId, userId])
   @@index([tenantId, payrollReportId])
   @@index([tenantId, organizationId])
+  @@index([tenantId, userId])
   @@map("payroll_line_items")
 }
 

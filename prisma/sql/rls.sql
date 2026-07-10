@@ -44,7 +44,9 @@ DECLARE
     -- Security monitoring + generated report exports
     'security_logs', 'security_alerts', 'generated_reports',
     -- Team Schedules
-    'shifts'
+    'shifts',
+    -- Leave Management
+    'leave_requests', 'leave_balances'
   ];
 BEGIN
   FOREACH t IN ARRAY tenant_tables LOOP
@@ -68,5 +70,30 @@ CREATE POLICY tenant_self ON tenants
   USING (id = current_setting('app.tenant_id', true)::uuid)
   WITH CHECK (id = current_setting('app.tenant_id', true)::uuid);
 
--- Note: join tables (role_permissions, user_roles) and the global `permissions`
--- catalog are not tenant-scoped; access is governed through their parents.
+-- 4) Non-tenant-scoped RBAC catalog tables: enable RLS for defense-in-depth.
+--    These tables have no tenant_id column. The backend connects as a superuser
+--    (bypasses RLS), while the timeforge_app role is given access via policy.
+--    Supabase anon/authenticated roles have no matching policy and are denied.
+DO $$
+DECLARE
+  t text;
+  rbac_tables text[] := ARRAY['permissions', 'user_roles', 'role_permissions'];
+BEGIN
+  FOREACH t IN ARRAY rbac_tables LOOP
+    EXECUTE format('ALTER TABLE %I ENABLE ROW LEVEL SECURITY;', t);
+    EXECUTE format('DROP POLICY IF EXISTS backend_service_role ON %I;', t);
+    EXECUTE format($f$
+      CREATE POLICY backend_service_role ON %I
+        FOR ALL
+        TO timeforge_app
+        USING (true)
+        WITH CHECK (true);
+    $f$, t);
+  END LOOP;
+END
+$$;
+
+-- 5) _prisma_migrations: Prisma internal table — block all non-superuser access.
+ALTER TABLE _prisma_migrations ENABLE ROW LEVEL SECURITY;
+-- No policy means default-deny for any non-superuser role. Prisma CLI connects
+-- as superuser and bypasses RLS, so migrations continue to function normally.
