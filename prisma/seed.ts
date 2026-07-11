@@ -20,11 +20,14 @@ async function main() {
     create: { name: 'Demo Corp', slug: 'demo' },
   });
 
-  const org = await prisma.organization.upsert({
-    where: { tenantId_slug: { tenantId: tenant.id, slug: 'demo-org' } },
-    update: {},
-    create: { tenantId: tenant.id, name: 'Demo Organization', slug: 'demo-org', timezone: 'Asia/Manila' },
-  });
+  // Uniqueness on (tenantId, slug) is a partial index (WHERE deleted_at IS NULL),
+  // which Prisma can't target with .upsert() — find-then-create instead, matching
+  // apps/api/src/modules/organization/organization.service.ts.
+  const org =
+    (await prisma.organization.findFirst({ where: { tenantId: tenant.id, slug: 'demo-org', deletedAt: null } })) ??
+    (await prisma.organization.create({
+      data: { tenantId: tenant.id, name: 'Demo Organization', slug: 'demo-org', timezone: 'Asia/Manila' },
+    }));
 
   // ── Permission catalog ─────────────────────────────────────────────────────
   for (const key of ALL_PERMISSIONS) {
@@ -34,11 +37,11 @@ async function main() {
 
   // ── Roles + role→permission mapping ────────────────────────────────────────
   for (const roleKey of Object.values(Role)) {
-    const role = await prisma.role.upsert({
-      where: { tenantId_key: { tenantId: tenant.id, key: roleKey } },
-      update: {},
-      create: { tenantId: tenant.id, key: roleKey, name: roleKey, isSystem: true },
-    });
+    // Uniqueness on (tenantId, key) is a partial index — see the organization
+    // upsert above for why this can't be a native .upsert().
+    const role =
+      (await prisma.role.findFirst({ where: { tenantId: tenant.id, key: roleKey, deletedAt: null } })) ??
+      (await prisma.role.create({ data: { tenantId: tenant.id, key: roleKey, name: roleKey, isSystem: true } }));
     const mapped = ROLE_PERMISSIONS[roleKey];
     const grantKeys = mapped.includes('*') ? ALL_PERMISSIONS : mapped;
     await prisma.rolePermission.deleteMany({ where: { roleId: role.id } });
@@ -59,26 +62,28 @@ async function main() {
     employmentType: EmploymentType,
     payrollEligible: boolean,
   ) {
-    const user = await prisma.user.upsert({
-      where: { tenantId_email: { tenantId: tenant.id, email } },
-      update: {},
-      create: {
-        tenantId: tenant.id,
-        organizationId: org.id,
-        email,
-        firstName,
-        lastName,
-        passwordHash,
-        status: UserStatus.ACTIVE,
-        isApproved: true,
-        employmentType,
-        payrollEligible,
-        emailVerifiedAt: new Date(),
-        hourlyRate: employmentType === EmploymentType.INTERN ? null : '25.00',
-      },
-    });
-    const role = await prisma.role.findUniqueOrThrow({
-      where: { tenantId_key: { tenantId: tenant.id, key: roleKey } },
+    // Uniqueness on (tenantId, email) is a partial index — find-then-create, as above.
+    const user =
+      (await prisma.user.findFirst({ where: { tenantId: tenant.id, email, deletedAt: null } })) ??
+      (await prisma.user.create({
+        data: {
+          tenantId: tenant.id,
+          organizationId: org.id,
+          email,
+          firstName,
+          lastName,
+          passwordHash,
+          status: UserStatus.ACTIVE,
+          isApproved: true,
+          employmentType,
+          payrollEligible,
+          emailVerifiedAt: new Date(),
+          hourlyRate: employmentType === EmploymentType.INTERN ? null : '25.00',
+        },
+      }));
+    // tenantId_key isn't a real Prisma unique either (same partial-index reason).
+    const role = await prisma.role.findFirstOrThrow({
+      where: { tenantId: tenant.id, key: roleKey, deletedAt: null },
     });
     await prisma.userRole.upsert({
       where: { userId_roleId: { userId: user.id, roleId: role.id } },
@@ -125,26 +130,37 @@ async function main() {
     },
   ];
   for (const s of settings) {
-    await prisma.organizationSetting.upsert({
-      where: { tenantId_organizationId_key: { tenantId: tenant.id, organizationId: org.id, key: s.key } },
-      update: { value: s.value as object, type: s.type },
-      create: { tenantId: tenant.id, organizationId: org.id, key: s.key, value: s.value as object, type: s.type },
+    // Uniqueness on (tenantId, organizationId, key) is a partial index — see
+    // apps/api/src/modules/organization/organization.service.ts for the same pattern.
+    const existingSetting = await prisma.organizationSetting.findFirst({
+      where: { tenantId: tenant.id, organizationId: org.id, key: s.key, deletedAt: null },
     });
+    if (existingSetting) {
+      await prisma.organizationSetting.update({
+        where: { id: existingSetting.id },
+        data: { value: s.value as object, type: s.type },
+      });
+    } else {
+      await prisma.organizationSetting.create({
+        data: { tenantId: tenant.id, organizationId: org.id, key: s.key, value: s.value as object, type: s.type },
+      });
+    }
   }
 
   // ── Phase 6: Demo org structure ────────────────────────────────────────────
 
-  // Department
-  const engineeringDept = await prisma.department.upsert({
-    where: { tenantId_organizationId_name: { tenantId: tenant.id, organizationId: org.id, name: 'Engineering' } },
-    update: {},
-    create: { tenantId: tenant.id, organizationId: org.id, name: 'Engineering', createdBy: admin.id, updatedBy: admin.id },
-  });
-  await prisma.department.upsert({
-    where: { tenantId_organizationId_name: { tenantId: tenant.id, organizationId: org.id, name: 'Human Resources' } },
-    update: {},
-    create: { tenantId: tenant.id, organizationId: org.id, name: 'Human Resources', createdBy: admin.id, updatedBy: admin.id },
-  });
+  // Department — uniqueness on (tenantId, organizationId, name) is a partial index,
+  // same find-then-create pattern as above throughout the rest of this file.
+  const engineeringDept =
+    (await prisma.department.findFirst({ where: { tenantId: tenant.id, organizationId: org.id, name: 'Engineering', deletedAt: null } })) ??
+    (await prisma.department.create({
+      data: { tenantId: tenant.id, organizationId: org.id, name: 'Engineering', createdBy: admin.id, updatedBy: admin.id },
+    }));
+  if (!(await prisma.department.findFirst({ where: { tenantId: tenant.id, organizationId: org.id, name: 'Human Resources', deletedAt: null } }))) {
+    await prisma.department.create({
+      data: { tenantId: tenant.id, organizationId: org.id, name: 'Human Resources', createdBy: admin.id, updatedBy: admin.id },
+    });
+  }
 
   // Assign demo staff to Engineering so profile-driven fields (e.g. the
   // Daily Scrum "Department" auto-fill) have data out of the box.
@@ -158,66 +174,58 @@ async function main() {
   });
 
   // Team
-  const backendTeam = await prisma.team.upsert({
-    where: { tenantId_organizationId_name: { tenantId: tenant.id, organizationId: org.id, name: 'Backend' } },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      organizationId: org.id,
-      name: 'Backend',
-      departmentId: engineeringDept.id,
-      supervisorId: supervisor.id,
-      createdBy: admin.id,
-      updatedBy: admin.id,
-    },
-  });
+  const backendTeam =
+    (await prisma.team.findFirst({ where: { tenantId: tenant.id, organizationId: org.id, name: 'Backend', deletedAt: null } })) ??
+    (await prisma.team.create({
+      data: {
+        tenantId: tenant.id,
+        organizationId: org.id,
+        name: 'Backend',
+        departmentId: engineeringDept.id,
+        supervisorId: supervisor.id,
+        createdBy: admin.id,
+        updatedBy: admin.id,
+      },
+    }));
 
   // Client
-  const acmeClient = await prisma.client.upsert({
-    where: { tenantId_organizationId_name: { tenantId: tenant.id, organizationId: org.id, name: 'ACME Corporation' } },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      organizationId: org.id,
-      name: 'ACME Corporation',
-      contact: 'contact@acme.example.com',
-      createdBy: admin.id,
-      updatedBy: admin.id,
-    },
-  });
+  const acmeClient =
+    (await prisma.client.findFirst({ where: { tenantId: tenant.id, organizationId: org.id, name: 'ACME Corporation', deletedAt: null } })) ??
+    (await prisma.client.create({
+      data: {
+        tenantId: tenant.id,
+        organizationId: org.id,
+        name: 'ACME Corporation',
+        contact: 'contact@acme.example.com',
+        createdBy: admin.id,
+        updatedBy: admin.id,
+      },
+    }));
 
   // Project
-  await prisma.project.upsert({
-    where: { tenantId_organizationId_code: { tenantId: tenant.id, organizationId: org.id, code: 'TF-2026' } },
-    update: {},
-    create: {
-      tenantId: tenant.id,
-      organizationId: org.id,
-      name: 'TimeForge Platform',
-      code: 'TF-2026',
-      clientId: acmeClient.id,
-      billable: true,
-      createdBy: admin.id,
-      updatedBy: admin.id,
-    },
-  });
+  if (!(await prisma.project.findFirst({ where: { tenantId: tenant.id, organizationId: org.id, code: 'TF-2026', deletedAt: null } }))) {
+    await prisma.project.create({
+      data: {
+        tenantId: tenant.id,
+        organizationId: org.id,
+        name: 'TimeForge Platform',
+        code: 'TF-2026',
+        clientId: acmeClient.id,
+        billable: true,
+        createdBy: admin.id,
+        updatedBy: admin.id,
+      },
+    });
+  }
 
   // Work Category
-  await prisma.workCategory.upsert({
-    where: { tenantId_organizationId_name: { tenantId: tenant.id, organizationId: org.id, name: 'Development' } },
-    update: {},
-    create: { tenantId: tenant.id, organizationId: org.id, name: 'Development', createdBy: admin.id, updatedBy: admin.id },
-  });
-  await prisma.workCategory.upsert({
-    where: { tenantId_organizationId_name: { tenantId: tenant.id, organizationId: org.id, name: 'Meetings' } },
-    update: {},
-    create: { tenantId: tenant.id, organizationId: org.id, name: 'Meetings', createdBy: admin.id, updatedBy: admin.id },
-  });
-  await prisma.workCategory.upsert({
-    where: { tenantId_organizationId_name: { tenantId: tenant.id, organizationId: org.id, name: 'Code Review' } },
-    update: {},
-    create: { tenantId: tenant.id, organizationId: org.id, name: 'Code Review', createdBy: admin.id, updatedBy: admin.id },
-  });
+  for (const name of ['Development', 'Meetings', 'Code Review']) {
+    if (!(await prisma.workCategory.findFirst({ where: { tenantId: tenant.id, organizationId: org.id, name, deletedAt: null } }))) {
+      await prisma.workCategory.create({
+        data: { tenantId: tenant.id, organizationId: org.id, name, createdBy: admin.id, updatedBy: admin.id },
+      });
+    }
+  }
 
   // Holiday
   const currentYear = new Date().getFullYear();
@@ -227,14 +235,13 @@ async function main() {
     { name: 'Christmas Day', date: new Date(`${currentYear}-12-25`), recurring: true },
   ];
   for (const h of holidays) {
-    try {
-      await prisma.holiday.upsert({
-        where: { tenantId_organizationId_date_name: { tenantId: tenant.id, organizationId: org.id, date: h.date, name: h.name } },
-        update: {},
-        create: { tenantId: tenant.id, organizationId: org.id, name: h.name, date: h.date, recurring: h.recurring, createdBy: admin.id, updatedBy: admin.id },
+    const existing = await prisma.holiday.findFirst({
+      where: { tenantId: tenant.id, organizationId: org.id, date: h.date, name: h.name, deletedAt: null },
+    });
+    if (!existing) {
+      await prisma.holiday.create({
+        data: { tenantId: tenant.id, organizationId: org.id, name: h.name, date: h.date, recurring: h.recurring, createdBy: admin.id, updatedBy: admin.id },
       });
-    } catch {
-      // silently skip if holiday already exists with different constraint
     }
   }
 
