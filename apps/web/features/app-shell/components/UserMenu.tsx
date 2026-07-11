@@ -33,6 +33,7 @@ import { logout } from "@/features/auth/api/auth.service";
 import { useProfileModalStore } from "@/features/account/store/profile-modal.store";
 import { RequestLeaveDrawer } from "@/features/leave/components/RequestLeaveDrawer";
 import { useAuth } from "@/providers/auth-provider";
+import { hasPermission } from "@/features/auth/rbac";
 import { KeyboardShortcutsDialog } from "./KeyboardShortcutsDialog";
 
 function titleCase(value: string): string {
@@ -46,9 +47,12 @@ export function UserMenu() {
   const openNotifications = useNotificationCenterStore((s) => s.open);
   const [shortcutsOpen, setShortcutsOpen] = useState(false);
   const [leaveOpen, setLeaveOpen] = useState(false);
-  // Finance doesn't do daily time tracking (no time_entry:* permission) — this would
-  // otherwise retry a permanent 403 forever.
-  const canHaveWorkSession = !(user?.roles.includes("FINANCE") && !user.roles.includes("ADMIN"));
+  // Roles without time_entry:read (Finance, HR) can never have a work session —
+  // this would otherwise retry a permanent 403 forever.
+  const canHaveWorkSession = hasPermission(user?.roles, "time_entry:read");
+  // Daily Scrum / Timesheet / Request Leave are individual-contributor actions —
+  // only Employees see them here, regardless of what other permissions a role holds.
+  const isEmployee = user?.roles.includes("EMPLOYEE") ?? false;
 
   const { data: me } = useQuery({ queryKey: ["account", "me"], queryFn: getMe });
   const { data: notifCount } = useQuery({
@@ -139,23 +143,27 @@ export function UserMenu() {
             </div>
           ) : null}
 
-          <DropdownMenuSeparator />
+          {isEmployee ? (
+            <>
+              <DropdownMenuSeparator />
 
-          <DropdownMenuGroup>
-            <DropdownMenuLabel>Quick Actions</DropdownMenuLabel>
-            <DropdownMenuItem render={<a href="/time-tracking" />}>
-              <PlayCircle aria-hidden="true" />
-              {session?.isActive ? "Resume Session" : "Start Daily Scrum"}
-            </DropdownMenuItem>
-            <DropdownMenuItem render={<a href="/timesheets" />}>
-              <FileText aria-hidden="true" />
-              Open Timesheet
-            </DropdownMenuItem>
-            <DropdownMenuItem onClick={() => setLeaveOpen(true)}>
-              <CalendarPlus aria-hidden="true" />
-              Request Leave
-            </DropdownMenuItem>
-          </DropdownMenuGroup>
+              <DropdownMenuGroup>
+                <DropdownMenuLabel>Quick Actions</DropdownMenuLabel>
+                <DropdownMenuItem render={<a href="/time-tracking" />}>
+                  <PlayCircle aria-hidden="true" />
+                  {session?.isActive ? "Resume Session" : "Start Daily Scrum"}
+                </DropdownMenuItem>
+                <DropdownMenuItem render={<a href="/timesheets" />}>
+                  <FileText aria-hidden="true" />
+                  Open Timesheet
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => setLeaveOpen(true)}>
+                  <CalendarPlus aria-hidden="true" />
+                  Request Leave
+                </DropdownMenuItem>
+              </DropdownMenuGroup>
+            </>
+          ) : null}
 
           <DropdownMenuSeparator />
 

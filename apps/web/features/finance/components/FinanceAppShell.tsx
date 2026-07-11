@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/providers/auth-provider";
 import { refresh as refreshSession } from "@/features/auth/api/auth.service";
@@ -10,6 +10,7 @@ import { NotificationCenterModal } from "@/features/notifications/components/Not
 import { setAccessToken } from "@/lib/api/client";
 import { PermissionGuard } from "@/features/auth/components/PermissionGuard";
 import { getRequiredPermission } from "@/features/auth/route-permissions";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 import { AppTopBar } from "@/features/app-shell/components/AppTopBar";
 import { FinanceSidebar } from "./FinanceSidebar";
 
@@ -18,11 +19,12 @@ export function FinanceAppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, setSession } = useAuth();
   const [restoreFailed, setRestoreFailed] = useState(false);
-  const attempted = useRef(false);
 
+  // See AppShell.tsx for why there is deliberately no "already started" ref
+  // guard here — it breaks session restore under React Strict Mode's
+  // dev-only double-invoke.
   useEffect(() => {
-    if (user || attempted.current) return;
-    attempted.current = true;
+    if (user) return;
 
     let cancelled = false;
     (async () => {
@@ -52,7 +54,7 @@ export function FinanceAppShell({ children }: { children: React.ReactNode }) {
   }, [restoreFailed, router]);
 
   if (!user) {
-    return <div className="flex min-h-screen items-center justify-center bg-[#f2f2f2]" />;
+    return <LoadingScreen />;
   }
 
   return (

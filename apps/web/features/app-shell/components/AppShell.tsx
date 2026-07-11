@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter, usePathname } from "next/navigation";
 import { useAuth } from "@/providers/auth-provider";
 import { refresh as refreshSession } from "@/features/auth/api/auth.service";
@@ -10,6 +10,7 @@ import { NotificationCenterModal } from "@/features/notifications/components/Not
 import { setAccessToken } from "@/lib/api/client";
 import { PermissionGuard } from "@/features/auth/components/PermissionGuard";
 import { getRequiredPermission } from "@/features/auth/route-permissions";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 import { AdminSidebar } from "./AdminSidebar";
 import { AppTopBar } from "./AppTopBar";
 
@@ -24,11 +25,17 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   const pathname = usePathname();
   const { user, setSession } = useAuth();
   const [restoreFailed, setRestoreFailed] = useState(false);
-  const attempted = useRef(false);
 
+  // Deliberately no "have we already started" ref guard here: under React
+  // Strict Mode's dev-only double-invoke (mount → effect → cleanup → effect
+  // again), a ref that persists across both invocations would let the first
+  // (cancelled) invocation's in-flight request own the only attempt, while
+  // its own `cancelled` flag then discards the result — user never gets set,
+  // permanently. Each invocation must own and complete its own attempt; the
+  // `if (user) return` below is enough to stop the effect once restore
+  // actually succeeds.
   useEffect(() => {
-    if (user || attempted.current) return;
-    attempted.current = true;
+    if (user) return;
 
     let cancelled = false;
     (async () => {
@@ -62,7 +69,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }, [restoreFailed, router]);
 
   if (!user) {
-    return <div className="flex min-h-screen items-center justify-center bg-[#f2f2f2]" />;
+    return <LoadingScreen />;
   }
 
   return (
