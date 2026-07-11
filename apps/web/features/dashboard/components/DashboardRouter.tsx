@@ -3,6 +3,7 @@
 import { useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { useAuth } from "@/providers/auth-provider";
+import { LoadingScreen } from "@/components/ui/loading-screen";
 import { DashboardContent } from "./DashboardContent";
 import { SystemOverviewContent } from "@/features/admin/components/SystemOverviewContent";
 import { SupervisorDashboardContent } from "@/features/supervisor-dashboard/components/SupervisorDashboardContent";
@@ -23,7 +24,7 @@ export function DashboardRouter() {
     if (isFinanceOnly) router.replace("/finance/dashboard");
   }, [isFinanceOnly, router]);
 
-  if (isFinanceOnly) return null;
+  if (isFinanceOnly) return <LoadingScreen fullHeight={false} />;
   if (isAdmin) return <SystemOverviewContent />;
   if (isHr) return <HRDashboardContent />;
   if (isSupervisor) return <SupervisorDashboardContent />;

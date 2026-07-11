@@ -3,6 +3,7 @@
 import { useEffect } from 'react';
 import { useRouter } from 'next/navigation';
 import { useAuth } from '@/providers/auth-provider';
+import { LoadingScreen } from '@/components/ui/loading-screen';
 import { hasPermission } from '../rbac';
 
 interface PermissionGuardProps {
@@ -27,14 +28,16 @@ export function PermissionGuard({ requiredPermission, children }: PermissionGuar
     }
   }, [user, requiredPermission, router]);
 
-  // While the user is still loading, render nothing (AppShell shows a loading
-  // spinner until the session resolves, so this gap is effectively invisible).
-  if (!user) return null;
+  // While the user is still loading, show the loading state (the shell around
+  // this guard has already mounted by this point — AppShell/FinanceAppShell
+  // only render their <main> once the session has resolved — but this covers
+  // the guard being reused anywhere that invariant doesn't hold).
+  if (!user) return <LoadingScreen fullHeight={false} />;
 
-  // Permission check — if user lacks permission, show nothing (redirect fires
-  // in the effect above).
+  // Permission check — if user lacks permission, show a loading state while
+  // the redirect in the effect above fires, instead of a blank content area.
   if (requiredPermission && !hasPermission(user.roles, requiredPermission)) {
-    return null;
+    return <LoadingScreen fullHeight={false} />;
   }
 
   return <>{children}</>;

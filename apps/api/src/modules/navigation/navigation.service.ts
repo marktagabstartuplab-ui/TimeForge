@@ -90,6 +90,10 @@ export class NavigationService {
       if (item.id === 'performance') return user.roles.includes('EMPLOYEE');
       // Team KPI Dashboard is a direct-reports management tool — supervisors only.
       if (item.id === 'kpi-dashboard') return user.roles.includes('SUPERVISOR');
+      // Supervisor's AI Insights tool is distinct from the org-wide one Admin/HR see
+      // at hr-ai-insights (/admin/ai-insights) — without this, Admin's wildcard
+      // permission would show both under the same "AI Insights" label.
+      if (item.id === 'supervisor-ai-insights') return user.roles.includes('SUPERVISOR');
       // Supervisors get a focused workspace: no org-wide Employees/Reports sections.
       if (isSupervisorOnly && (item.id === 'employees' || item.id === 'reports')) return false;
       // Finance has its own dedicated workspace (section 'FINANCE' below, exactly 4 items:

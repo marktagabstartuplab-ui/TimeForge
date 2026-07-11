@@ -7,6 +7,7 @@ import { Timer } from "lucide-react";
 import { getCurrentWorkSession } from "../api/work-sessions.service";
 import { formatStopwatch } from "@/lib/time";
 import { useAuth } from "@/providers/auth-provider";
+import { hasPermission } from "@/features/auth/rbac";
 
 /**
  * Persistent running-session indicator for the top bar: ticking elapsed time
@@ -22,9 +23,9 @@ import { useAuth } from "@/providers/auth-provider";
 export function RunningTimerChip() {
   const [now, setNow] = useState(() => Date.now());
   const { user } = useAuth();
-  // Finance doesn't do daily time tracking (no time_entry:* permission) — polling this
-  // endpoint for them just retries a permanent 403 forever. Everyone else does track time.
-  const canHaveWorkSession = !(user?.roles.includes("FINANCE") && !user.roles.includes("ADMIN"));
+  // Roles without time_entry:read (Finance, HR) can never have a work session —
+  // polling this endpoint for them just retries a permanent 403 forever.
+  const canHaveWorkSession = hasPermission(user?.roles, "time_entry:read");
 
   const { data: workSession } = useQuery({
     queryKey: ["work-session", "current"],
