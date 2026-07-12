@@ -8,9 +8,12 @@ import cookieParser from 'cookie-parser';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
+  console.log('[boot] starting NestFactory.create — about to instantiate all modules (DB/Redis connections happen here)');
   const app = await NestFactory.create(AppModule, { bufferLogs: true });
+  console.log('[boot] NestFactory.create resolved — all modules instantiated successfully');
 
   app.useLogger(app.get(Logger));
+  console.log('[boot] logger attached');
 
   const config = app.get(ConfigService);
 
@@ -51,9 +54,21 @@ async function bootstrap() {
   SwaggerModule.setup('api/docs', app, document);
 
   const port = Number(config.get('apiPort') ?? 3000);
+  console.log(`[boot] about to listen on port ${port}`);
   await app.listen(port);
+  console.log('[boot] app.listen resolved — server is up');
   app.get(Logger).log(`TimeForge API listening on http://localhost:${port}/api/v1`);
   app.get(Logger).log(`Swagger docs at http://localhost:${port}/api/docs`);
 }
 
-bootstrap();
+process.on('unhandledRejection', (reason) => {
+  console.error('[boot] unhandledRejection', reason);
+});
+process.on('uncaughtException', (err) => {
+  console.error('[boot] uncaughtException', err);
+});
+
+bootstrap().catch((err) => {
+  console.error('[boot] bootstrap() rejected', err);
+  process.exit(1);
+});
