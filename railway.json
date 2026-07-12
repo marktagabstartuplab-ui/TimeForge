@@ -6,7 +6,8 @@
   },
   "deploy": {
     "numReplicas": 1,
-    "startCommand": "node_modules/.bin/prisma migrate deploy && node dist/apps/api/src/main.js",
+    "preDeployCommand": "node_modules/.bin/prisma migrate deploy",
+    "startCommand": "node dist/apps/api/src/main.js",
     "healthcheckPath": "/api/v1/health",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
