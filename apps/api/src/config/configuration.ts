@@ -1,6 +1,8 @@
 export default () => ({
   nodeEnv: process.env.NODE_ENV ?? 'development',
-  apiPort: parseInt(process.env.API_PORT ?? '3000', 10),
+  // Most host platforms (Railway, Render, Fly.io, Heroku) inject PORT and expect
+  // the app to bind to it; API_PORT remains the override for local/manual setups.
+  apiPort: parseInt(process.env.PORT ?? process.env.API_PORT ?? '3000', 10),
   corsOrigins: process.env.CORS_ORIGINS ?? '',
   databaseUrl: process.env.DATABASE_URL,
   redisUrl: process.env.REDIS_URL ?? 'redis://localhost:6379',

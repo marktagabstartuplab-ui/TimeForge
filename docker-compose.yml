@@ -49,7 +49,7 @@ services:
     command: >
       sh -c "npx prisma db push --skip-generate &&
              npm run db:seed &&
-             node dist/apps/api/main.js"
+             node dist/apps/api/src/main.js"
     ports:
       - '3000:3000'
     healthcheck:
@@ -76,7 +76,7 @@ services:
       REDIS_URL: redis://redis:6379
       JWT_ACCESS_SECRET: docker-access-secret
       JWT_REFRESH_SECRET: docker-refresh-secret
-    command: ['node', 'dist/apps/worker/main.js']
+    command: ['node', 'dist/apps/worker/src/main.js']
 
 volumes:
   pgdata:

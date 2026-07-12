@@ -33,6 +33,8 @@ import { InfraModule } from '../../api/src/infra/infra.module';
             host: url.hostname,
             port: Number(url.port) || 6379,
             password: url.password || undefined,
+            // Managed Redis providers (Upstash, some Railway plugins) require TLS via rediss://.
+            tls: url.protocol === 'rediss:' ? {} : undefined,
             maxRetriesPerRequest: null,
           },
           defaultJobOptions: {

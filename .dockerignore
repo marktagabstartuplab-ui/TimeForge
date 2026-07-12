@@ -1,0 +1,24 @@
+# Keep secrets and dev artifacts out of the Docker build context — the
+# Dockerfile does `COPY . .`, so anything not excluded here can end up baked
+# into an image layer.
+node_modules/
+apps/web/node_modules/
+apps/web/.next/
+dist/
+build/
+coverage/
+*.log
+.env
+.env.*
+!.env.example
+.git/
+.github/
+.DS_Store
+.idea/
+.vscode/
+*.tsbuildinfo
+prisma/*.db
+var/
+supabase/.temp/
+docs/
+README.md
