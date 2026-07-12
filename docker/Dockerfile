@@ -6,6 +6,11 @@ WORKDIR /app
 # from exiting — silently stalling any `&&`-chained start command (see the
 # Railway healthcheck-hang debugged in PR #9/#10).
 ENV NPM_CONFIG_UPDATE_NOTIFIER=false
+# Prisma's CLI independently makes its own background "checkpoint" telemetry
+# call (to checkpoint.prisma.io) on every invocation, which can hang the same
+# way even with npx removed from the equation — this is the second, separate
+# cause of the same silent-hang symptom.
+ENV CHECKPOINT_DISABLE=1
 # openssl is required by Prisma; build tools for native deps (argon2).
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl python3 make g++ \
