@@ -261,12 +261,4 @@ See `.env.example` for all required variables. Key ones:
 
 See [`docs/RELEASE-CHECKLIST.md`](./docs/RELEASE-CHECKLIST.md).
 
----
 
-## Continuing this project in another agent/session
-
-If you're picking this project up in a fresh session (own usage limit hit, or switching tools):
-- **OpenCode** auto-loads [`AGENTS.md`](./AGENTS.md) at the repo root — no manual setup needed.
-- **Antigravity, or any other tool** — use the pre-written chunked prompts in
-  [`docs/ANTIGRAVITY-HANDOFF.md`](./docs/ANTIGRAVITY-HANDOFF.md) (Prompt 0 for orientation, then
-  Chunks 1–5 for the prioritized gap list above, one at a time).
