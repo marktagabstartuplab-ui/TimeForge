@@ -6,7 +6,7 @@
   },
   "deploy": {
     "numReplicas": 1,
-    "startCommand": "npx prisma migrate deploy && node dist/apps/api/src/main.js",
+    "startCommand": "node_modules/.bin/prisma migrate deploy && node dist/apps/api/src/main.js",
     "healthcheckPath": "/api/v1/health",
     "healthcheckTimeout": 300,
     "restartPolicyType": "ON_FAILURE",
