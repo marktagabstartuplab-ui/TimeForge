@@ -47,7 +47,7 @@ export function Logo({ href = "/", className, size = "sm" }: LogoProps) {
     size === "lg" ? (
       <span className="flex items-center gap-3">
         <LogoMark className="h-[88px] w-auto" />
-        <span className="font-heading text-[56px] font-bold leading-none tracking-[-1.5px]">
+        <span className="font-heading translate-y-[3px] text-[56px] font-bold leading-none tracking-[-1.5px]">
           <span className="text-brand-ink">Time</span>
           <span className="text-brand-cyan">Forge</span>
         </span>
@@ -55,7 +55,7 @@ export function Logo({ href = "/", className, size = "sm" }: LogoProps) {
     ) : (
       <span className="flex items-center gap-2">
         <LogoMark className="h-8 w-auto" />
-        <span className="font-heading text-[22px] font-bold leading-none tracking-[-0.4px]">
+        <span className="font-heading translate-y-[1px] text-[22px] font-bold leading-none tracking-[-0.4px]">
           <span className="text-brand-ink">Time</span>
           <span className="text-brand-cyan">Forge</span>
         </span>
