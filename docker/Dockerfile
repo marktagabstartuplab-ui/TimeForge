@@ -1,6 +1,11 @@
 # Multi-stage build for the TimeForge API + worker (NestJS monorepo).
 FROM node:20-bookworm-slim AS base
 WORKDIR /app
+# npm's update-notifier makes a background network call on every invocation;
+# in restricted container networking that call can hang, which blocks npx/npm
+# from exiting — silently stalling any `&&`-chained start command (see the
+# Railway healthcheck-hang debugged in PR #9/#10).
+ENV NPM_CONFIG_UPDATE_NOTIFIER=false
 # openssl is required by Prisma; build tools for native deps (argon2).
 RUN apt-get update \
   && apt-get install -y --no-install-recommends openssl python3 make g++ \
