@@ -10,7 +10,12 @@ import { cn } from "@/lib/utils";
 function LogoMark({ className }: { className?: string }) {
   return (
     <svg
-      viewBox="0 0 162 162"
+      // The source PNG has ~26% transparent padding on each side (measured:
+      // visible content spans roughly x:[42,119] y:[19,142] of the 162x162
+      // canvas) — cropping the viewBox to that content (plus a small margin)
+      // removes the baked-in whitespace that was making the icon-to-wordmark
+      // gap look far larger than the explicit flex `gap` in Logo below.
+      viewBox="36 13 89 135"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
       xmlnsXlink="http://www.w3.org/1999/xlink"
@@ -42,7 +47,7 @@ export function Logo({ href = "/", className, size = "sm" }: LogoProps) {
     size === "lg" ? (
       <span className="flex items-center gap-3">
         <LogoMark className="h-[88px] w-auto" />
-        <span className="font-heading text-[56px] font-bold leading-none tracking-[-1.5px]">
+        <span className="font-heading translate-y-[3px] text-[56px] font-bold leading-none tracking-[-1.5px]">
           <span className="text-brand-ink">Time</span>
           <span className="text-brand-cyan">Forge</span>
         </span>
@@ -50,7 +55,7 @@ export function Logo({ href = "/", className, size = "sm" }: LogoProps) {
     ) : (
       <span className="flex items-center gap-2">
         <LogoMark className="h-8 w-auto" />
-        <span className="font-heading text-[22px] font-bold leading-none tracking-[-0.4px]">
+        <span className="font-heading translate-y-[1px] text-[22px] font-bold leading-none tracking-[-0.4px]">
           <span className="text-brand-ink">Time</span>
           <span className="text-brand-cyan">Forge</span>
         </span>
