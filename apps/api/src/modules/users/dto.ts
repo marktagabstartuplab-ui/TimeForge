@@ -10,10 +10,12 @@ import {
   MaxLength,
   MinLength,
   IsInt,
+  Matches,
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { EmploymentType, UserStatus } from '@prisma/client';
+import { STRONG_PASSWORD_REGEX, STRONG_PASSWORD_MESSAGE } from '../auth/dto';
 
 export class CreateUserDto {
   @IsEmail()
@@ -160,6 +162,7 @@ export class ChangePasswordDto {
   @IsString()
   @MinLength(8)
   @MaxLength(128)
+  @Matches(STRONG_PASSWORD_REGEX, { message: STRONG_PASSWORD_MESSAGE })
   newPassword!: string;
 }
 

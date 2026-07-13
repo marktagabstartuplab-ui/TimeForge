@@ -10,7 +10,6 @@ import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
-  SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -49,11 +48,13 @@ export function RegisterStep2Form({ onSubmit, onBack, defaultDepartmentId }: Pro
     defaultValues: {
       password: "",
       confirmPassword: "",
-      departmentId: defaultDepartmentId ?? "",
       workCategory: "",
       agreeToTerms: false,
     },
   });
+
+  // Department is chosen in step 1 — shown here read-only, not re-selectable.
+  const selectedDepartmentName = departments?.find((d) => d.id === defaultDepartmentId)?.name;
 
   const submit = async (values: RegisterStep2Values) => {
     setServerError(null);
@@ -105,7 +106,9 @@ export function RegisterStep2Form({ onSubmit, onBack, defaultDepartmentId }: Pro
           {errors.password ? (
             <FieldError message={errors.password.message} />
           ) : (
-            <p className="mt-1 text-xs text-brand-muted/80">Must be at least 8 characters.</p>
+            <p className="mt-1 text-xs text-brand-muted/80">
+              At least 8 characters, with an uppercase &amp; lowercase letter and a special character.
+            </p>
           )}
         </div>
 
@@ -126,36 +129,14 @@ export function RegisterStep2Form({ onSubmit, onBack, defaultDepartmentId }: Pro
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
             <FieldLabel htmlFor="departmentId">Department</FieldLabel>
-            <Controller
-              control={control}
-              name="departmentId"
-              render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  // `items` lets the closed trigger resolve the label for a
-                  // prefilled value (otherwise it renders the raw id).
-                  items={(departments ?? []).map((d) => ({ value: d.id, label: d.name }))}
-                >
-                  <SelectTrigger
-                    id="departmentId"
-                    aria-label="Department"
-                    aria-invalid={Boolean(errors.departmentId)}
-                    className="h-11 w-full rounded-lg border-[#c3c6d2]"
-                  >
-                    <SelectValue placeholder={departmentsLoading ? "Loading…" : "Select..."} />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {departments?.map((d) => (
-                      <SelectItem key={d.id} value={d.id}>
-                        {d.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            <FieldError message={errors.departmentId?.message} />
+            <div
+              id="departmentId"
+              aria-label="Department"
+              className="flex h-11 w-full items-center rounded-lg border border-[#c3c6d2] bg-slate-50 px-3 text-sm text-brand-ink"
+            >
+              {departmentsLoading ? "Loading…" : selectedDepartmentName ?? "—"}
+            </div>
+            <p className="mt-1 text-xs text-brand-muted/80">Chosen in the previous step.</p>
           </div>
 
           <div>
