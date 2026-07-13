@@ -56,8 +56,13 @@ export class AuthService {
 
   async login(email: string, password: string, ip?: string, device?: string) {
     const normalizedEmail = email.toLowerCase();
+    // Only the live account: a soft-deleted row can share the email with an
+    // active one (the partial unique index only covers deleted_at IS NULL), so
+    // without this filter findFirst can return a stale soft-deleted row — e.g.
+    // an old REJECTED registration would block login on a freshly-approved
+    // re-registration of the same address.
     const user = await this.prisma.user.findFirst({
-      where: { email: normalizedEmail },
+      where: { email: normalizedEmail, deletedAt: null },
       include: { roles: { include: { role: true } } },
     });
 
