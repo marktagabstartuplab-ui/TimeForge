@@ -1,5 +1,9 @@
 # Multi-stage build for the TimeForge API + worker (NestJS monorepo).
-FROM node:20-bookworm-slim AS base
+# Node 22 (not 20): @supabase/realtime-js — pulled in by NotificationsRealtimeService's
+# createClient() — requires a native `WebSocket` global, which only exists from Node 22.
+# On Node 20 the API crashes at boot ("Node.js 20 detected without native WebSocket
+# support") as soon as SUPABASE_* env vars are present and the realtime client initializes.
+FROM node:22-bookworm-slim AS base
 WORKDIR /app
 # npm's update-notifier makes a background network call on every invocation;
 # in restricted container networking that call can hang, which blocks npx/npm
