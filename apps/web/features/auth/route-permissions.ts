@@ -34,6 +34,7 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   // system
   '/admin/security': 'audit:read_org',
   '/admin/ai-config': 'org:read',
+  '/admin/kpi-management': 'kpi_template:update',
   // additional routes not in MENU_CATALOG but still protected
   '/admin/timesheets': 'timesheet:read_org',
   '/admin/payroll': 'payroll:read',
@@ -42,7 +43,6 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   '/admin/performance': 'dashboard:read_self',
   '/admin/audit-logs': 'audit:read_org',
   '/settings': 'dashboard:read_self',
-  '/support': 'dashboard:read_self',
   '/team-scrum': 'scrum:read_team',
 };
 
