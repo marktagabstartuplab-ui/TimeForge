@@ -25,6 +25,8 @@ export class CreateTimeEntryDto {
 
   @IsOptional() @IsString() @MaxLength(500) task?: string;
 
+  @IsOptional() @IsString() @MaxLength(5000) deliverables?: string;
+
   @IsOptional() @IsArray() @IsUrl({}, { each: true }) referenceLinks?: string[];
 }
 
@@ -35,6 +37,7 @@ export class StartTimerDto {
   @IsOptional() @IsUUID() departmentId?: string;
   @IsOptional() @IsString() @MaxLength(5000) description?: string;
   @IsOptional() @IsString() @MaxLength(500) task?: string;
+  @IsOptional() @IsString() @MaxLength(5000) deliverables?: string;
 }
 
 export class UpdateTimeEntryDto {
@@ -46,6 +49,7 @@ export class UpdateTimeEntryDto {
   @IsOptional() @IsUUID() departmentId?: string;
   @IsOptional() @IsString() @MaxLength(5000) description?: string;
   @IsOptional() @IsString() @MaxLength(500) task?: string;
+  @IsOptional() @IsString() @MaxLength(5000) deliverables?: string;
   @IsOptional() @IsArray() @IsUrl({}, { each: true }) referenceLinks?: string[];
 
   @IsInt()

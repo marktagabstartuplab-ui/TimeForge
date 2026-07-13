@@ -74,6 +74,12 @@ export function EntryAuditTable({ entries, overtimeDays, periodDayCount }: Entry
       render: (e) => <span className="line-clamp-2 text-brand-ink">{e.description || "—"}</span>,
     },
     {
+      key: "deliverables",
+      header: "Deliverables",
+      className: "max-w-[280px]",
+      render: (e) => <span className="line-clamp-2 text-brand-ink">{e.deliverables || "—"}</span>,
+    },
+    {
       key: "status",
       header: "Status",
       className: "text-right",

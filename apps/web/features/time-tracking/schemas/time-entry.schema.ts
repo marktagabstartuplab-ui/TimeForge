@@ -45,6 +45,7 @@ export type DailyScrumValues = z.infer<typeof dailyScrumSchema>;
 export const workDetailsSchema = z.object({
   task: z.string().max(200, "Keep the task name under 200 characters").optional(),
   workDescription: z.string().max(4500, "Keep the description under 4500 characters").optional(),
+  deliverables: z.string().max(5000, "Keep the deliverables under 5000 characters").optional(),
   departmentId: z.string().optional(),
   clientId: z.string().optional(),
   projectId: z.string().optional(),

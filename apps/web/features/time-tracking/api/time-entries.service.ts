@@ -33,6 +33,7 @@ export interface TimeEntry {
   durationMinutes: number | null;
   task: string | null;
   description: string | null;
+  deliverables: string | null;
   referenceLinks?: string[];
   attachments?: TimeEntryAttachment[];
   version: number;
@@ -55,6 +56,7 @@ export interface CreateTimeEntryPayload {
   departmentId?: string;
   description?: string;
   task?: string;
+  deliverables?: string;
   referenceLinks?: string[];
 }
 
@@ -65,6 +67,7 @@ export interface StartTimerPayload {
   departmentId?: string;
   description?: string;
   task?: string;
+  deliverables?: string;
 }
 
 export async function listTimeEntries(query: TimeEntryQuery = {}): Promise<Page<TimeEntry>> {
@@ -123,6 +126,7 @@ export interface UpdateTimeEntryPayload {
   departmentId?: string;
   description?: string;
   task?: string;
+  deliverables?: string;
   referenceLinks?: string[];
   /** Optimistic-lock version — required by UpdateTimeEntryDto. */
   version: number;

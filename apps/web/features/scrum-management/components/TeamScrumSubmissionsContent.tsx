@@ -8,6 +8,7 @@ import { SectionCard } from "@/components/shared/SectionCard";
 import { Avatar } from "@/components/shared/Avatar";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Toast, type ToastState } from "@/components/shared/Toast";
+import { RecurringIssuesPanel } from "@/features/recurring-issues/components/RecurringIssuesPanel";
 
 export function TeamScrumSubmissionsContent() {
   const queryClient = useQueryClient();
@@ -305,6 +306,8 @@ export function TeamScrumSubmissionsContent() {
           ) : null}
         </div>
       ) : null}
+
+      <RecurringIssuesPanel />
 
       <Toast toast={toast} onDismiss={() => setToast(null)} />
     </div>

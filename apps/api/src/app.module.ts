@@ -53,6 +53,7 @@ import { SchedulesModule } from './modules/schedules/schedules.module';
 import { FinanceModule } from './modules/finance/finance.module';
 import { FinanceAiModule } from './modules/finance-ai/finance-ai.module';
 import { LeaveModule } from './modules/leave/leave.module';
+import { RecurringIssuesModule } from './modules/recurring-issues/recurring-issues.module';
 
 @Module({
   imports: [
@@ -121,6 +122,7 @@ import { LeaveModule } from './modules/leave/leave.module';
     FinanceModule,
     FinanceAiModule,
     LeaveModule,
+    RecurringIssuesModule,
   ],
   controllers: [HealthController],
   providers: [

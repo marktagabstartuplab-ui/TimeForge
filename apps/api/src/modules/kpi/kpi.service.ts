@@ -71,6 +71,10 @@ export class KpiService {
         period: dto.period,
         targetValue: dto.targetValue,
         appliesTo: dto.appliesTo ?? undefined,
+        unit: dto.unit ?? null,
+        formula: dto.formula ?? null,
+        validationRules: (dto.validationRules as Prisma.InputJsonValue) ?? undefined,
+        displayFormat: dto.displayFormat ?? null,
         templateVersion: 1,
         createdBy: p.userId,
         updatedBy: p.userId,
@@ -110,6 +114,13 @@ export class KpiService {
         period: dto.period ?? template.period,
         targetValue: dto.targetValue ?? template.targetValue,
         appliesTo: dto.appliesTo !== undefined ? dto.appliesTo : (template.appliesTo ?? undefined),
+        unit: dto.unit !== undefined ? dto.unit : template.unit,
+        formula: dto.formula !== undefined ? dto.formula : template.formula,
+        validationRules:
+          dto.validationRules !== undefined
+            ? (dto.validationRules as Prisma.InputJsonValue)
+            : ((template.validationRules as Prisma.InputJsonValue | null) ?? undefined),
+        displayFormat: dto.displayFormat !== undefined ? dto.displayFormat : template.displayFormat,
         templateVersion: { increment: 1 }, // bump version on every update
         updatedBy: p.userId,
         version: { increment: 1 },

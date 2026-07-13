@@ -78,6 +78,7 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
 
   const initialTask = running?.task ?? "";
   const initialDescription = running?.description ?? "";
+  const initialDeliverables = running?.deliverables ?? "";
 
   const {
     register,
@@ -90,6 +91,7 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
     defaultValues: {
       task: initialTask,
       workDescription: initialDescription,
+      deliverables: initialDeliverables,
       departmentId: running?.departmentId ?? profileDepartmentId ?? "",
       clientId: running?.clientId ?? "",
       projectId: running?.projectId ?? "",
@@ -103,6 +105,7 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
     reset({
       task: selectedTask.title,
       workDescription: selectedTask.details,
+      deliverables: running?.deliverables ?? "",
       departmentId: running?.departmentId ?? profileDepartmentId ?? "",
       clientId: selectedTask.clientId ?? "",
       projectId: selectedTask.projectId ?? "",
@@ -120,6 +123,7 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
         departmentId: values.departmentId || undefined,
         task: values.task || undefined,
         description: values.workDescription || undefined,
+        deliverables: values.deliverables || undefined,
         referenceLinks: links,
         version: currentVersion,
       });
@@ -358,6 +362,18 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
                 {...register("workDescription")}
               />
               <FieldError message={errors.workDescription?.message} />
+            </div>
+
+            <div>
+              <FieldLabel htmlFor="wd-deliverables">Deliverables</FieldLabel>
+              <Textarea
+                id="wd-deliverables"
+                rows={3}
+                placeholder="What tangible output did this session produce? e.g. Merged PR #142, Figma mockup v3, Q3 report draft..."
+                invalid={Boolean(errors.deliverables)}
+                {...register("deliverables")}
+              />
+              <FieldError message={errors.deliverables?.message} />
             </div>
 
           {/* Attachments — file uploads on the time entry. */}

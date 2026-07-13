@@ -165,6 +165,11 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
               <div key={entry.id} className="p-3 hover:bg-slate-50/50 flex items-start gap-3 justify-between">
                 <div className="min-w-0 flex-1">
                   <p className="font-semibold text-sm text-brand-ink truncate">{entry.description || "General Work Output"}</p>
+                  {entry.deliverables ? (
+                    <p className="text-xs text-brand-muted truncate">
+                      <span className="font-semibold">Deliverables:</span> {entry.deliverables}
+                    </p>
+                  ) : null}
                   <p className="text-[10px] text-brand-muted mt-0.5">
                     {new Date(entry.startTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })} @ {formatTime(entry.startTime)}
                   </p>

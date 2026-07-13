@@ -11,11 +11,15 @@ import {
   FileClock,
   ClipboardCheck,
   Wallet,
+  AlertTriangle,
+  TrendingUp,
+  Timer,
 } from "lucide-react";
 import { StatCard } from "@/components/shared/StatCard";
 import { StatusBadge, type BadgeTone } from "@/components/shared/StatusBadge";
 import { Toast, type ToastState } from "@/components/shared/Toast";
 import { getAdminOverview } from "../api/admin-dashboard.service";
+import { getRecurringIssuesSummary } from "@/features/recurring-issues/api/recurring-issues.service";
 import { ChartsSection } from "./ChartsSection";
 import { RecentActivityPanel } from "./RecentActivityPanel";
 import { QuickActionsPanel } from "./QuickActionsPanel";
@@ -51,6 +55,13 @@ export function SystemOverviewContent() {
   });
 
   const v = (n: number | undefined) => (isLoading ? "…" : String(n ?? 0));
+
+  const { data: recurringSummary, isLoading: isRecurringLoading } = useQuery({
+    queryKey: ["admin", "dashboard", "recurring-issues-summary"],
+    queryFn: getRecurringIssuesSummary,
+    refetchInterval: 60_000,
+  });
+  const rv = (n: number | undefined) => (isRecurringLoading ? "…" : String(n ?? 0));
 
   return (
     <div className="flex flex-col gap-6">
@@ -105,6 +116,12 @@ export function SystemOverviewContent() {
           label="Payroll Status"
           value={isLoading ? "…" : payrollSummary(data?.payrollStatus ?? {})}
         />
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-3">
+        <StatCard icon={AlertTriangle} label="Recurring Issues (Open)" value={rv(recurringSummary?.total)} />
+        <StatCard icon={Timer} label="Recurring Delays" value={rv(recurringSummary?.delays)} />
+        <StatCard icon={TrendingUp} label="Trending Up" value={rv(recurringSummary?.increasing)} />
       </div>
 
       <ChartsSection />

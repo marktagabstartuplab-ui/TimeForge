@@ -82,6 +82,11 @@ export function TodayEntriesList({ entries }: TodayEntriesListProps) {
                   <p className="truncate text-xs text-brand-muted">
                     {row.entry.description || "No description"}
                   </p>
+                  {row.entry.deliverables ? (
+                    <p className="truncate text-[11px] text-brand-muted/80">
+                      <span className="font-semibold">Deliverables:</span> {row.entry.deliverables}
+                    </p>
+                  ) : null}
                 </div>
                 <span className="hidden text-sm text-brand-muted sm:block">
                   {formatClockTime(row.entry.startTime)}

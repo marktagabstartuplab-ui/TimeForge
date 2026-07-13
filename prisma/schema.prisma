@@ -146,6 +146,8 @@ enum KpiMetricType {
   HOURS
   PERCENT
   CURRENCY
+  /// Free-form metric — Name/Unit/Formula/etc. live on KpiTemplate's custom-metric fields.
+  CUSTOM
 }
 
 enum KpiPeriod {
@@ -206,30 +208,31 @@ model Organization {
   deletedAt DateTime? @map("deleted_at") @db.Timestamptz
   version   Int       @default(0)
 
-  tenant         Tenant                @relation(fields: [tenantId], references: [id])
-  settings       OrganizationSetting[]
-  users          User[]
-  departments    Department[]
-  teams          Team[]
-  clients        Client[]
-  projects       Project[]
-  workCategories WorkCategory[]
-  holidays       Holiday[]
-  timeEntries    TimeEntry[]
-  timesheets     Timesheet[]
-  scrumEntries   ScrumEntry[]
-  kpiTemplates   KpiTemplate[]
-  payrollPeriods PayrollPeriod[]
-  shifts         Shift[]
-  leaveRequests  LeaveRequest[]
-  leaveBalances  LeaveBalance[]
+  tenant          Tenant                @relation(fields: [tenantId], references: [id])
+  settings        OrganizationSetting[]
+  users           User[]
+  departments     Department[]
+  teams           Team[]
+  clients         Client[]
+  projects        Project[]
+  workCategories  WorkCategory[]
+  holidays        Holiday[]
+  timeEntries     TimeEntry[]
+  timesheets      Timesheet[]
+  scrumEntries    ScrumEntry[]
+  kpiTemplates    KpiTemplate[]
+  payrollPeriods  PayrollPeriod[]
+  shifts          Shift[]
+  leaveRequests   LeaveRequest[]
+  leaveBalances   LeaveBalance[]
+  recurringIssues RecurringIssue[]
 
+  @@unique([tenantId, id])
   // Uniqueness on (tenantId, slug) is enforced by a partial unique index
   // (WHERE deleted_at IS NULL) added in migration 20260710000000_soft_delete_partial_unique_indexes —
   // Prisma's schema DSL can't express a partial @@unique, so this is a plain
   // index for query support only; the DB constraint is the source of truth.
   @@index([tenantId, slug])
-  @@unique([tenantId, id])
   @@index([tenantId])
   @@map("organizations")
 }
@@ -320,10 +323,10 @@ model User {
   leaveRequestsReviewed LeaveRequest[]    @relation("LeaveRequestReviewer")
   leaveBalances         LeaveBalance[]    @relation("LeaveBalanceUser")
 
+  @@unique([tenantId, id])
   // Uniqueness on (tenantId, email) is enforced by a partial unique index
   // (WHERE deleted_at IS NULL) — see migration 20260710000000_soft_delete_partial_unique_indexes.
   @@index([tenantId, email])
-  @@unique([tenantId, id])
   @@index([tenantId, organizationId])
   @@index([tenantId, teamId])
   @@index([tenantId, organizationId, supervisorId])
@@ -456,13 +459,14 @@ model Department {
   deletedAt      DateTime? @map("deleted_at") @db.Timestamptz
   version        Int       @default(0)
 
-  organization Organization @relation(fields: [tenantId, organizationId], references: [tenantId, id])
-  manager      User?        @relation("DepartmentManager", fields: [managerId], references: [id])
-  users        User[]
-  teams        Team[]
-  projects     Project[]
-  shifts       Shift[]
-  timeEntries  TimeEntry[]
+  organization    Organization     @relation(fields: [tenantId, organizationId], references: [tenantId, id])
+  manager         User?            @relation("DepartmentManager", fields: [managerId], references: [id])
+  users           User[]
+  teams           Team[]
+  projects        Project[]
+  shifts          Shift[]
+  timeEntries     TimeEntry[]
+  recurringIssues RecurringIssue[]
 
   // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
   // see migration 20260710000000_soft_delete_partial_unique_indexes.
@@ -541,12 +545,13 @@ model Project {
   deletedAt      DateTime?     @map("deleted_at") @db.Timestamptz
   version        Int           @default(0)
 
-  organization Organization @relation(fields: [tenantId, organizationId], references: [tenantId, id])
-  client       Client?      @relation(fields: [clientId], references: [id])
-  department   Department?  @relation(fields: [departmentId], references: [id])
-  timeEntries  TimeEntry[]
-  scrumEntries ScrumEntry[]
-  scrumTasks   ScrumTask[]
+  organization    Organization     @relation(fields: [tenantId, organizationId], references: [tenantId, id])
+  client          Client?          @relation(fields: [clientId], references: [id])
+  department      Department?      @relation(fields: [departmentId], references: [id])
+  timeEntries     TimeEntry[]
+  scrumEntries    ScrumEntry[]
+  scrumTasks      ScrumTask[]
+  recurringIssues RecurringIssue[]
 
   // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
   // see migration 20260710000000_soft_delete_partial_unique_indexes.
@@ -616,6 +621,7 @@ model TimeEntry {
   durationMinutes Int?            @map("duration_minutes")
   task            String?
   description     String?
+  deliverables    String?
   departmentId    String?         @map("department_id") @db.Uuid
   referenceLinks  Json?           @map("reference_links")
   attachments     Json?           @map("attachments")
@@ -783,6 +789,65 @@ model ScrumBlocker {
   @@index([tenantId, scrumEntryId])
   @@index([tenantId, organizationId, status])
   @@map("scrum_blockers")
+}
+
+// ─── Recurring Operational Issues (cross-employee/department/project) ──────
+// Deterministic, rule-based detection over ScrumBlocker/ScrumTask records —
+// runs alongside (not instead of) the AI BLOCKER_DETECTION toggle and the
+// simple per-employee attachRecurringBlockerFlag() in scrum.service.ts.
+
+enum RecurringIssueCategory {
+  BLOCKER
+  DELAY
+
+  @@map("recurring_issue_category")
+}
+
+enum RecurringIssueTrend {
+  INCREASING
+  STABLE
+  DECREASING
+
+  @@map("recurring_issue_trend")
+}
+
+enum RecurringIssueStatus {
+  OPEN
+  RESOLVED
+
+  @@map("recurring_issue_status")
+}
+
+model RecurringIssue {
+  id              String                 @id @default(uuid()) @db.Uuid
+  tenantId        String                 @map("tenant_id") @db.Uuid
+  organizationId  String                 @map("organization_id") @db.Uuid
+  category        RecurringIssueCategory
+  issueText       String                 @map("issue_text")
+  departmentId    String?                @map("department_id") @db.Uuid
+  projectId       String?                @map("project_id") @db.Uuid
+  /// Employees who reported/were affected by this recurring issue.
+  employeeIds     String[]               @map("employee_ids") @db.Uuid
+  occurrenceCount Int                    @default(1) @map("occurrence_count")
+  firstOccurrence DateTime               @map("first_occurrence") @db.Timestamptz
+  lastOccurrence  DateTime               @map("last_occurrence") @db.Timestamptz
+  trend           RecurringIssueTrend    @default(STABLE)
+  suggestedAction String?                @map("suggested_action")
+  status          RecurringIssueStatus   @default(OPEN)
+  resolvedAt      DateTime?              @map("resolved_at") @db.Timestamptz
+  createdAt       DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+  version         Int                    @default(0)
+
+  organization Organization @relation(fields: [tenantId, organizationId], references: [tenantId, id])
+  department   Department?  @relation(fields: [departmentId], references: [id])
+  project      Project?     @relation(fields: [projectId], references: [id])
+
+  @@index([tenantId, organizationId, status])
+  @@index([tenantId, organizationId, departmentId])
+  @@index([tenantId, organizationId, projectId])
+  @@index([tenantId, organizationId, lastOccurrence])
+  @@map("recurring_issues")
 }
 
 // ─── Session Tracking (WorkSession / SessionEvent / SessionAttachment) ──────
@@ -992,6 +1057,12 @@ model KpiTemplate {
   targetValue     Decimal       @map("target_value") @db.Decimal(12, 2)
   appliesTo       Json?         @map("applies_to")
   templateVersion Int           @default(1) @map("template_version")
+  /// Custom-metric definition — only meaningful when metricType = CUSTOM; existing
+  /// COUNT/HOURS/PERCENT/CURRENCY templates leave these null and are unaffected.
+  unit            String?
+  formula         String?
+  validationRules Json?         @map("validation_rules")
+  displayFormat   String?       @map("display_format")
   createdBy       String?       @map("created_by") @db.Uuid
   updatedBy       String?       @map("updated_by") @db.Uuid
   createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz
@@ -1146,6 +1217,7 @@ enum NotificationType {
   ROLE_CHANGED
   ANNOUNCEMENT
   PASSWORD_CHANGED
+  RECURRING_ISSUE_DETECTED
 
   @@map("notification_type")
 }

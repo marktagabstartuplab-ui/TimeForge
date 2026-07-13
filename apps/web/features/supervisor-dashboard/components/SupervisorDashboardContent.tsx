@@ -13,6 +13,7 @@ import { PendingLeavePanel } from "./PendingLeavePanel";
 import { DailyScrumReviewPanel } from "./DailyScrumReviewPanel";
 import { TeamKpiPanel } from "./TeamKpiPanel";
 import { ProductivityReportCard } from "./ProductivityReportCard";
+import { RecurringIssuesPanel } from "@/features/recurring-issues/components/RecurringIssuesPanel";
 
 function todayISO(): string {
   return new Date().toISOString().slice(0, 10);
@@ -135,6 +136,8 @@ export function SupervisorDashboardContent() {
         <DailyScrumReviewPanel onToast={setToast} />
         <TeamKpiPanel />
       </div>
+
+      <RecurringIssuesPanel />
 
       <ProductivityReportCard />
     </div>

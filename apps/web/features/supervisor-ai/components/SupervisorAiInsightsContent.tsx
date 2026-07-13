@@ -73,6 +73,7 @@ import {
   type AiAlert,
   type SupervisorAiQuery,
 } from "../api/supervisor-ai.service";
+import { RecurringIssuesPanel } from "@/features/recurring-issues/components/RecurringIssuesPanel";
 
 function formatDate(iso: string): string {
   const d = new Date(iso);
@@ -669,6 +670,8 @@ export function SupervisorAiInsightsContent() {
           </div>
         )}
       </SectionCard>
+
+      <RecurringIssuesPanel />
     </div>
   );
 }

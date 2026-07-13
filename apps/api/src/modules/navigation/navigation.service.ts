@@ -48,6 +48,7 @@ const MENU_CATALOG: MenuItemDef[] = [
   // ── SYSTEM ──
   { id: 'system-logs',  label: 'System Logs',  icon: 'scroll-text',  route: '/admin/security',     section: 'SYSTEM',           permission: 'audit:read_org' },
   { id: 'ai-config',    label: 'AI Settings',  icon: 'sparkles',     route: '/admin/ai-config',    section: 'SYSTEM',           permission: 'org:read' },
+  { id: 'kpi-management', label: 'KPI Management', icon: 'target', route: '/admin/kpi-management', section: 'SYSTEM',         permission: 'kpi_template:update' },
 ];
 
 // ─── Response shapes ────────────────────────────────────────────────────────────

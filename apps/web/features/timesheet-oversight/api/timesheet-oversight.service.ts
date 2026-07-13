@@ -74,6 +74,7 @@ export interface TimesheetDetail extends TimesheetRow {
     projectId: string | null;
     workCategoryId: string | null;
     description: string | null;
+    deliverables: string | null;
   }[];
   approvals: {
     id: string;
