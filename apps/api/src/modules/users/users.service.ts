@@ -5,6 +5,7 @@ import {
   NotFoundException,
   UnauthorizedException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AuditAction, Prisma, UserStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -43,7 +44,13 @@ export class UsersService {
     private readonly notifications: NotificationsService,
     private readonly uploads: UploadService,
     private readonly storage: StorageService,
+    private readonly config: ConfigService,
   ) {}
+
+  /** Frontend base URL (first CORS origin), used to build user-facing links in emails. */
+  private frontendUrl(): string {
+    return this.config.get<string>('corsOrigins')?.split(',')[0]?.trim() || 'http://localhost:3001';
+  }
 
   private isFinanceOrAdmin(user: AuthPrincipal): boolean {
     return user.roles.some((r) => r === 'FINANCE' || r === 'ADMIN') || user.permissions.includes('*');
@@ -425,6 +432,20 @@ export class UsersService {
     });
 
     const fullName = `${existing.firstName} ${existing.lastName}`;
+    const loginUrl = `${this.frontendUrl()}/login`;
+    // Login requires BOTH an approved (ACTIVE) status AND a verified email
+    // (auth.service enforces `emailVerifiedAt`). If they haven't verified yet,
+    // include that step so the sign-in link doesn't dead-end on "Email not verified".
+    const needsVerification = !existing.emailVerifiedAt;
+    const verifyReminder = needsVerification
+      ? [
+          'One quick step first: if you haven’t already, please verify your email',
+          'address using the verification link we emailed you when you registered',
+          '(check your spam folder if you can’t find it). You’ll need to verify before',
+          'you can sign in.',
+          '',
+        ]
+      : [];
     void this.mailer
       .send(
         existing.email,
@@ -434,7 +455,10 @@ export class UsersService {
           '',
           'Great news! Your TimeForge account has been reviewed and approved by an administrator.',
           '',
-          'You can now sign in to TimeForge using the email address and password you registered with.',
+          ...verifyReminder,
+          'You can now sign in to TimeForge using the email address and password you registered with:',
+          '',
+          loginUrl,
           '',
           'If you have any questions, please reach out to your HR or system administrator.',
           '',
