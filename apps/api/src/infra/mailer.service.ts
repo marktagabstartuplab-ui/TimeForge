@@ -5,14 +5,15 @@ import * as nodemailer from 'nodemailer';
 /**
  * Mailer service — sends transactional emails using one of two strategies:
  *
- * 1. **Supabase Edge Function** (preferred in production): calls the `send-email`
- *    edge function deployed on your Supabase project. SMTP secrets are stored
- *    securely as Supabase project secrets (never in this codebase).
- *    Requires: SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.
+ * 1. **Direct Gmail SMTP** (preferred): uses Nodemailer with the SMTP_*
+ *    variables from .env. Activated whenever SMTP_USER/SMTP_PASS are set.
  *
- * 2. **Direct Gmail SMTP** (local dev fallback): uses Nodemailer with the
- *    SMTP_* variables from .env. Activated when SUPABASE_SERVICE_ROLE_KEY is
- *    not set (i.e. local development without full Supabase config).
+ * 2. **Supabase Edge Function** (fallback): calls the `send-email` edge
+ *    function deployed on your Supabase project. Only used when direct SMTP
+ *    isn't configured. Requires SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY here
+ *    *and* its own SMTP_HOST/PORT/USER/PASS set as Supabase project secrets
+ *    (`supabase secrets set ...`) — a separate store from this app's .env,
+ *    which is easy to leave unconfigured and causes silent send failures.
  *
  * 3. **Console mock** (offline fallback): logs the email payload to stdout when
  *    neither SMTP credentials nor Supabase are configured.
@@ -31,13 +32,8 @@ export class MailerService {
     const supabase = this.config.get<{ url: string; serviceRoleKey: string }>('supabase');
     const smtp = this.config.get<{ host: string; port: number; user: string; pass: string }>('smtp');
 
-    if (supabase?.url && supabase?.serviceRoleKey) {
-      // Strategy 1: Supabase Edge Function
-      this.edgeFunctionUrl = `${supabase.url}/functions/v1/send-email`;
-      this.serviceRoleKey = supabase.serviceRoleKey;
-      this.logger.log(`Mailer strategy: Supabase Edge Function → ${this.edgeFunctionUrl}`);
-    } else if (smtp?.user && smtp?.pass) {
-      // Strategy 2: Direct Gmail SMTP
+    if (smtp?.user && smtp?.pass) {
+      // Strategy 1: Direct Gmail SMTP
       const secure = smtp.port === 465;
       this.transporter = nodemailer.createTransport({
         host: smtp.host,
@@ -46,10 +42,15 @@ export class MailerService {
         auth: { user: smtp.user, pass: smtp.pass },
       });
       this.logger.log(`Mailer strategy: Direct SMTP → ${smtp.user} (secure: ${secure})`);
+    } else if (supabase?.url && supabase?.serviceRoleKey) {
+      // Strategy 2: Supabase Edge Function
+      this.edgeFunctionUrl = `${supabase.url}/functions/v1/send-email`;
+      this.serviceRoleKey = supabase.serviceRoleKey;
+      this.logger.log(`Mailer strategy: Supabase Edge Function → ${this.edgeFunctionUrl}`);
     } else {
       // Strategy 3: Console mock
       this.logger.warn(
-        'Mailer strategy: MOCK (no SUPABASE_SERVICE_ROLE_KEY or SMTP credentials set). Emails will be logged to console only.',
+        'Mailer strategy: MOCK (no SMTP or SUPABASE_SERVICE_ROLE_KEY credentials set). Emails will be logged to console only.',
       );
     }
   }
