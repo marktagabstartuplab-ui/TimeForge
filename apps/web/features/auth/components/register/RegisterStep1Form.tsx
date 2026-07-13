@@ -84,6 +84,8 @@ export function RegisterStep1Form({ defaultValues, onNext }: Props) {
           <IconInput
             id="phone"
             type="tel"
+            inputMode="numeric"
+            maxLength={11}
             icon={Phone}
             autoComplete="tel"
             placeholder="09123456789"

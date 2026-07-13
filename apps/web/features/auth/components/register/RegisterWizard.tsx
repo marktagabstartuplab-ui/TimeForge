@@ -47,7 +47,7 @@ export function RegisterWizard() {
       lastName,
       phone: step1.phone,
       jobTitle: "Employee",
-      departmentId: values.departmentId,
+      departmentId: step1.departmentId,
     });
     // Never auto-login — back to sign-in with the email prefilled and a
     // success banner (LoginForm reads these params).

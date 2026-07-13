@@ -18,7 +18,10 @@ export type LoginValues = z.infer<typeof loginSchema>;
 export const registerStep1Schema = z.object({
   fullName: z.string().min(1, "Full name is required").max(200),
   email: z.string().min(1, "Email address is required").email("Enter a valid email address"),
-  phone: z.string().min(1, "Phone number is required").max(30),
+  phone: z
+    .string()
+    .min(1, "Phone number is required")
+    .regex(/^\d{11}$/, "Phone number must be exactly 11 digits"),
   departmentId: z.string().min(1, "Select a department").uuid("Select a department"),
   agreeToTerms: z.boolean().refine((v) => v === true, {
     message: "You must agree to the Terms of Service",
@@ -26,16 +29,24 @@ export const registerStep1Schema = z.object({
 });
 export type RegisterStep1Values = z.infer<typeof registerStep1Schema>;
 
-// Step 2. Department maps to a real backend lookup; workCategory is shown for
-// design parity only (no backend field for signup) and is not sent.
+// Password policy shared by registration (backend RegisterDto enforces the same
+// rules — keep these in sync). Requires an upper- and lower-case letter and one
+// special character, on top of the 8–128 length bound.
+const strongPassword = z
+  .string()
+  .min(8, "Password must be at least 8 characters")
+  .max(128, "Password must be at most 128 characters")
+  .regex(/[a-z]/, "Include at least one lowercase letter")
+  .regex(/[A-Z]/, "Include at least one uppercase letter")
+  .regex(/[^A-Za-z0-9]/, "Include at least one special character");
+
+// Step 2. Department is chosen in step 1 and only *displayed* here (read-only),
+// so it isn't a form field. workCategory is shown for design parity only (no
+// backend field for signup) and is not sent.
 export const registerStep2Schema = z
   .object({
-    password: z
-      .string()
-      .min(8, "Password must be at least 8 characters")
-      .max(128, "Password must be at most 128 characters"),
+    password: strongPassword,
     confirmPassword: z.string().min(1, "Please confirm your password"),
-    departmentId: z.string().min(1, "Select a department").uuid("Select a department"),
     workCategory: z.string().optional(),
     agreeToTerms: z.boolean().refine((v) => v === true, {
       message: "You must agree to the Terms of Service",

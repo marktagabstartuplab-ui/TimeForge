@@ -1,4 +1,4 @@
-import { IsEmail, IsNotEmpty, IsString, IsUUID, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsNotEmpty, IsString, IsUUID, Matches, MaxLength, MinLength } from 'class-validator';
 
 export class LoginDto {
   @IsEmail()
@@ -37,6 +37,12 @@ export class RegisterDto {
   @IsString()
   @MinLength(8)
   @MaxLength(128)
+  // Must contain at least one lowercase letter, one uppercase letter, and one
+  // special (non-alphanumeric) character. Kept in sync with the frontend
+  // `strongPassword` schema (apps/web/features/auth/schemas/auth.schema.ts).
+  @Matches(/^(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9]).+$/, {
+    message: 'password must include an uppercase letter, a lowercase letter, and a special character',
+  })
   password!: string;
 
   @IsString()
@@ -51,7 +57,8 @@ export class RegisterDto {
 
   @IsString()
   @IsNotEmpty()
-  @MaxLength(30)
+  // Exactly 11 digits (e.g. Philippine mobile 09XXXXXXXXX).
+  @Matches(/^\d{11}$/, { message: 'phone must be exactly 11 digits' })
   phone!: string;
 
   @IsString()
