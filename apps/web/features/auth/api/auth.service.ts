@@ -55,6 +55,11 @@ export async function resetPassword(token: string, password: string): Promise<{ 
   return data;
 }
 
+export async function verifyEmail(token: string): Promise<{ status: string }> {
+  const { data } = await apiClient.post<{ status: string }>("/auth/verify-email", { token });
+  return data;
+}
+
 export async function fetchDepartments(): Promise<Department[]> {
   const { data } = await apiClient.get<Department[]>("/auth/departments");
   return data;
