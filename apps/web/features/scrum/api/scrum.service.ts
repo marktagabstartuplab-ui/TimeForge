@@ -13,6 +13,8 @@ export interface ScrumEntry {
   /** Legacy JSON-encoded blocker list — superseded by /blockers; kept for backward compatibility. */
   blockers: string | null;
   notes: string | null;
+  /** Supervisor's feedback on this entry, shown read-only to the employee. */
+  supervisorNote: string | null;
   /** Server-computed task progress for the day, 0–100. */
   progress: number;
   status: ScrumTaskStatus;

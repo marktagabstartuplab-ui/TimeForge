@@ -73,8 +73,12 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
       }
       const eodLine = `EOD Review — ${values.accomplishments}`;
       if (scrumEntry) {
+        // Keep only the morning commitment (everything before any prior EOD line)
+        // and replace the EOD line — re-submitting the review must not append a
+        // second "EOD Review —" block and duplicate Today's Commitments.
+        const morningCommitment = (scrumEntry.today ?? "").split("\n\nEOD Review —")[0];
         return updateScrumEntry(scrumEntry.id, {
-          today: [scrumEntry.today, eodLine].filter(Boolean).join("\n\n").slice(0, 5000),
+          today: [morningCommitment, eodLine].filter(Boolean).join("\n\n").slice(0, 5000),
           blockers: values.finalBlockers || scrumEntry.blockers || undefined,
           version: scrumEntry.version,
         });

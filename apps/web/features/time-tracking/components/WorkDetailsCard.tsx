@@ -43,6 +43,12 @@ interface WorkDetailsCardProps {
   onToast: (toast: ToastState) => void;
 }
 
+// Base UI's Select treats an empty-string item value as the cleared/placeholder
+// state, so the "Use profile department" option can't be a real, selectable item
+// with value="" — it renders as the placeholder and the selector misbehaves.
+// Use a non-empty sentinel and map it back to "" (→ undefined) on save.
+const PROFILE_DEPARTMENT = "__profile_department__";
+
 /**
  * Section 3 — Work Details. Saves context onto the *running* time entry via
  * PATCH /time-entries/:id: Task and Work Description are stored as separate
@@ -279,14 +285,14 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
                 name="departmentId"
                 render={({ field }) => (
                   <Select
-                    value={field.value ?? ""}
-                    onValueChange={(v) => field.onChange(v ?? "")}
+                    value={field.value ? field.value : PROFILE_DEPARTMENT}
+                    onValueChange={(v) => field.onChange(v === PROFILE_DEPARTMENT ? "" : (v ?? ""))}
                   >
                     <SelectTrigger id="wd-department" aria-label="Department" className={selectClass}>
                       <SelectValue placeholder="Select..." />
                     </SelectTrigger>
                     <SelectContent>
-                      <SelectItem value="">Use profile department</SelectItem>
+                      <SelectItem value={PROFILE_DEPARTMENT}>Use profile department</SelectItem>
                       {departments.map((d) => (
                         <SelectItem key={d.id} value={d.id}>
                           {d.name}
