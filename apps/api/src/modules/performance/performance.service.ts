@@ -2,6 +2,7 @@ import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/commo
 import { Prisma, TimesheetStatus, AuditAction } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { CacheService } from '../../infra/cache.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -22,6 +23,7 @@ export class PerformanceService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly deptScope: DepartmentScopeService,
     @InjectQueue('performance-export') private readonly exportQueue: Queue,
   ) {}
 
@@ -78,22 +80,13 @@ export class PerformanceService {
       return users.map((u) => u.id);
     }
 
-    // 3. Resolve Supervisor Scope (Assigned team isolation)
+    // 3. Resolve Supervisor Scope (department isolation via Department.managerId)
     if (isSupervisor) {
-      const reports = await this.prisma.user.findMany({
-        where: {
-          tenantId: p.tenantId,
-          organizationId: p.organizationId,
-          supervisorId: p.userId,
-          deletedAt: null,
-        },
-        select: { id: true },
-      });
-      const teamUserIds = [p.userId, ...reports.map((r) => r.id)];
+      const teamUserIds = await this.deptScope.teamUserIds(p);
 
       if (query.userId) {
         if (!teamUserIds.includes(query.userId)) {
-          throw new ForbiddenException('Target user is outside your team scope');
+          throw new ForbiddenException('Target user is outside your department scope');
         }
         return [query.userId];
       }

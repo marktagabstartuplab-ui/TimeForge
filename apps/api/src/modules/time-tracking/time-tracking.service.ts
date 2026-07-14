@@ -9,6 +9,7 @@ import { AuditAction, Prisma, TimeEntry } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { PERMISSIONS } from '@timeforge/shared';
 import { UploadService } from '../storage/upload.service';
 import { StorageService } from '../storage/storage.service';
@@ -20,6 +21,7 @@ export class TimeTrackingService {
     private readonly prisma: PrismaService,
     private readonly uploads: UploadService,
     private readonly storage: StorageService,
+    private readonly deptScope: DepartmentScopeService,
   ) {}
 
   // ── Reads (own / team / org scoped) ────────────────────────────────────────
@@ -304,17 +306,9 @@ export class TimeTrackingService {
     return false;
   }
 
-  private async teamUserIds(p: AuthPrincipal): Promise<string[]> {
-    const reports = await this.prisma.user.findMany({
-      where: {
-        tenantId: p.tenantId,
-        organizationId: p.organizationId,
-        supervisorId: p.userId,
-        deletedAt: null,
-      },
-      select: { id: true },
-    });
-    return [p.userId, ...reports.map((r) => r.id)];
+  /** Department-based supervision scope (Department.managerId). */
+  private teamUserIds(p: AuthPrincipal): Promise<string[]> {
+    return this.deptScope.teamUserIds(p);
   }
 
   private minutes(start: Date, end: Date): number {

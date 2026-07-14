@@ -9,6 +9,7 @@ import { AuditAction, Prisma, Timesheet, TimesheetStatus } from '@prisma/client'
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { PERMISSIONS } from '@timeforge/shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ApprovalsService } from '../approvals/approvals.service';
@@ -42,6 +43,7 @@ export class TimesheetsService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly approvals: ApprovalsService,
+    private readonly deptScope: DepartmentScopeService,
   ) {}
 
   // -- Reads --
@@ -987,17 +989,9 @@ export class TimesheetsService {
     return `${year}-W${String(week).padStart(2, '0')}`;
   }
 
-  private async teamUserIds(p: AuthPrincipal): Promise<string[]> {
-    const reports = await this.prisma.user.findMany({
-      where: {
-        tenantId: p.tenantId,
-        organizationId: p.organizationId,
-        supervisorId: p.userId,
-        deletedAt: null,
-      },
-      select: { id: true },
-    });
-    return [p.userId, ...reports.map((r) => r.id)];
+  /** Department-based supervision scope (Department.managerId). */
+  private teamUserIds(p: AuthPrincipal): Promise<string[]> {
+    return this.deptScope.teamUserIds(p);
   }
 
   /** Fetches a timesheet and asserts the caller is the owner. */

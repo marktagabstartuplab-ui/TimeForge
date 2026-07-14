@@ -8,6 +8,7 @@ import { Queue } from 'bullmq';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../infra/cache.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { PERMISSIONS } from '@timeforge/shared';
 import { SupervisorAiExportDto, SupervisorAiQuery } from './dto';
 
@@ -18,6 +19,7 @@ export class SupervisorAiService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly deptScope: DepartmentScopeService,
     @InjectQueue('performance-export') private readonly exportQueue: Queue,
   ) {}
 
@@ -31,17 +33,9 @@ export class SupervisorAiService {
     }
   }
 
-  private async teamUserIds(p: AuthPrincipal): Promise<string[]> {
-    const reports = await this.prisma.user.findMany({
-      where: {
-        tenantId: p.tenantId,
-        organizationId: p.organizationId,
-        supervisorId: p.userId,
-        deletedAt: null,
-      },
-      select: { id: true },
-    });
-    return [p.userId, ...reports.map((r) => r.id)];
+  /** Department-based supervision scope (Department.managerId). */
+  private teamUserIds(p: AuthPrincipal): Promise<string[]> {
+    return this.deptScope.teamUserIds(p);
   }
 
   private async scopeUserIds(p: AuthPrincipal): Promise<string[] | undefined> {

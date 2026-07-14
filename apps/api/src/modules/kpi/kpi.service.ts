@@ -8,6 +8,7 @@ import { AuditAction, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { PERMISSIONS } from '@timeforge/shared';
 import {
   CreateKpiTemplateDto,
@@ -18,7 +19,10 @@ import {
 
 @Injectable()
 export class KpiService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly deptScope: DepartmentScopeService,
+  ) {}
 
   // ── KPI Templates ────────────────────────────────────────────────────────────
 
@@ -280,11 +284,12 @@ export class KpiService {
   }
 
   async getTeamSummary(p: AuthPrincipal, query: { quarter?: string }) {
+    const deptIds = await this.deptScope.managedDepartmentIds(p);
     const reports = await this.prisma.user.findMany({
       where: {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
-        supervisorId: p.userId,
+        departmentId: { in: deptIds },
         deletedAt: null,
         status: 'ACTIVE',
       },
@@ -309,11 +314,12 @@ export class KpiService {
   }
 
   async getTeamChart(p: AuthPrincipal, query: { quarter?: string }) {
+    const deptIds = await this.deptScope.managedDepartmentIds(p);
     const reports = await this.prisma.user.findMany({
       where: {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
-        supervisorId: p.userId,
+        departmentId: { in: deptIds },
         deletedAt: null,
         status: 'ACTIVE',
       },
@@ -335,11 +341,12 @@ export class KpiService {
   }
 
   async getUnderperformingMembers(p: AuthPrincipal, query: { quarter?: string }) {
+    const deptIds = await this.deptScope.managedDepartmentIds(p);
     const reports = await this.prisma.user.findMany({
       where: {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
-        supervisorId: p.userId,
+        departmentId: { in: deptIds },
         deletedAt: null,
         status: 'ACTIVE',
       },
@@ -371,17 +378,18 @@ export class KpiService {
   }
 
   async submitCoaching(p: AuthPrincipal, dto: { userId: string; remarks: string }) {
-    // Verify target employee reports to supervisor
+    // Verify target employee is within the supervisor's department scope.
+    const deptIds = await this.deptScope.managedDepartmentIds(p);
     const employee = await this.prisma.user.findFirst({
       where: {
         id: dto.userId,
         tenantId: p.tenantId,
         organizationId: p.organizationId,
-        supervisorId: p.userId,
+        departmentId: { in: deptIds },
         deletedAt: null,
       },
     });
-    if (!employee) throw new NotFoundException('Employee not found or does not report to you');
+    if (!employee) throw new NotFoundException('Employee not found or is outside your department');
 
     // Create Audit Log
     await this.prisma.auditLog.create({
@@ -462,17 +470,9 @@ export class KpiService {
     return { userId: p.userId };
   }
 
-  private async teamUserIds(p: AuthPrincipal): Promise<string[]> {
-    const reports = await this.prisma.user.findMany({
-      where: {
-        tenantId: p.tenantId,
-        organizationId: p.organizationId,
-        supervisorId: p.userId,
-        deletedAt: null,
-      },
-      select: { id: true },
-    });
-    return [p.userId, ...reports.map((r) => r.id)];
+  /** Department-based supervision scope (Department.managerId). */
+  private teamUserIds(p: AuthPrincipal): Promise<string[]> {
+    return this.deptScope.teamUserIds(p);
   }
 
   private buildPeriodKey(period: string, date: Date): string {
