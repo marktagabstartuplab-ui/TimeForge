@@ -42,9 +42,9 @@ const schema = z
     DEFAULT_ORG_SLUG: z.string().default('demo-org'),
     // AI provider config
     AI_PROVIDER: z.enum(['OPENAI', 'ANTHROPIC', 'LOCAL']).default('OPENAI'),
-    OPENAI_API_KEY: z.string().min(1, 'OPENAI_API_KEY is required when AI_PROVIDER=OPENAI'),
+    OPENAI_API_KEY: z.string().optional().default(''),
     OPENAI_MODEL: z.string().default('qwen/qwen3.6-plus'),
-    OPENAI_BASE_URL: z.string().default('https://api.openai.com/v1'),
+    OPENAI_BASE_URL: z.string().default('https://openrouter.ai/api/v1'),
   })
   .superRefine((cfg, ctx) => {
     if (cfg.STORAGE_DRIVER === 'supabase' && (!cfg.SUPABASE_URL || !cfg.SUPABASE_SERVICE_ROLE_KEY)) {
