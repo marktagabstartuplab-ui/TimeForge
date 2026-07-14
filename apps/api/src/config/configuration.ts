@@ -28,7 +28,7 @@ export default () => ({
     provider: process.env.AI_PROVIDER ?? 'OPENAI',
     openaiApiKey:  process.env.OPENAI_API_KEY!,
     openaiModel:   process.env.OPENAI_MODEL      ?? 'qwen/qwen3.6-plus',
-    openaiBaseUrl: process.env.OPENAI_BASE_URL   ?? 'https://api.openai.com/v1',
+    openaiBaseUrl: process.env.OPENAI_BASE_URL   ?? 'https://openrouter.ai/api/v1',
   },
   storage: {
     driver: process.env.STORAGE_DRIVER ?? 'local',
