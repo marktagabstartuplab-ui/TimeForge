@@ -462,6 +462,10 @@ export class UsersService {
         phone: u.phone,
         jobTitle: u.jobTitle,
         department: u.department,
+        // The self-requested role (EMPLOYEE | INTERN) chosen at registration.
+        // `role` below is the assigned RBAC role, which stays EMPLOYEE until an
+        // admin decides — so this is what the reviewer actually needs to see.
+        requestedRole: u.requestedRole,
         role: u.roles[0]?.role ? { key: u.roles[0].role.key, name: u.roles[0].role.name } : null,
         emailVerifiedAt: u.emailVerifiedAt,
         createdAt: u.createdAt,
