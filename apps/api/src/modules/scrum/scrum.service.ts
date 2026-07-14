@@ -220,20 +220,34 @@ export class ScrumService {
     });
     if (!entry) throw new NotFoundException('Scrum entry not found');
 
-    if (!this.can(p, PERMISSIONS.SCRUM_READ_TEAM)) {
-      throw new ForbiddenException('Only supervisors can unlock team scrum entries');
-    }
-
-    // Department isolation: the entry owner must be within the supervisor's scope.
-    if (!(await this.isInTeam(p, entry.userId))) {
-      throw new ForbiddenException('This entry is outside your team');
+    // Admin (org scope, via wildcard) may unlock any entry org-wide. A Supervisor
+    // (team scope) may only unlock entries owned by a member of the department(s)
+    // they head — department isolation. Anyone else is refused.
+    if (!this.can(p, PERMISSIONS.SCRUM_READ_ORG)) {
+      if (!this.can(p, PERMISSIONS.SCRUM_READ_TEAM)) {
+        throw new ForbiddenException('Only supervisors can unlock team scrum entries');
+      }
+      if (!(await this.isInTeam(p, entry.userId))) {
+        throw new ForbiddenException('This entry is outside your team');
+      }
     }
 
     if (!entry.isLocked) {
       throw new ConflictException('This scrum entry is not locked');
     }
 
-    const reason = dto.reason?.trim() || null;
+    // Reason is mandatory (also enforced by the DTO) — guard here too so a
+    // whitespace-only value can't slip past into the audit trail.
+    const reason = dto.reason?.trim() ?? '';
+    if (reason.length < 5) {
+      throw new UnprocessableEntityException('An unlock reason of at least 5 characters is required');
+    }
+
+    // Owner's department — recorded in the unlock event history for traceability.
+    const owner = await this.prisma.user.findFirst({
+      where: { id: entry.userId },
+      select: { departmentId: true },
+    });
 
     const updated = await this.prisma.scrumEntry.update({
       where: { id },
@@ -251,7 +265,13 @@ export class ScrumService {
         action: 'ADMIN_ACTION',
         entityType: 'ScrumEntry',
         entityId: id,
-        metadata: { event: 'SCRUM_ENTRY_UNLOCKED', reason },
+        metadata: {
+          event: 'SCRUM_ENTRY_UNLOCKED',
+          reason,
+          employeeId: entry.userId,
+          departmentId: owner?.departmentId ?? null,
+          entryDate: entry.entryDate.toISOString(),
+        },
       },
     });
 
@@ -263,9 +283,7 @@ export class ScrumService {
       type: 'ANNOUNCEMENT',
       category: 'DAILY_SCRUM',
       title: "Today's Commitment unlocked",
-      message: reason
-        ? `Your supervisor unlocked today's commitment so you can edit it again. Reason: ${reason}`
-        : "Your supervisor unlocked today's commitment so you can edit it again.",
+      message: `Your supervisor unlocked today's commitment so you can edit it again. Reason: ${reason}`,
       actionUrl: '/time-tracking',
       actionLabel: 'Edit Scrum',
     });

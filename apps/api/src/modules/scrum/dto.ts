@@ -8,6 +8,7 @@ import {
   Max,
   MaxLength,
   Min,
+  MinLength,
   IsInt,
   IsNumber,
 } from 'class-validator';
@@ -105,11 +106,14 @@ export class CommentScrumEntryDto {
 }
 
 export class UnlockScrumEntryDto {
-  /** Optional reason the supervisor is unlocking the locked commitment. */
-  @IsOptional()
+  /**
+   * Why the supervisor is unlocking the locked commitment — required, and kept in
+   * the audit trail. Min 5 chars so the reason is meaningful, not a blank/space.
+   */
   @IsString()
+  @MinLength(5)
   @MaxLength(1000)
-  reason?: string;
+  reason!: string;
 }
 
 export interface ScrumQuery {
