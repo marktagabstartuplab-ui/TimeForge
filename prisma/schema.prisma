@@ -456,8 +456,8 @@ model Department {
   tenantId       String    @map("tenant_id") @db.Uuid
   organizationId String    @map("organization_id") @db.Uuid
   name           String
-  managerId      String?   @map("manager_id") @db.Uuid
   isActive       Boolean   @default(true) @map("is_active")
+  managerId      String?   @map("manager_id") @db.Uuid
   createdBy      String?   @map("created_by") @db.Uuid
   updatedBy      String?   @map("updated_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz

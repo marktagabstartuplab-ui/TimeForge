@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { MoreVertical, Pencil, Trash2 } from "lucide-react";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -24,6 +25,7 @@ interface DepartmentDirectoryTableProps {
 
 export function DepartmentDirectoryTable({ departments, isLoading, onEdit, onDelete }: DepartmentDirectoryTableProps) {
   const [showAll, setShowAll] = useState(false);
+  const router = useRouter();
   const rows = departments ?? [];
   const visible = showAll ? rows : rows.slice(0, PREVIEW_COUNT);
 
@@ -62,16 +64,24 @@ export function DepartmentDirectoryTable({ departments, isLoading, onEdit, onDel
             <tbody className="divide-y divide-[#c3c6d2]/30">
               {visible.map((d) => (
                 <tr key={d.id}>
-                  <td className="py-2.5 pr-4 font-medium text-brand-ink">{d.name}</td>
+                  <td className="py-2.5 pr-4">
+                    <button
+                      type="button"
+                      onClick={() => router.push(`/admin/departments/${d.id}`)}
+                      className="font-medium text-brand hover:underline"
+                    >
+                      {d.name}
+                    </button>
+                  </td>
                   <td className="py-2.5 pr-4 text-brand-muted">
                     {d.manager ? `${d.manager.firstName} ${d.manager.lastName}` : "—"}
                   </td>
                   <td className="py-2.5 pr-4 text-center text-brand-ink">{d.projectCount}</td>
                   <td className="py-2.5 pr-4 text-center text-brand-ink">{d.staffCount}</td>
                   <td className="py-2.5 pr-4">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-[#16a34a]">
-                      <span className="h-1.5 w-1.5 rounded-full bg-[#16a34a]" />
-                      {d.staffCount > 0 ? "Active" : "Empty"}
+                    <span className={`inline-flex items-center gap-1.5 text-xs font-semibold ${d.isActive !== false ? "text-[#16a34a]" : "text-gray-400"}`}>
+                      <span className={`h-1.5 w-1.5 rounded-full ${d.isActive !== false ? "bg-[#16a34a]" : "bg-gray-400"}`} />
+                      {d.isActive !== false ? "Active" : "Inactive"}
                     </span>
                   </td>
                   <td className="py-2.5">

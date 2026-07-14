@@ -22,6 +22,8 @@ export interface UpdateEmployeePayload {
   phone?: string;
   status?: string;
   departmentId?: string;
+  employmentType?: string;
+  supervisorId?: string | null;
   version: number;
 }
 

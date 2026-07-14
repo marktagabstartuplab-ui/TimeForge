@@ -10,6 +10,7 @@ import { AuditAction, Prisma, UserStatus } from '@prisma/client';
 import * as argon2 from 'argon2';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { buildPage, decodeCursor } from '../../common/crud/crud.service';
 import {
   CreateUserDto,
@@ -45,6 +46,7 @@ export class UsersService {
     private readonly uploads: UploadService,
     private readonly storage: StorageService,
     private readonly config: ConfigService,
+    private readonly deptScope: DepartmentScopeService,
   ) {}
 
   /** Frontend base URL (first CORS origin), used to build user-facing links in emails. */
@@ -367,9 +369,23 @@ export class UsersService {
     }
 
     const { version, ...rest } = dto;
+
+    // Transferring an employee to a new department re-points their supervisor to
+    // that department's head (null when it has none), unless the caller set
+    // supervisorId explicitly. Department-based supervision (Department.managerId).
+    let supervisorOverride: string | null | undefined;
+    if (dto.departmentId && dto.departmentId !== existing.departmentId && dto.supervisorId === undefined) {
+      supervisorOverride = await this.deptScope.departmentHeadId(caller.tenantId, existing.organizationId, dto.departmentId);
+    }
+
     await this.prisma.user.update({
       where: { id },
-      data: { ...rest, updatedBy: caller.userId, version: { increment: 1 } },
+      data: {
+        ...rest,
+        ...(supervisorOverride !== undefined ? { supervisorId: supervisorOverride } : {}),
+        updatedBy: caller.userId,
+        version: { increment: 1 },
+      },
     });
     await this.audit(caller.tenantId, caller.userId, AuditAction.ADMIN_ACTION, 'user', id);
 
@@ -482,18 +498,59 @@ export class UsersService {
     if (existing.version !== dto.version) throw new ConflictException('Version mismatch');
     if (existing.status !== 'PENDING') throw new ConflictException('Only pending accounts can be approved');
 
+    // Admin assigns the applicant's final placement on approval: Department,
+    // Employment Type, and Final Role (see brief). All optional — defaults keep
+    // the registered department and the EMPLOYEE role.
+    if (dto.departmentId) {
+      const dept = await this.prisma.department.findFirst({
+        where: { id: dto.departmentId, tenantId: caller.tenantId, organizationId: existing.organizationId, deletedAt: null },
+        select: { id: true },
+      });
+      if (!dept) throw new NotFoundException('Department not found in this organization');
+    }
+
+    // Resolve the final role (by key) up front so the transaction can swap it.
+    const finalRole = dto.roleKey
+      ? await this.prisma.role.findFirst({ where: { tenantId: caller.tenantId, key: dto.roleKey }, select: { id: true } })
+      : null;
+    if (dto.roleKey && !finalRole) throw new NotFoundException(`Role '${dto.roleKey}' not found`);
+
+    // Keep supervisorId synced to the head of the (possibly newly assigned)
+    // department — department-based supervision (Department.managerId).
+    const finalDepartmentId = dto.departmentId ?? existing.departmentId;
+    const supervisorId = finalDepartmentId
+      ? await this.deptScope.departmentHeadId(caller.tenantId, existing.organizationId, finalDepartmentId)
+      : existing.supervisorId;
+
     await this.prisma.$transaction([
       this.prisma.user.update({
         where: { id },
         data: {
           status: UserStatus.ACTIVE,
           isApproved: true,
+          ...(dto.departmentId ? { departmentId: dto.departmentId } : {}),
+          ...(dto.employmentType ? { employmentType: dto.employmentType } : {}),
+          supervisorId,
           updatedBy: caller.userId,
           version: { increment: 1 },
         },
       }),
+      // Replace the default EMPLOYEE UserRole with the admin-chosen final role.
+      ...(finalRole
+        ? [
+            this.prisma.userRole.deleteMany({ where: { userId: id } }),
+            this.prisma.userRole.create({ data: { userId: id, roleId: finalRole.id } }),
+          ]
+        : []),
       this.prisma.auditLog.create({
-        data: { tenantId: caller.tenantId, actorId: caller.userId, action: AuditAction.ADMIN_ACTION, entityType: 'user', entityId: id },
+        data: {
+          tenantId: caller.tenantId,
+          actorId: caller.userId,
+          action: AuditAction.ADMIN_ACTION,
+          entityType: 'user',
+          entityId: id,
+          metadata: { event: 'ACCOUNT_APPROVED', departmentId: finalDepartmentId ?? null, employmentType: dto.employmentType ?? null, roleKey: dto.roleKey ?? null },
+        },
       }),
     ]);
     await this.notifications.create({

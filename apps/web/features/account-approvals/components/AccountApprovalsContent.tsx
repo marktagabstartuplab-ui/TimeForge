@@ -26,6 +26,7 @@ import {
   DialogDescription,
   DialogCloseButton,
 } from "@/components/ui/dialog";
+import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { fetchDepartments } from "@/features/auth/api/auth.service";
 import { useProfileModalStore } from "@/features/account/store/profile-modal.store";
@@ -37,7 +38,24 @@ import {
   type PendingAccountRow,
 } from "../api/account-approvals.service";
 
-const ROLES = ["EMPLOYEE", "SUPERVISOR", "HR", "FINANCE", "ADMIN"];
+const ROLES = ["EMPLOYEE", "SUPERVISOR", "HR", "FINANCE", "ADMIN"] as const;
+const EMPLOYMENT_TYPES = ["EMPLOYEE", "INTERN", "CONTRACTOR", "PART_TIME", "FULL_TIME"] as const;
+
+const EMPLOYMENT_TYPE_LABELS: Record<string, string> = {
+  EMPLOYEE: "Employee",
+  INTERN: "Intern",
+  CONTRACTOR: "Contractor",
+  PART_TIME: "Part-time",
+  FULL_TIME: "Full-time",
+};
+
+const ROLE_LABELS: Record<string, string> = {
+  EMPLOYEE: "Employee",
+  SUPERVISOR: "Supervisor",
+  HR: "HR",
+  FINANCE: "Finance",
+  ADMIN: "Admin",
+};
 
 function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
@@ -57,6 +75,12 @@ export function AccountApprovalsContent() {
   const [role, setRole] = useState("ALL");
   const [rejectTarget, setRejectTarget] = useState<PendingAccountRow | null>(null);
   const [rejectReason, setRejectReason] = useState("");
+
+  // Approval modal state
+  const [approveTarget, setApproveTarget] = useState<PendingAccountRow | null>(null);
+  const [approveDept, setApproveDept] = useState("");
+  const [approveEmploymentType, setApproveEmploymentType] = useState("");
+  const [approveRole, setApproveRole] = useState("");
 
   const { data: departments } = useQuery({ queryKey: ["auth", "departments"], queryFn: fetchDepartments });
 
@@ -79,10 +103,24 @@ export function AccountApprovalsContent() {
 
   const invalidateAll = () => queryClient.invalidateQueries({ queryKey: ["account-approvals"] });
 
+  function openApproveModal(row: PendingAccountRow) {
+    setApproveTarget(row);
+    setApproveDept(row.department?.id ?? "");
+    setApproveEmploymentType(row.employmentType || "EMPLOYEE");
+    setApproveRole(row.role?.key || "EMPLOYEE");
+  }
+
   const approveMutation = useMutation({
-    mutationFn: (row: PendingAccountRow) => approveAccount(row.id, row.version),
-    onSuccess: (_res, row) => {
-      setToast({ message: `${row.firstName} ${row.lastName}'s account was approved.`, tone: "success" });
+    mutationFn: () =>
+      approveAccount(approveTarget!.id, {
+        version: approveTarget!.version,
+        departmentId: approveDept || undefined,
+        employmentType: approveEmploymentType || undefined,
+        roleKey: approveRole || undefined,
+      }),
+    onSuccess: (_res, _vars) => {
+      setToast({ message: `${approveTarget!.firstName} ${approveTarget!.lastName}'s account was approved.`, tone: "success" });
+      setApproveTarget(null);
       invalidateAll();
     },
     onError: (err) => setToast({ message: err instanceof ApiError ? err.message : "Approval failed.", tone: "error" }),
@@ -231,12 +269,9 @@ export function AccountApprovalsContent() {
                         <Button
                           type="button"
                           size="sm"
-                          onClick={() => approveMutation.mutate(r)}
+                          onClick={() => openApproveModal(r)}
                           disabled={approveMutation.isPending}
                         >
-                          {approveMutation.isPending && approveMutation.variables?.id === r.id ? (
-                            <Loader2 className="animate-spin" aria-hidden="true" />
-                          ) : null}
                           Approve
                         </Button>
                         <Button
@@ -264,6 +299,66 @@ export function AccountApprovalsContent() {
         ) : null}
       </SectionCard>
 
+      {/* Approval Modal */}
+      <Dialog open={Boolean(approveTarget)} onOpenChange={(open) => { if (!open) setApproveTarget(null); }}>
+        <DialogContent>
+          <div className="flex items-start justify-between px-6 pt-6">
+            <div>
+              <DialogTitle>Approve {approveTarget?.firstName} {approveTarget?.lastName}</DialogTitle>
+              <DialogDescription>Set the department, employment type, and role for this account.</DialogDescription>
+            </div>
+            <DialogCloseButton />
+          </div>
+          <div className="flex flex-col gap-4 px-6 py-5">
+            <div>
+              <Label className="mb-1.5">Department</Label>
+              <Select value={approveDept || "NONE"} onValueChange={(v) => setApproveDept(v === "NONE" || v === null ? "" : v)}>
+                <SelectTrigger className="w-full"><SelectValue placeholder="Select department" /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="NONE">No department</SelectItem>
+                  {departments?.map((d) => (
+                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="mb-1.5">Employment Type</Label>
+              <Select value={approveEmploymentType || "EMPLOYEE"} onValueChange={(v) => setApproveEmploymentType(v ?? "EMPLOYEE")}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {EMPLOYMENT_TYPES.map((et) => (
+                    <SelectItem key={et} value={et}>{EMPLOYMENT_TYPE_LABELS[et]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div>
+              <Label className="mb-1.5">Role</Label>
+              <Select value={approveRole || "EMPLOYEE"} onValueChange={(v) => setApproveRole(v ?? "EMPLOYEE")}>
+                <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  {ROLES.map((r) => (
+                    <SelectItem key={r} value={r}>{ROLE_LABELS[r]}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+
+            <div className="flex justify-end gap-3 pt-2">
+              <Button type="button" variant="outline" onClick={() => setApproveTarget(null)}>Cancel</Button>
+              <Button type="button" onClick={() => approveMutation.mutate()} disabled={approveMutation.isPending}>
+                {approveMutation.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
+                Approve Account
+              </Button>
+            </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Reject Modal */}
       <Dialog open={Boolean(rejectTarget)} onOpenChange={(open) => { if (!open) { setRejectTarget(null); setRejectReason(""); } }}>
         <DialogContent>
           <div className="flex items-start justify-between px-6 pt-6">

@@ -14,11 +14,17 @@ import { Toast, type ToastState } from "@/components/shared/Toast";
 import { ApiError } from "@/lib/api/client";
 import { profileSchema, type ProfileValues } from "../schemas/account.schema";
 import { getMe, updateProfile } from "../api/account.service";
-import { getEmployee, updateEmployee, type EmployeeRow } from "@/features/employee-management/api/employee-management.service";
+import { getEmployee, updateEmployee, listEmployees, type EmployeeRow } from "@/features/employee-management/api/employee-management.service";
 import { useProfileModalStore } from "../store/profile-modal.store";
 import { PersonalInfoCard } from "./PersonalInfoCard";
 import { ProfessionalDetailsCard } from "./ProfessionalDetailsCard";
 import { SecuritySection } from "./SecuritySection";
+import { apiClient } from "@/lib/api/client";
+
+interface DepartmentRef {
+  id: string;
+  name: string;
+}
 
 export function ProfileAccountModal() {
   const isOpen = useProfileModalStore((s) => s.isOpen);
@@ -32,11 +38,34 @@ export function ProfileAccountModal() {
    *  set = an Admin viewing/editing another employee from Employee Management (no avatar/security actions). */
   const isViewingOther = Boolean(targetUserId);
 
+  // Admin-only: editable professional fields
+  const [editDepartmentId, setEditDepartmentId] = useState<string>("");
+  const [editEmploymentType, setEditEmploymentType] = useState<string>("");
+  const [editSupervisorId, setEditSupervisorId] = useState<string>("");
+
   const meQuery = useQuery({
     queryKey: isViewingOther ? ["employee-management", "employee", targetUserId] : ["account", "me"],
     queryFn: () => (isViewingOther ? getEmployee(targetUserId!) : getMe()),
     enabled: isOpen,
   });
+
+  // Fetch departments for the admin dropdown
+  const { data: departments } = useQuery({
+    queryKey: ["auth", "departments"],
+    queryFn: async (): Promise<DepartmentRef[]> => {
+      const { data } = await apiClient.get<DepartmentRef[]>("/auth/departments");
+      return data;
+    },
+    enabled: isOpen && isViewingOther,
+  });
+
+  // Fetch supervisors (ACTIVE employees with SUPERVISOR or ADMIN role) for the admin dropdown
+  const { data: supervisorsPage } = useQuery({
+    queryKey: ["employee-management", "supervisors"],
+    queryFn: () => listEmployees({ limit: 100, role: "SUPERVISOR" }),
+    enabled: isOpen && isViewingOther,
+  });
+  const supervisors = supervisorsPage?.data ?? [];
 
   const {
     register,
@@ -52,15 +81,26 @@ export function ProfileAccountModal() {
   useEffect(() => {
     if (meQuery.data) {
       reset({ firstName: meQuery.data.firstName, lastName: meQuery.data.lastName, phone: meQuery.data.phone ?? "" });
+      if (isViewingOther) {
+        setEditDepartmentId(meQuery.data.departmentId ?? "");
+        setEditEmploymentType(meQuery.data.employmentType ?? "EMPLOYEE");
+        setEditSupervisorId(meQuery.data.supervisor?.id ?? "");
+      }
     }
-  }, [meQuery.data, reset]);
+  }, [meQuery.data, reset, isViewingOther]);
 
   const saveProfile = useMutation({
     mutationFn: (values: ProfileValues) => {
       const payload = { ...values, phone: values.phone || undefined };
       if (isViewingOther) {
         const version = (meQuery.data as EmployeeRow).version;
-        return updateEmployee(targetUserId!, { ...payload, version });
+        return updateEmployee(targetUserId!, {
+          ...payload,
+          departmentId: editDepartmentId || undefined,
+          employmentType: editEmploymentType || undefined,
+          supervisorId: editSupervisorId || null,
+          version,
+        });
       }
       return updateProfile(payload);
     },
@@ -68,6 +108,11 @@ export function ProfileAccountModal() {
       queryClient.setQueryData(isViewingOther ? ["employee-management", "employee", targetUserId] : ["account", "me"], updated);
       if (isViewingOther) queryClient.invalidateQueries({ queryKey: ["employee-management", "employees"] });
       reset({ firstName: updated.firstName, lastName: updated.lastName, phone: updated.phone ?? "" });
+      if (isViewingOther) {
+        setEditDepartmentId(updated.departmentId ?? "");
+        setEditEmploymentType(updated.employmentType ?? "EMPLOYEE");
+        setEditSupervisorId(updated.supervisor?.id ?? "");
+      }
       setToast({ message: isViewingOther ? "Employee updated." : "Profile updated.", tone: "success" });
       close();
     },
@@ -88,9 +133,21 @@ export function ProfileAccountModal() {
     setConfirmDiscardOpen(false);
     if (meQuery.data) {
       reset({ firstName: meQuery.data.firstName, lastName: meQuery.data.lastName, phone: meQuery.data.phone ?? "" });
+      if (isViewingOther) {
+        setEditDepartmentId(meQuery.data.departmentId ?? "");
+        setEditEmploymentType(meQuery.data.employmentType ?? "EMPLOYEE");
+        setEditSupervisorId(meQuery.data.supervisor?.id ?? "");
+      }
     }
     close();
   }
+
+  // Check if professional details have changed (admin mode)
+  const professionalDirty = isViewingOther && meQuery.data
+    ? editDepartmentId !== (meQuery.data.departmentId ?? "")
+      || editEmploymentType !== (meQuery.data.employmentType ?? "EMPLOYEE")
+      || editSupervisorId !== (meQuery.data.supervisor?.id ?? "")
+    : false;
 
   return (
     <>
@@ -122,7 +179,18 @@ export function ProfileAccountModal() {
                     onToast={setToast}
                     allowAvatarUpload={!isViewingOther}
                   />
-                  <ProfessionalDetailsCard me={meQuery.data} />
+                  <ProfessionalDetailsCard
+                    me={meQuery.data}
+                    isEditing={isViewingOther}
+                    departments={departments ?? []}
+                    supervisors={supervisors}
+                    selectedDepartmentId={editDepartmentId}
+                    selectedEmploymentType={editEmploymentType}
+                    selectedSupervisorId={editSupervisorId}
+                    onDepartmentChange={setEditDepartmentId}
+                    onEmploymentTypeChange={setEditEmploymentType}
+                    onSupervisorChange={setEditSupervisorId}
+                  />
                 </div>
                 {isViewingOther ? null : <SecuritySection me={meQuery.data} onToast={setToast} />}
               </div>
@@ -137,7 +205,7 @@ export function ProfileAccountModal() {
               <Button
                 type="button"
                 onClick={handleSubmit((values) => saveProfile.mutate(values))}
-                disabled={saveProfile.isPending}
+                disabled={saveProfile.isPending || (!isDirty && !professionalDirty)}
               >
                 {saveProfile.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
                 Save Changes

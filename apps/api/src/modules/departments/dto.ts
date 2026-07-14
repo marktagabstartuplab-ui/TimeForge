@@ -1,4 +1,4 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, ValidateIf } from 'class-validator';
+import { IsBoolean, IsInt, IsNotEmpty, IsOptional, IsString, IsUUID, MaxLength, ValidateIf } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class CreateDepartmentDto {
@@ -10,6 +10,11 @@ export class CreateDepartmentDto {
   @IsOptional()
   @IsUUID()
   managerId?: string;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isActive?: boolean;
 }
 
 export class UpdateDepartmentDto {
@@ -24,6 +29,11 @@ export class UpdateDepartmentDto {
   @ValidateIf((_, value) => value !== null)
   @IsUUID()
   managerId?: string | null;
+
+  @IsOptional()
+  @IsBoolean()
+  @Type(() => Boolean)
+  isActive?: boolean;
 
   @IsInt()
   @Type(() => Number)

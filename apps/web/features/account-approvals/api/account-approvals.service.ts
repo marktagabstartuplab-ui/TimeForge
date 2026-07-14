@@ -15,6 +15,7 @@ export interface PendingAccountRow {
   emailVerifiedAt: string | null;
   createdAt: string;
   version: number;
+  employmentType: string;
 }
 
 export interface PendingAccountsQuery {
@@ -25,13 +26,20 @@ export interface PendingAccountsQuery {
   limit?: number;
 }
 
+export interface ApproveAccountPayload {
+  version: number;
+  departmentId?: string;
+  employmentType?: string;
+  roleKey?: string;
+}
+
 export async function listPendingAccounts(query: PendingAccountsQuery = {}): Promise<Page<PendingAccountRow>> {
   const { data } = await apiClient.get<Page<PendingAccountRow>>("/approvals/accounts", { params: query });
   return data;
 }
 
-export async function approveAccount(id: string, version: number): Promise<PendingAccountRow> {
-  const { data } = await apiClient.post<PendingAccountRow>(`/approvals/accounts/${id}/approve`, { version });
+export async function approveAccount(id: string, payload: ApproveAccountPayload): Promise<PendingAccountRow> {
+  const { data } = await apiClient.post<PendingAccountRow>(`/approvals/accounts/${id}/approve`, payload);
   return data;
 }
 

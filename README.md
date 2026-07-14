@@ -68,8 +68,8 @@ Source: `Project Brief - TimeForge.pdf` (StartupLab). Legend: ✅ complete · �
 | 6 | Payroll Preparation | ✅ | FIRST_HALF/SECOND_HALF/CUSTOM periods, all required summary fields, real PDF **and** Excel export (`payroll-export.processor.ts`). |
 | 7 | Dashboards/Analytics | ✅ | All 10 brief metrics exist somewhere, spread across role-specific dashboards (Admin/HR/Supervisor/Finance/Reports). Supervisor AI Insights dashboard added at `/supervisor/ai-insights` — 8 algorithmic endpoints (dashboard, leaderboard, insights, recommendations, team-health, trends, alerts, export) with real DB stats, no mock data, BullMQ export queue, Redis caching, team-scoped RBAC (`ai:trigger_team`). |
 | 8 | AI Integration | ✅ | All 7 brief capabilities have real handlers in `apps/worker/src/ai/feature-handlers.ts`, not stubs. |
-| 9 | Administrative Portal | ✅ | Users/departments/projects/KPIs/settings all manageable. AI configuration screen available at `/admin/ai-config` with per-feature toggles, provider status display, and runtime enforcement in `AiService.triggerJob()`. |
-| 10 | Auth & Roles | ⚠️ | Employee/Intern, Supervisor, Admin map cleanly. HR/Finance split into two roles (see note above). |
+| 9 | Administrative Portal | ✅ | Users/departments/projects/KPIs/settings all manageable. AI configuration screen available at `/admin/ai-config` with per-feature toggles, provider status display, and runtime enforcement in `AiService.triggerJob()`. **Department detail page** at `/admin/departments/[id]` with assigned supervisor, employee/intern counts by employment type, active status toggle, and employee list. **Approval modal** on pending account approvals lets admins set department, employment type, and role before activating. **Employee profile** editable by admins (department, supervisor, employment type) in `ProfileAccountModal`. |
+| 10 | Auth & Roles | ✅ | Employee/Intern, Supervisor, Admin map cleanly. HR/Finance split into two roles (see note above). Role assignment now possible during account approval via the approval modal. |
 
 ### Suggested priority order for remaining gaps
 1. ✅ **Time entry attachments** — real file upload implemented (POST/DELETE `/time-entries/:id/attachments`, `UploadService`, frontend UI in `WorkDetailsCard.tsx`)
@@ -77,7 +77,10 @@ Source: `Project Brief - TimeForge.pdf` (StartupLab). Legend: ✅ complete · �
 3. ✅ **Task as a real field** — `TimeEntry.task` column, backend DTOs/service updated, frontend form sends `task` separately instead of composing into `description`
 4. ✅ **Department on time entries** — optional `TimeEntry.departmentId` FK; form defaults to profile department with editable dropdown; aggregation in `organization.service.ts` prefers entry-level department
 5. ✅ **Recurring-blocker detection** — rules-based flag when an employee reports blockers on 3+ of their last 5 scrum entries, surfaced in `TeamScrumSubmissionsContent.tsx` as a badge. KPI metric types investigated: existing `COUNT`/`HOURS`/`PERCENT`/`CURRENCY` enum already covers all brief examples — no change needed.
-5. Recurring-blocker auto-detection & open-ended KPI metric types — lowest urgency, treat as stretch goals
+6. ✅ **Approval modal** — admin can set department, employment type, and role when approving pending registrations. Backend `ApproveUserDto` extended; approval modal with selectors added to `AccountApprovalsContent.tsx`.
+7. ✅ **Department detail page** — `/admin/departments/[id]` with assigned supervisor, employee/intern/other counts, active status toggle, and employee list table.
+8. ✅ **Employee profile editability** — admins can edit department, supervisor, and employment type in `ProfileAccountModal`. `ProfessionalDetailsCard` now renders editable Selects in admin mode.
+9. ✅ **Department isActive field** — Prisma schema + migration adds `isActive` boolean to Department model, surfaced in department detail page and directory table.
 
 ---
 

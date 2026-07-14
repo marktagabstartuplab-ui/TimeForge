@@ -75,4 +75,25 @@ describe('DepartmentScopeService', () => {
     expect(await svc.canAccessUser(principal(), 'emp-1')).toBe(true);
     expect(await svc.canAccessUser(principal(), 'outsider')).toBe(false);
   });
+
+  describe('departmentHeadId', () => {
+    it("returns the department's managerId, tenant/org scoped", async () => {
+      (prisma.department as unknown as { findFirst: jest.Mock }).findFirst = jest
+        .fn()
+        .mockResolvedValue({ managerId: 'head-1' });
+
+      const head = await svc.departmentHeadId('tenant-1', 'org-1', 'dept-eng');
+
+      expect(head).toBe('head-1');
+      expect((prisma.department as unknown as { findFirst: jest.Mock }).findFirst).toHaveBeenCalledWith({
+        where: { id: 'dept-eng', tenantId: 'tenant-1', organizationId: 'org-1', deletedAt: null },
+        select: { managerId: true },
+      });
+    });
+
+    it('returns null when the department is missing or has no head', async () => {
+      (prisma.department as unknown as { findFirst: jest.Mock }).findFirst = jest.fn().mockResolvedValue(null);
+      expect(await svc.departmentHeadId('tenant-1', 'org-1', 'missing')).toBeNull();
+    });
+  });
 });

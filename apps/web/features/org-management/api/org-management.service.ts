@@ -12,12 +12,19 @@ export interface PersonRef {
 export interface DepartmentRow {
   id: string;
   name: string;
+  isActive: boolean;
   managerId: string | null;
   manager: PersonRef | null;
   staffCount: number;
   projectCount: number;
   version: number;
   createdAt: string;
+}
+
+export interface DepartmentDetail extends DepartmentRow {
+  employeeCount: number;
+  internCount: number;
+  otherCount: number;
 }
 
 export interface ProjectRow {
@@ -79,6 +86,7 @@ export interface CreateDepartmentPayload {
 export interface UpdateDepartmentPayload {
   name?: string;
   managerId?: string | null;
+  isActive?: boolean;
   version: number;
 }
 
@@ -134,6 +142,26 @@ export async function updateDepartment(id: string, payload: UpdateDepartmentPayl
 
 export async function deleteDepartment(id: string, version: number): Promise<void> {
   await apiClient.delete(`/departments/${id}`, { params: { version } });
+}
+
+export async function getDepartmentDetail(id: string): Promise<DepartmentDetail> {
+  const { data } = await apiClient.get<DepartmentDetail>(`/departments/${id}`);
+  return data;
+}
+
+export interface DepartmentEmployee {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  employmentType: string;
+  jobTitle: string | null;
+  status: string;
+}
+
+export async function listDepartmentEmployees(departmentId: string): Promise<DepartmentEmployee[]> {
+  const { data } = await apiClient.get<{ data: DepartmentEmployee[] }>("/employees", { params: { departmentId, limit: 100 } });
+  return data.data;
 }
 
 export async function createProject(payload: CreateProjectPayload): Promise<ProjectRow> {
