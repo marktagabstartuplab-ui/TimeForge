@@ -2,6 +2,7 @@ import { Injectable, ForbiddenException, NotFoundException } from '@nestjs/commo
 import { Prisma, ReportCategory, ReportStatus, AuditAction, TimesheetStatus } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { CacheService } from '../../infra/cache.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -39,6 +40,7 @@ export class ReportsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly deptScope: DepartmentScopeService,
     @InjectQueue('reports-export') private readonly exportQueue: Queue,
   ) {}
 
@@ -713,14 +715,15 @@ export class ReportsService {
     const limit = Math.min(Number(query.limit ?? 10), 50);
     const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
 
-    // Resolve reports list or users
+    // Resolve reports list or users — department-based supervision.
+    const deptIds = await this.deptScope.managedDepartmentIds(p);
     const reports = await this.prisma.user.findMany({
       where: {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
         deletedAt: null,
         status: 'ACTIVE',
-        supervisorId: p.userId,
+        departmentId: { in: deptIds },
         ...(query.q
           ? {
               OR: [
@@ -797,13 +800,14 @@ export class ReportsService {
   async getTeamProductivitySummary(p: AuthPrincipal, query: ReportsQuery) {
     await this.validateScope(p, query);
 
+    const deptIds = await this.deptScope.managedDepartmentIds(p);
     const reports = await this.prisma.user.findMany({
       where: {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
         deletedAt: null,
         status: 'ACTIVE',
-        supervisorId: p.userId,
+        departmentId: { in: deptIds },
       },
       select: { id: true, hourlyRate: true },
     });

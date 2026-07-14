@@ -4,6 +4,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../infra/cache.service';
 import { buildPage, decodeCursor } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 
 export interface DashboardQuery {
   from?: string;
@@ -27,6 +28,7 @@ export class DashboardService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly deptScope: DepartmentScopeService,
   ) {}
 
   // ─── Permission helpers ───────────────────────────────────────────────────
@@ -92,11 +94,8 @@ export class DashboardService {
     if (scope === 'self') {
       userIds = [user.userId];
     } else if (scope === 'team') {
-      const teamUsers = await this.prisma.user.findMany({
-        where: { tenantId, supervisorId: user.userId, deletedAt: null },
-        select: { id: true },
-      });
-      userIds = [user.userId, ...teamUsers.map((u) => u.id)];
+      // Department-based supervision (Department.managerId).
+      userIds = await this.deptScope.teamUserIds(user);
     }
 
     // Department / team filter narrows further
@@ -290,11 +289,8 @@ export class DashboardService {
     };
 
     if (!isOrgLevel) {
-      const teamUsers = await this.prisma.user.findMany({
-        where: { tenantId, supervisorId: user.userId, deletedAt: null },
-        select: { id: true },
-      });
-      tsWhere['userId'] = { in: teamUsers.map((u) => u.id) };
+      // Department-based supervision (Department.managerId).
+      tsWhere['userId'] = { in: await this.deptScope.teamUserIds(user) };
     }
 
     if (query.departmentId || query.teamId) {
@@ -449,7 +445,9 @@ export class DashboardService {
     const isOrg = this.hasAny(user, 'dashboard:read_org');
 
     const userWhere: Record<string, unknown> = { tenantId, deletedAt: null, status: 'ACTIVE' };
-    if (!isOrg) userWhere['supervisorId'] = user.userId;
+    // Scope by id (not departmentId) so an explicit ?departmentId filter can't
+    // widen a supervisor beyond their department. Department-based supervision.
+    if (!isOrg) userWhere['id'] = { in: await this.deptScope.teamUserIds(user) };
     if (query.departmentId) userWhere['departmentId'] = query.departmentId;
     if (query.teamId)       userWhere['teamId']       = query.teamId;
 
@@ -531,11 +529,8 @@ export class DashboardService {
     };
 
     if (!this.hasAny(user, 'dashboard:read_org')) {
-      const teamUsers = await this.prisma.user.findMany({
-        where: { tenantId, supervisorId: user.userId, deletedAt: null },
-        select: { id: true },
-      });
-      teWhere['userId'] = { in: [user.userId, ...teamUsers.map((u) => u.id)] };
+      // Department-based supervision (Department.managerId).
+      teWhere['userId'] = { in: await this.deptScope.teamUserIds(user) };
     }
 
     if (query.departmentId || query.teamId) {
@@ -716,11 +711,8 @@ export class DashboardService {
 
     const where: Record<string, unknown> = { tenantId, deletedAt: null };
     if (!isOrg) {
-      const teamUsers = await this.prisma.user.findMany({
-        where: { tenantId, supervisorId: user.userId, deletedAt: null },
-        select: { id: true },
-      });
-      where['userId'] = { in: [user.userId, ...teamUsers.map((u) => u.id)] };
+      // Department-based supervision (Department.managerId).
+      where['userId'] = { in: await this.deptScope.teamUserIds(user) };
     }
     if (query.userId)    where['userId']    = query.userId;
     if (query.periodKey) where['periodKey'] = query.periodKey;

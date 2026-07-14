@@ -9,6 +9,7 @@ import { ApprovalAction, AuditAction, Prisma, Timesheet, TimesheetStatus } from 
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { PERMISSIONS } from '@timeforge/shared';
 import { KpiService } from '../kpi/kpi.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -34,6 +35,7 @@ export class ApprovalsService {
     private readonly prisma: PrismaService,
     private readonly kpiService: KpiService,
     private readonly notifications: NotificationsService,
+    private readonly deptScope: DepartmentScopeService,
   ) {}
 
   // -- Queue / reads --
@@ -291,16 +293,8 @@ export class ApprovalsService {
     throw new ForbiddenException('You do not have approval permissions');
   }
 
-  private async teamUserIds(p: AuthPrincipal): Promise<string[]> {
-    const reports = await this.prisma.user.findMany({
-      where: {
-        tenantId: p.tenantId,
-        organizationId: p.organizationId,
-        supervisorId: p.userId,
-        deletedAt: null,
-      },
-      select: { id: true },
-    });
-    return [p.userId, ...reports.map((r) => r.id)];
+  /** Department-based supervision scope (Department.managerId). */
+  private teamUserIds(p: AuthPrincipal): Promise<string[]> {
+    return this.deptScope.teamUserIds(p);
   }
 }

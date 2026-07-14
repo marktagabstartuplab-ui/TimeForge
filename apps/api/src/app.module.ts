@@ -10,6 +10,7 @@ import type { IncomingMessage } from 'node:http';
 import configuration from './config/configuration';
 import { validate } from './config/env.validation';
 import { PrismaModule } from './common/prisma/prisma.module';
+import { ScopingModule } from './common/scoping/scoping.module';
 import { InfraModule } from './infra/infra.module';
 import { StorageModule } from './modules/storage/storage.module';
 import { AuthModule } from './modules/auth/auth.module';
@@ -84,6 +85,7 @@ import { RecurringIssuesModule } from './modules/recurring-issues/recurring-issu
       },
     }),
     PrismaModule,
+    ScopingModule,
     InfraModule,
     StorageModule,
     AuthModule,

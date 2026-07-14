@@ -9,6 +9,7 @@ import { Prisma, ScrumEntry, ScrumTask, ScrumBlocker, BlockerSeverity, BlockerSt
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { PERMISSIONS } from '@timeforge/shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import {
@@ -41,6 +42,7 @@ export class ScrumService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly deptScope: DepartmentScopeService,
   ) {}
 
   // ── Reads ───────────────────────────────────────────────────────────────────
@@ -887,17 +889,9 @@ export class ScrumService {
     return false;
   }
 
-  private async teamUserIds(p: AuthPrincipal): Promise<string[]> {
-    const reports = await this.prisma.user.findMany({
-      where: {
-        tenantId: p.tenantId,
-        organizationId: p.organizationId,
-        supervisorId: p.userId,
-        deletedAt: null,
-      },
-      select: { id: true },
-    });
-    return [p.userId, ...reports.map((r) => r.id)];
+  /** Department-based supervision scope (Department.managerId). */
+  private teamUserIds(p: AuthPrincipal): Promise<string[]> {
+    return this.deptScope.teamUserIds(p);
   }
 
   /** Admin sees the whole org; Supervisor sees their direct-report chain; anyone else is refused. */

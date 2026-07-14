@@ -9,6 +9,7 @@ import { LeaveRequest, LeaveType, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { PERMISSIONS } from '@timeforge/shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UploadService } from '../storage/upload.service';
@@ -29,6 +30,7 @@ export class LeaveService {
     private readonly notifications: NotificationsService,
     private readonly uploads: UploadService,
     private readonly storage: StorageService,
+    private readonly deptScope: DepartmentScopeService,
   ) {}
 
   private readonly ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -57,12 +59,9 @@ export class LeaveService {
     return days;
   }
 
-  private async teamUserIds(p: AuthPrincipal): Promise<string[]> {
-    const reports = await this.prisma.user.findMany({
-      where: { tenantId: p.tenantId, organizationId: p.organizationId, supervisorId: p.userId, deletedAt: null },
-      select: { id: true },
-    });
-    return [p.userId, ...reports.map((r) => r.id)];
+  /** Department-based supervision scope (Department.managerId). */
+  private teamUserIds(p: AuthPrincipal): Promise<string[]> {
+    return this.deptScope.teamUserIds(p);
   }
 
   // ── Create ──────────────────────────────────────────────────────────────
