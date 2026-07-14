@@ -627,7 +627,9 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {/* Assigned Project sits on its own row above KPI Indicator and
+                Planned Target (which share the row below). */}
+            <div className="space-y-3">
               <div>
                 <FieldLabel htmlFor="new-task-project">Assigned Project</FieldLabel>
                 <select
@@ -642,27 +644,29 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
                   ))}
                 </select>
               </div>
-              <div>
-                <FieldLabel htmlFor="new-task-kpi">KPI Indicator</FieldLabel>
-                <input
-                  id="new-task-kpi"
-                  type="text"
-                  value={taskKpi}
-                  onChange={(e) => setTaskKpi(e.target.value)}
-                  placeholder="e.g. Sales, Speed"
-                  className="h-11 w-full rounded-[10px] border border-[#c3c6d2] bg-white px-3 text-sm focus:outline-none focus:border-brand"
-                />
-              </div>
-              <div>
-                <FieldLabel htmlFor="new-task-target">Planned Target</FieldLabel>
-                <input
-                  id="new-task-target"
-                  type="text"
-                  value={taskTarget}
-                  onChange={(e) => setTaskTarget(e.target.value)}
-                  placeholder="e.g. 5 deals, 10 hours"
-                  className="h-11 w-full rounded-[10px] border border-[#c3c6d2] bg-white px-3 text-sm focus:outline-none focus:border-brand"
-                />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <FieldLabel htmlFor="new-task-kpi">KPI Indicator</FieldLabel>
+                  <input
+                    id="new-task-kpi"
+                    type="text"
+                    value={taskKpi}
+                    onChange={(e) => setTaskKpi(e.target.value)}
+                    placeholder="e.g. Sales, Speed"
+                    className="h-11 w-full rounded-[10px] border border-[#c3c6d2] bg-white px-3 text-sm focus:outline-none focus:border-brand"
+                  />
+                </div>
+                <div>
+                  <FieldLabel htmlFor="new-task-target">Planned Target</FieldLabel>
+                  <input
+                    id="new-task-target"
+                    type="text"
+                    value={taskTarget}
+                    onChange={(e) => setTaskTarget(e.target.value)}
+                    placeholder="e.g. 5 deals, 10 hours"
+                    className="h-11 w-full rounded-[10px] border border-[#c3c6d2] bg-white px-3 text-sm focus:outline-none focus:border-brand"
+                  />
+                </div>
               </div>
             </div>
           </div>
