@@ -9,6 +9,8 @@ export interface PendingAccountRow {
   phone: string | null;
   jobTitle: string | null;
   department: { id: string; name: string } | null;
+  /** Role the applicant self-requested at registration (EMPLOYEE | INTERN). */
+  requestedRole: "EMPLOYEE" | "INTERN" | null;
   role: { key: string; name: string } | null;
   emailVerifiedAt: string | null;
   createdAt: string;

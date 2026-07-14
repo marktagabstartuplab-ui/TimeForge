@@ -43,6 +43,11 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
+function formatRequestedRole(role: PendingAccountRow["requestedRole"]): string {
+  if (!role) return "—";
+  return role.charAt(0) + role.slice(1).toLowerCase();
+}
+
 export function AccountApprovalsContent() {
   const queryClient = useQueryClient();
   const openProfileModal = useProfileModalStore((s) => s.open);
@@ -175,6 +180,7 @@ export function AccountApprovalsContent() {
                   <th className="pb-2 pr-4">Applicant</th>
                   <th className="pb-2 pr-4">Department</th>
                   <th className="pb-2 pr-4">Job Title</th>
+                  <th className="pb-2 pr-4">Requested Role</th>
                   <th className="pb-2 pr-4">Request Date</th>
                   <th className="pb-2 pr-4">Verification</th>
                   <th className="pb-2 pr-4 text-right">Actions</th>
@@ -194,6 +200,16 @@ export function AccountApprovalsContent() {
                     </td>
                     <td className="py-2.5 pr-4 text-brand-muted">{r.department?.name ?? "—"}</td>
                     <td className="py-2.5 pr-4 text-brand-muted">{r.jobTitle ?? "—"}</td>
+                    <td className="py-2.5 pr-4">
+                      {r.requestedRole ? (
+                        <StatusBadge
+                          label={formatRequestedRole(r.requestedRole)}
+                          tone={r.requestedRole === "INTERN" ? "warning" : "info"}
+                        />
+                      ) : (
+                        <span className="text-brand-muted">—</span>
+                      )}
+                    </td>
                     <td className="py-2.5 pr-4 whitespace-nowrap text-brand-muted">{formatDate(r.createdAt)}</td>
                     <td className="py-2.5 pr-4">
                       {r.emailVerifiedAt ? (
