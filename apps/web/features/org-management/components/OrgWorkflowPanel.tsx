@@ -57,11 +57,13 @@ export function OrgWorkflowPanel({ onEditDepartments, onEditProject, onAssignSup
             </div>
             <UserPlus2 className="h-5 w-5 text-brand" aria-hidden="true" />
           </div>
-          <div className="mt-3 flex gap-2">
-            <Button type="button" variant="outline" size="sm" className="flex-1" onClick={onAssignSupervisor}>
+          {/* Stack full-width: this panel sits in a narrow grid column, so two
+              side-by-side buttons overflowed the card. */}
+          <div className="mt-3 flex flex-col gap-2">
+            <Button type="button" variant="outline" size="sm" className="w-full" onClick={onAssignSupervisor}>
               Assign Supervisor
             </Button>
-            <Button type="button" variant="outline" size="sm" className="flex-1" onClick={onAssignEmployees}>
+            <Button type="button" variant="outline" size="sm" className="w-full" onClick={onAssignEmployees}>
               Assign Employees
             </Button>
           </div>
