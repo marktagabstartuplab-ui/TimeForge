@@ -61,7 +61,7 @@ export function TeamScrumSubmissionsContent() {
   });
 
   const unlockMutation = useMutation({
-    mutationFn: ({ id, reason }: { id: string; reason?: string }) => postScrumUnlock(id, reason),
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => postScrumUnlock(id, reason),
     onSuccess: () => {
       setToast({ message: "Today's Commitment unlocked", tone: "success" });
       setUnlockTarget(null);
@@ -361,13 +361,18 @@ export function TeamScrumSubmissionsContent() {
               commitment again. They&apos;ll be notified, and this action is recorded in the audit log.
             </p>
 
-            <label className="mt-4 block text-sm font-semibold text-brand-navy">Reason (optional)</label>
+            <label className="mt-4 block text-sm font-semibold text-brand-navy">
+              Reason <span className="text-red-600">*</span>
+            </label>
             <textarea
               value={unlockReason}
               onChange={(e) => setUnlockReason(e.target.value)}
               placeholder="e.g. Plan needs revision after scope change"
               className="mt-1.5 w-full rounded-lg border border-[#c3c6d2] p-2.5 text-sm outline-none focus:border-brand min-h-[80px]"
             />
+            <p className="mt-1 text-xs text-brand-muted">
+              Required — at least 5 characters. Recorded in the audit log.
+            </p>
 
             <div className="mt-5 flex items-center justify-end gap-3">
               <button
@@ -383,11 +388,9 @@ export function TeamScrumSubmissionsContent() {
               </button>
               <button
                 type="button"
-                onClick={() =>
-                  unlockMutation.mutate({ id: unlockTarget.id, reason: unlockReason.trim() || undefined })
-                }
-                disabled={unlockMutation.isPending}
-                className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50"
+                onClick={() => unlockMutation.mutate({ id: unlockTarget.id, reason: unlockReason.trim() })}
+                disabled={unlockMutation.isPending || unlockReason.trim().length < 5}
+                className="flex items-center gap-1.5 rounded-lg bg-amber-600 px-4 py-2 text-sm font-semibold text-white hover:bg-amber-700 disabled:opacity-50 disabled:cursor-not-allowed"
               >
                 {unlockMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <LockOpen className="h-4 w-4" />}
                 Unlock
