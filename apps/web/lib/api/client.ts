@@ -32,8 +32,19 @@ export const apiClient = axios.create({
 // localStorage on purpose; the refresh token stays in an httpOnly cookie.
 let accessToken: string | null = null;
 
+// Body-based refresh token fallback — when the browser blocks cross-site
+// cookies (e.g. Safari ITP with frontend and backend on different domains),
+// the httpOnly cookie isn't sent and the refresh fails. Storing the refresh
+// token in memory and sending it in the request body works around this; the
+// httpOnly cookie remains the primary mechanism.
+let refreshTokenMemory: string | null = null;
+
 export function setAccessToken(token: string | null): void {
   accessToken = token;
+}
+
+export function setRefreshTokenMemory(token: string | null): void {
+  refreshTokenMemory = token;
 }
 
 /**
@@ -73,13 +84,19 @@ let refreshPromise: Promise<string> | null = null;
 function refreshAccessToken(): Promise<string> {
   if (!refreshPromise) {
     refreshPromise = axios
-      .post<{ accessToken: string }>(
+      .post<{ accessToken: string; refreshToken?: string }>(
         `${process.env.NEXT_PUBLIC_API_URL}/api/v1/auth/refresh`,
-        {},
+        // Send the refresh token in the body as a fallback for when the
+        // httpOnly cookie isn't sent (cross-site cookie blocking).
+        refreshTokenMemory ? { refreshToken: refreshTokenMemory } : {},
         { withCredentials: true },
       )
       .then(({ data }) => {
         setAccessToken(data.accessToken);
+        // Keep the rotated refresh token for future body-based fallbacks.
+        if (data.refreshToken) {
+          refreshTokenMemory = data.refreshToken;
+        }
         return data.accessToken;
       })
       .finally(() => {
