@@ -280,6 +280,79 @@ export class UsersService {
     return [header, ...lines].join('\n');
   }
 
+  /** PDF export of the employee directory — same filters/RBAC as CSV export. */
+  async exportPdf(
+    caller: AuthPrincipal,
+    query: EmployeesExportQuery,
+  ): Promise<{ buffer: Buffer; contentType: string; filename: string }> {
+    const where: Record<string, unknown> = {
+      tenantId: caller.tenantId,
+      organizationId: caller.organizationId,
+      deletedAt: null,
+    };
+    if (query.status) where['status'] = query.status;
+    if (query.departmentId) where['departmentId'] = query.departmentId;
+    if (query.teamId) where['teamId'] = query.teamId;
+    if (query.q) {
+      where['OR'] = [
+        { firstName: { contains: query.q, mode: 'insensitive' } },
+        { lastName: { contains: query.q, mode: 'insensitive' } },
+        { email: { contains: query.q, mode: 'insensitive' } },
+      ];
+    }
+
+    let users = await this.prisma.user.findMany({
+      where,
+      include: { roles: { include: { role: true } }, department: true },
+      orderBy: { lastName: 'asc' },
+      take: 2000,
+    });
+    if (query.role) {
+      users = users.filter((u) => u.roles.some((ur) => ur.role.key === query.role));
+    }
+
+    await this.audit(caller.tenantId, caller.userId, AuditAction.ADMIN_ACTION, 'employee_export', caller.userId);
+
+    // Mirrors the pdfkit pattern used by timesheets.hrExportPdf.
+    const { default: PDFDocument } = await import('pdfkit');
+    const doc = new PDFDocument({ margin: 30, size: 'A4', layout: 'landscape' });
+    const chunks: Buffer[] = [];
+    doc.on('data', (c: Buffer) => chunks.push(c));
+    doc.fontSize(18).text('Employee Directory', { align: 'center' });
+    doc.fontSize(10).text(`Generated ${new Date().toISOString().slice(0, 10)} · ${users.length} employees`, { align: 'center' });
+    doc.moveDown(1);
+    const cols = ['Name', 'Email', 'Role', 'Department', 'Employment', 'Status'];
+    const colW = [150, 200, 110, 120, 100, 90];
+    const drawRow = (vals: string[], isHeader: boolean) => {
+      let x = 30;
+      if (isHeader) doc.fontSize(9).font('Helvetica-Bold');
+      else doc.fontSize(8).font('Helvetica');
+      vals.forEach((v, i) => {
+        doc.text(v, x, doc.y, { width: colW[i], lineBreak: false });
+        x += colW[i];
+      });
+      doc.moveDown(0.5);
+    };
+    drawRow(cols, true);
+    doc.moveDown(0.1);
+    for (const u of users) {
+      drawRow(
+        [
+          `${u.firstName} ${u.lastName}`,
+          u.email,
+          u.roles.map((r) => r.role.name).join('/') || '—',
+          u.department?.name ?? '',
+          u.employmentType,
+          u.status,
+        ],
+        false,
+      );
+    }
+    doc.end();
+    const buffer = await new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+    return { buffer, contentType: 'application/pdf', filename: `employees-${new Date().toISOString().slice(0, 10)}.pdf` };
+  }
+
   async update(caller: AuthPrincipal, id: string, dto: UpdateUserDto) {
     const existing = await this.prisma.user.findFirst({ where: { id, tenantId: caller.tenantId, deletedAt: null } });
     if (!existing) throw new NotFoundException('User not found');

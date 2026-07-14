@@ -46,6 +46,21 @@ export class EmployeesController {
     res.send(csv);
   }
 
+  // Registered before `:id` so "export/pdf" isn't parsed as an employee id.
+  @Get('export/pdf')
+  @RequirePermissions('user:read')
+  @ApiOperation({ summary: 'PDF export of the employee directory under the same filters as GET /employees' })
+  async exportPdf(
+    @CurrentUser() u: AuthPrincipal,
+    @Query() query: EmployeesExportQuery,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const { buffer, contentType, filename } = await this.svc.exportPdf(u, query);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
+  }
+
   @Get(':id')
   @RequirePermissions('user:read')
   @ApiOperation({ summary: 'Fetch a single employee profile' })

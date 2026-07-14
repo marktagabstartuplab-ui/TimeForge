@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, Upload, UserX, ChevronDown } from "lucide-react";
+import { Download, FileText, Upload, UserX, ChevronDown } from "lucide-react";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -35,6 +35,7 @@ import {
   listEmployees,
   updateEmployee,
   exportEmployeesCsv,
+  exportEmployeesPdf,
   type EmployeeRow,
 } from "../api/employee-management.service";
 import { ImportEmployeesModal } from "./ImportEmployeesModal";
@@ -151,6 +152,10 @@ export function EmployeeTable({ isAdmin, onToast }: { isAdmin: boolean; onToast:
                 <DropdownMenuItem onClick={() => void exportEmployeesCsv(query)}>
                   <Download aria-hidden="true" />
                   Export CSV
+                </DropdownMenuItem>
+                <DropdownMenuItem onClick={() => void exportEmployeesPdf(query)}>
+                  <FileText aria-hidden="true" />
+                  Export PDF
                 </DropdownMenuItem>
                 {isAdmin ? (
                   <>

@@ -84,6 +84,21 @@ export async function exportEmployeesCsv(query: EmployeesQuery = {}): Promise<vo
   URL.revokeObjectURL(url);
 }
 
+export async function exportEmployeesPdf(query: EmployeesQuery = {}): Promise<void> {
+  const { data: blob } = await apiClient.get<Blob>("/employees/export/pdf", {
+    params: query,
+    responseType: "blob",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `employees-${new Date().toISOString().slice(0, 10)}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
 export async function getPermissionMatrix(): Promise<PermissionMatrix> {
   const { data } = await apiClient.get<PermissionMatrix>("/roles/matrix");
   return data;
