@@ -12,14 +12,55 @@ const DEPARTMENT_INCLUDE = {
 
 type DepartmentWithRelations = Prisma.DepartmentGetPayload<{ include: typeof DEPARTMENT_INCLUDE }>;
 
-function shapeDepartment(dept: DepartmentWithRelations) {
+interface DepartmentCounts {
+  employeeCount: number;
+  internCount: number;
+}
+
+function shapeDepartment(dept: DepartmentWithRelations, counts?: DepartmentCounts) {
   const { _count, ...rest } = dept;
-  return { ...rest, staffCount: _count.users, projectCount: _count.projects };
+  return {
+    ...rest,
+    staffCount: _count.users,
+    projectCount: _count.projects,
+    // Active headcount split by employment type (excludes soft-deleted).
+    employeeCount: counts?.employeeCount ?? 0,
+    internCount: counts?.internCount ?? 0,
+  };
 }
 
 @Injectable()
 export class DepartmentsService {
   constructor(private readonly prisma: PrismaService) {}
+
+  /** Active headcount per department, split into interns vs. everyone else. */
+  private async countsByDepartment(
+    tenantId: string,
+    orgId: string,
+    departmentIds: string[],
+  ): Promise<Map<string, DepartmentCounts>> {
+    const result = new Map<string, DepartmentCounts>();
+    if (departmentIds.length === 0) return result;
+    const grouped = await this.prisma.user.groupBy({
+      by: ['departmentId', 'employmentType'],
+      where: {
+        tenantId,
+        organizationId: orgId,
+        departmentId: { in: departmentIds },
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+      _count: { _all: true },
+    });
+    for (const row of grouped) {
+      if (!row.departmentId) continue;
+      const entry = result.get(row.departmentId) ?? { employeeCount: 0, internCount: 0 };
+      if (row.employmentType === 'INTERN') entry.internCount += row._count._all;
+      else entry.employeeCount += row._count._all;
+      result.set(row.departmentId, entry);
+    }
+    return result;
+  }
 
   async findAll(tenantId: string, orgId: string, query: ListQuery): Promise<PageResult<ReturnType<typeof shapeDepartment>>> {
     const limit = Math.min(Number(query.limit ?? 20), 100);
@@ -32,7 +73,8 @@ export class DepartmentsService {
       take: limit + 1,
     });
     const page = buildPage(items, limit);
-    return { data: page.data.map(shapeDepartment), page: page.page };
+    const counts = await this.countsByDepartment(tenantId, orgId, page.data.map((d) => d.id));
+    return { data: page.data.map((d) => shapeDepartment(d, counts.get(d.id))), page: page.page };
   }
 
   async findOne(tenantId: string, orgId: string, id: string) {
@@ -41,7 +83,8 @@ export class DepartmentsService {
       include: DEPARTMENT_INCLUDE,
     });
     if (!item) throw new NotFoundException('Department not found');
-    return shapeDepartment(item);
+    const counts = await this.countsByDepartment(tenantId, orgId, [id]);
+    return shapeDepartment(item, counts.get(id));
   }
 
   private async validateManager(tenantId: string, orgId: string, managerId: string): Promise<void> {
@@ -62,7 +105,15 @@ export class DepartmentsService {
   private async createRow(tenantId: string, orgId: string, actorId: string, dto: CreateDepartmentDto): Promise<DepartmentWithRelations> {
     try {
       return await this.prisma.department.create({
-        data: { tenantId, organizationId: orgId, name: dto.name, managerId: dto.managerId ?? null, createdBy: actorId, updatedBy: actorId },
+        data: {
+          tenantId,
+          organizationId: orgId,
+          name: dto.name,
+          managerId: dto.managerId ?? null,
+          isActive: dto.isActive ?? true,
+          createdBy: actorId,
+          updatedBy: actorId,
+        },
         include: DEPARTMENT_INCLUDE,
       });
     } catch (err: unknown) {
@@ -89,11 +140,22 @@ export class DepartmentsService {
 
     const { version, ...rest } = dto;
     const updated = await this.updateRow(id, caller.userId, rest);
+
+    // Reassigning the department head re-points every member's supervisorId to
+    // the new head (null when unassigned) — keeps direct-supervisor references
+    // in sync with department-based supervision (Department.managerId).
+    if (dto.managerId !== undefined && dto.managerId !== existing.managerId) {
+      await this.prisma.user.updateMany({
+        where: { tenantId: caller.tenantId, organizationId: caller.organizationId, departmentId: id, deletedAt: null },
+        data: { supervisorId: dto.managerId ?? null, updatedBy: caller.userId },
+      });
+    }
+
     await this.audit(caller.tenantId, caller.userId, AuditAction.ADMIN_ACTION, 'department', id, { event: 'DEPARTMENT_UPDATED', ...rest });
     return shapeDepartment(updated);
   }
 
-  private async updateRow(id: string, actorId: string, rest: { name?: string; managerId?: string | null }): Promise<DepartmentWithRelations> {
+  private async updateRow(id: string, actorId: string, rest: { name?: string; managerId?: string | null; isActive?: boolean }): Promise<DepartmentWithRelations> {
     try {
       return await this.prisma.department.update({
         where: { id },

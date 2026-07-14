@@ -59,4 +59,21 @@ export class DepartmentScopeService {
     if (userId === p.userId) return true;
     return (await this.teamUserIds(p)).includes(userId);
   }
+
+  /**
+   * The head (Department.managerId) of a department, or null if unset/not found.
+   * Tenant/org scoped. Used to keep a member's `supervisorId` in sync with their
+   * department head on approval, transfer, and supervisor reassignment.
+   */
+  async departmentHeadId(
+    tenantId: string,
+    organizationId: string,
+    departmentId: string,
+  ): Promise<string | null> {
+    const dept = await this.prisma.department.findFirst({
+      where: { id: departmentId, tenantId, organizationId, deletedAt: null },
+      select: { managerId: true },
+    });
+    return dept?.managerId ?? null;
+  }
 }
