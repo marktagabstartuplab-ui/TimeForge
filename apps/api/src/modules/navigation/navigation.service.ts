@@ -84,6 +84,7 @@ export class NavigationService {
     const isAdmin = permissions.includes('*');
 
     const isSupervisorOnly = user.roles.includes('SUPERVISOR') && !isAdmin;
+    const isHrOnly = user.roles.includes('HR') && !isAdmin;
 
     // Filter menu by permission
     const visibleItems = MENU_CATALOG.filter((item) => {
@@ -97,6 +98,9 @@ export class NavigationService {
       if (item.id === 'supervisor-ai-insights') return user.roles.includes('SUPERVISOR');
       // Supervisors get a focused workspace: no org-wide Employees/Reports sections.
       if (isSupervisorOnly && (item.id === 'employees' || item.id === 'reports')) return false;
+      // HR validates attendance/hours and prepares payroll; administering Employees
+      // and Departments, and system settings (SYSTEM section), belong to the Admin.
+      if (isHrOnly && (item.id === 'employees' || item.id === 'departments' || item.section === 'SYSTEM')) return false;
       // Finance has its own dedicated workspace (section 'FINANCE' below, exactly 4 items:
       // Dashboard, Payroll Processing, Financial Reports, AI Insights). Finance's broad
       // permission set (payroll_period:read, dashboard:read_org, user:read, org:read, etc.)
