@@ -59,7 +59,17 @@ export class UsersService {
   }
 
   private sanitize(user: Record<string, unknown>, caller: AuthPrincipal) {
-    const { passwordHash: _hash, ...safe } = user;
+    // Never serialize secrets/auth internals to any client.
+    const {
+      passwordHash: _hash,
+      passwordResetToken: _prt,
+      passwordResetExpiresAt: _pre,
+      emailVerificationToken: _evt,
+      emailVerificationExpiresAt: _eve,
+      failedLoginAttempts: _fla,
+      lockoutUntil: _lu,
+      ...safe
+    } = user;
     if (!this.isFinanceOrAdmin(caller)) {
       // BR-PAY-06: hourly rate hidden from self / Supervisor / HR
       const { hourlyRate: _rate, ...rest } = safe;
@@ -94,7 +104,7 @@ export class UsersService {
     const cursorWhere = query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {};
     let users = await this.prisma.user.findMany({
       where: { ...baseWhere, ...cursorWhere },
-      include: { roles: { include: { role: true } } },
+      include: { roles: { include: { role: true } }, department: { select: { id: true, name: true } } },
       orderBy: { lastName: 'asc' },
       take: limit + 1,
     });
