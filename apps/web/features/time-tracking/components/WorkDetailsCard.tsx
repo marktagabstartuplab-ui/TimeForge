@@ -287,6 +287,10 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
                   <Select
                     value={field.value ? field.value : PROFILE_DEPARTMENT}
                     onValueChange={(v) => field.onChange(v === PROFILE_DEPARTMENT ? "" : (v ?? ""))}
+                    items={[
+                      { value: PROFILE_DEPARTMENT, label: "Use profile department" },
+                      ...departments.map((d) => ({ value: d.id, label: d.name })),
+                    ]}
                   >
                     <SelectTrigger id="wd-department" aria-label="Department" className={selectClass}>
                       <SelectValue placeholder="Select..." />

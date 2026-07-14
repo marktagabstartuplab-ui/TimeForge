@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FieldError, FormBanner } from "@/features/auth/components/FormMessages";
 import {
   createScrumEntry,
+  listScrumEntries,
   updateScrumEntry,
   type ScrumEntry,
 } from "@/features/scrum/api/scrum.service";
@@ -56,6 +57,16 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
     enabled: open,
   });
 
+  // Fetch today's scrum fresh when the review opens so locked commitments always
+  // show on the first time-out (QA #13) — the parent's cached copy can lag. Use
+  // the freshest version for both display and the submit's optimistic-lock check.
+  const { data: freshScrum } = useQuery({
+    queryKey: ["scrum-entries", "today", "eod"],
+    queryFn: () => listScrumEntries({ from: toIsoDate(new Date()), to: toIsoDate(new Date()), limit: 1 }),
+    enabled: open,
+  });
+  const scrum = freshScrum?.data[0] ?? scrumEntry;
+
   const {
     register,
     control,
@@ -72,15 +83,15 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
         await clockOutSession();
       }
       const eodLine = `EOD Review — ${values.accomplishments}`;
-      if (scrumEntry) {
+      if (scrum) {
         // Keep only the morning commitment (everything before any prior EOD line)
         // and replace the EOD line — re-submitting the review must not append a
-        // second "EOD Review —" block and duplicate Today's Commitments.
-        const morningCommitment = (scrumEntry.today ?? "").split("\n\nEOD Review —")[0];
-        return updateScrumEntry(scrumEntry.id, {
+        // second "EOD Review —" block and duplicate Today's Commitments (QA #15).
+        const morningCommitment = (scrum.today ?? "").split("\n\nEOD Review —")[0];
+        return updateScrumEntry(scrum.id, {
           today: [morningCommitment, eodLine].filter(Boolean).join("\n\n").slice(0, 5000),
-          blockers: values.finalBlockers || scrumEntry.blockers || undefined,
-          version: scrumEntry.version,
+          blockers: values.finalBlockers || scrum.blockers || undefined,
+          version: scrum.version,
         });
       }
       return createScrumEntry({
@@ -153,12 +164,12 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
               <p className="mb-2 text-xs font-bold uppercase tracking-[1px] text-brand-muted">
                 Today&apos;s Commitments
               </p>
-              {scrumEntry?.today ? (
+              {scrum?.today ? (
                 <div className="rounded-[12px] border border-[#c3c6d2]/50 bg-white p-4 shadow-[0px_1px_1px_rgba(0,0,0,0.05)]">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-2.5">
                       <Target className="mt-0.5 h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
-                      <p className="whitespace-pre-wrap text-sm font-semibold text-brand-ink">{scrumEntry.today}</p>
+                      <p className="whitespace-pre-wrap text-sm font-semibold text-brand-ink">{scrum.today}</p>
                     </div>
                     <label className="flex shrink-0 cursor-pointer items-center gap-2 text-sm font-bold text-brand">
                       {commitmentDone ? "Completed" : "Mark done"}

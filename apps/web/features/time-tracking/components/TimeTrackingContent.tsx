@@ -8,6 +8,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/shared/ErrorState";
 import { Toast, type ToastState } from "@/components/shared/Toast";
 import { listTimeEntries, listAllTimeEntries } from "../api/time-entries.service";
+import { getCurrentWorkSession } from "../api/work-sessions.service";
 import { listScrumEntries } from "@/features/scrum/api/scrum.service";
 import { getMe } from "@/features/account/api/account.service";
 import { fetchDepartments } from "@/features/auth/api/auth.service";
@@ -67,6 +68,12 @@ export function TimeTrackingContent() {
     queryFn: () => listScrumEntries({ from: toIsoDate(today), to: toIsoDate(today), limit: 1 }),
   });
 
+  const workSessionQuery = useQuery({
+    queryKey: ["work-session", "current"],
+    queryFn: getCurrentWorkSession,
+    refetchInterval: 30_000,
+  });
+
   const meQuery = useQuery({ queryKey: ["users", "me"], queryFn: getMe });
   const departmentsQuery = useQuery({ queryKey: ["auth", "departments"], queryFn: fetchDepartments });
 
@@ -79,6 +86,22 @@ export function TimeTrackingContent() {
   const weekEntries = useMemo(() => weekQuery.data ?? [], [weekQuery.data]);
   const summary = useMemo(() => summarizeDay(entries), [entries]);
   const scrumEntry = scrumQuery.data?.data[0] ?? null;
+  const onBreak = workSessionQuery.data?.onBreak ?? false;
+
+  // Work Details must stay editable while clocked in — including on break, when
+  // the backend has stopped the running entry (QA #16). Fall back to today's most
+  // recent entry so the card doesn't lock the moment a break starts.
+  const editableEntry = useMemo(() => {
+    if (summary.running) return summary.running;
+    if (!onBreak) return null;
+    return [...entries].sort(
+      (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
+    )[0] ?? null;
+  }, [summary.running, onBreak, entries]);
+
+  // EOD Review is only meaningful once the day's plan is committed and work has
+  // started — gate the button until then (QA #17) instead of opening an empty review.
+  const canReviewDay = Boolean(scrumEntry?.today) && entries.length > 0;
 
   const departmentName = useMemo(() => {
     const id = meQuery.data?.departmentId;
@@ -99,7 +122,13 @@ export function TimeTrackingContent() {
           <button
             type="button"
             onClick={() => setEodOpen(true)}
-            className="flex h-11 items-center gap-2 rounded-[10px] border border-[#c3c6d2]/60 bg-white px-5 text-sm font-bold text-brand-navy transition-colors hover:bg-[#f6f3f4]"
+            disabled={!canReviewDay}
+            title={
+              canReviewDay
+                ? undefined
+                : "Save today's daily plan and clock in before ending your day."
+            }
+            className="flex h-11 items-center gap-2 rounded-[10px] border border-[#c3c6d2]/60 bg-white px-5 text-sm font-bold text-brand-navy transition-colors hover:bg-[#f6f3f4] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
           >
             <SunsetIcon className="h-[18px] w-[18px] text-brand" aria-hidden="true" />
             End of Day Review
@@ -151,8 +180,8 @@ export function TimeTrackingContent() {
             />
 
             <WorkDetailsCard
-              key={summary.running?.id ?? "idle"}
-              running={summary.running}
+              key={editableEntry?.id ?? "idle"}
+              running={editableEntry}
               selectedTask={selectedTask}
               profileDepartmentId={meQuery.data?.departmentId ?? null}
               departments={departmentsQuery.data ?? []}
