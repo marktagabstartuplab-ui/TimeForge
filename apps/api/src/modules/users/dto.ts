@@ -195,6 +195,22 @@ export class UsersListQuery {
 }
 
 export class ApproveUserDto {
+  // On approval the admin assigns the applicant's final placement. All optional
+  // for backward compatibility — omitting them keeps the applicant's registered
+  // department and the default EMPLOYEE role.
+  @IsOptional()
+  @IsUUID()
+  departmentId?: string;
+
+  @IsOptional()
+  @IsEnum(EmploymentType)
+  employmentType?: EmploymentType;
+
+  /** Final RBAC role assigned on approval (replaces the default EMPLOYEE role). */
+  @IsOptional()
+  @IsEnum(['EMPLOYEE', 'SUPERVISOR', 'HR', 'FINANCE', 'ADMIN'])
+  roleKey?: string;
+
   @IsInt()
   @Type(() => Number)
   version!: number;
