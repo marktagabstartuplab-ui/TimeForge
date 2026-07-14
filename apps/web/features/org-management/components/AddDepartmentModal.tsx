@@ -109,7 +109,14 @@ export function AddDepartmentModal({
               control={control}
               name="managerId"
               render={({ field }) => (
-                <Select value={field.value ?? "NONE"} onValueChange={(v) => field.onChange(v === "NONE" ? undefined : v)}>
+                <Select
+                  value={field.value ?? "NONE"}
+                  onValueChange={(v) => field.onChange(v === "NONE" ? undefined : v)}
+                  items={[
+                    { value: "NONE", label: "No manager assigned" },
+                    ...(employeesPage?.data.map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` })) ?? []),
+                  ]}
+                >
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="NONE">No manager assigned</SelectItem>

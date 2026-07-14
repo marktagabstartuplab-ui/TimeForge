@@ -167,7 +167,14 @@ export function AccountApprovalsContent() {
           </div>
           <div className="flex-1 min-w-[170px]">
             <label className="mb-1 block text-xs font-semibold text-brand-muted">Requested Department</label>
-            <Select value={departmentId} onValueChange={(v) => setDepartmentId(v ?? "ALL")}>
+            <Select
+              value={departmentId}
+              onValueChange={(v) => setDepartmentId(v ?? "ALL")}
+              items={[
+                { value: "ALL", label: "All Departments" },
+                ...(departments?.map((d) => ({ value: d.id, label: d.name })) ?? []),
+              ]}
+            >
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All Departments</SelectItem>
@@ -312,7 +319,14 @@ export function AccountApprovalsContent() {
           <div className="flex flex-col gap-4 px-6 py-5">
             <div>
               <Label className="mb-1.5">Department</Label>
-              <Select value={approveDept || "NONE"} onValueChange={(v) => setApproveDept(v === "NONE" || v === null ? "" : v)}>
+              <Select
+                value={approveDept || "NONE"}
+                onValueChange={(v) => setApproveDept(v === "NONE" || v === null ? "" : v)}
+                items={[
+                  { value: "NONE", label: "No department" },
+                  ...(departments?.map((d) => ({ value: d.id, label: d.name })) ?? []),
+                ]}
+              >
                 <SelectTrigger className="w-full"><SelectValue placeholder="Select department" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="NONE">No department</SelectItem>
