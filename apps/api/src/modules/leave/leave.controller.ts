@@ -1,7 +1,29 @@
-import { Body, Controller, Get, HttpCode, Param, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  HttpCode,
+  Param,
+  ParseUUIDPipe,
+  Post,
+  Query,
+  UploadedFile,
+  UseInterceptors,
+} from '@nestjs/common';
+import { FileInterceptor } from '@nestjs/platform-express';
 import { LeaveService } from './leave.service';
 import { CreateLeaveRequestDto, LeaveDecisionDto, LeaveRequestQuery } from './dto';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
+
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
+
+interface UploadedMulterFile {
+  buffer: Buffer;
+  mimetype: string;
+  size: number;
+  originalname: string;
+}
 
 @Controller({ path: 'leave', version: '1' })
 export class LeaveController {
@@ -47,5 +69,30 @@ export class LeaveController {
   @RequirePermissions('leave_balance:read')
   getBalances(@CurrentUser() u: AuthPrincipal, @Query('userId') userId?: string) {
     return this.svc.getBalances(u, userId);
+  }
+
+  // ── Attachment (single file per request) ─────────────────────────────────
+
+  @Post('requests/:id/attachment')
+  @RequirePermissions('leave_request:create')
+  @UseInterceptors(FileInterceptor('file', { limits: { fileSize: MAX_FILE_SIZE } }))
+  uploadAttachment(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @UploadedFile() file: UploadedMulterFile,
+  ) {
+    return this.svc.uploadAttachment(u, id, file);
+  }
+
+  @Get('requests/:id/attachment/signed-url')
+  @RequirePermissions('leave_request:read')
+  getAttachmentSignedUrl(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.getAttachmentSignedUrl(u, id);
+  }
+
+  @Delete('requests/:id/attachment')
+  @RequirePermissions('leave_request:create')
+  removeAttachment(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.removeAttachment(u, id);
   }
 }

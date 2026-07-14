@@ -30,6 +30,7 @@ export interface LeaveRequest {
   reviewedBy: string | null;
   reviewedAt: string | null;
   reviewNote: string | null;
+  attachmentKey: string | null;
   version: number;
   createdAt: string;
   user?: LeaveRequestUser | null;
@@ -105,6 +106,25 @@ export async function createLeaveRequest(payload: CreateLeaveRequestPayload): Pr
 
 export async function cancelLeaveRequest(id: string): Promise<LeaveRequest> {
   const { data } = await apiClient.post<LeaveRequest>(`/leave/requests/${id}/cancel`);
+  return data;
+}
+
+/** Upload (or replace) the single attachment on a PENDING leave request. */
+export async function uploadLeaveAttachment(id: string, file: File): Promise<LeaveRequest> {
+  const form = new FormData();
+  form.append("file", file);
+  const { data } = await apiClient.post<LeaveRequest>(`/leave/requests/${id}/attachment`, form);
+  return data;
+}
+
+/** Fetch a short-lived signed download URL for the request's attachment. */
+export async function getLeaveAttachmentUrl(id: string): Promise<string> {
+  const { data } = await apiClient.get<{ url: string }>(`/leave/requests/${id}/attachment/signed-url`);
+  return data.url;
+}
+
+export async function removeLeaveAttachment(id: string): Promise<LeaveRequest> {
+  const { data } = await apiClient.delete<LeaveRequest>(`/leave/requests/${id}/attachment`);
   return data;
 }
 

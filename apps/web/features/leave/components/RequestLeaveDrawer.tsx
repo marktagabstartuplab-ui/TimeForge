@@ -27,6 +27,7 @@ import { ApiError } from "@/lib/api/client";
 import {
   createLeaveRequest,
   getLeaveBalances,
+  uploadLeaveAttachment,
   type LeaveType,
 } from "../api/leave.service";
 
@@ -45,6 +46,10 @@ export function RequestLeaveDrawer({ open, onOpenChange }: RequestLeaveDrawerPro
   const queryClient = useQueryClient();
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
+  // Set once the request is created — unlocks the attachment step ("attach after create").
+  const [createdRequestId, setCreatedRequestId] = useState<string | null>(null);
+  const [attachedName, setAttachedName] = useState<string | null>(null);
+  const [attachError, setAttachError] = useState<string | null>(null);
 
   const { data: balances } = useQuery({
     queryKey: ["leave", "balances"],
@@ -68,6 +73,9 @@ export function RequestLeaveDrawer({ open, onOpenChange }: RequestLeaveDrawerPro
       reset({ leaveType: "", startDate: "", endDate: "", reason: "" });
       setErrorMessage(null);
       setSuccessMessage(null);
+      setCreatedRequestId(null);
+      setAttachedName(null);
+      setAttachError(null);
     }
   }, [open, reset]);
 
@@ -79,19 +87,37 @@ export function RequestLeaveDrawer({ open, onOpenChange }: RequestLeaveDrawerPro
         endDate: values.endDate,
         reason: values.reason,
       }),
-    onSuccess: () => {
+    onSuccess: (created) => {
       setErrorMessage(null);
-      setSuccessMessage("Leave request submitted for approval.");
+      setSuccessMessage("Leave request submitted. You can attach a document below (optional).");
+      setCreatedRequestId(created.id);
       queryClient.invalidateQueries({ queryKey: ["leave"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] });
-      setTimeout(() => onOpenChange(false), 1200);
     },
     onError: (err) => {
       setErrorMessage(err instanceof ApiError ? err.message : "Failed to submit leave request.");
     },
   });
 
+  const uploadMutation = useMutation({
+    mutationFn: (file: File) => uploadLeaveAttachment(createdRequestId!, file),
+    onSuccess: (_res, file) => {
+      setAttachError(null);
+      setAttachedName(file.name);
+      queryClient.invalidateQueries({ queryKey: ["leave"] });
+    },
+    onError: (err) => {
+      setAttachError(err instanceof ApiError ? err.message : "Failed to upload attachment.");
+    },
+  });
+
   const onSubmit = (values: LeaveRequestValues) => mutation.mutate(values);
+
+  const onFilePicked = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) uploadMutation.mutate(file);
+    e.target.value = "";
+  };
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -214,23 +240,58 @@ export function RequestLeaveDrawer({ open, onOpenChange }: RequestLeaveDrawerPro
             </div>
 
             <div>
-              <FieldLabel htmlFor="leave-attachments">Attachments (Optional)</FieldLabel>
-              <button
-                type="button"
-                id="leave-attachments"
-                aria-disabled="true"
-                title="Attachment upload is coming soon"
-                className="flex w-full cursor-not-allowed flex-col items-center justify-center gap-1.5 rounded-[12px] border-2 border-dashed border-[#c3c6d2] bg-white px-6 py-8 text-center"
-              >
-                <CloudUpload className="h-6 w-6 text-brand" aria-hidden="true" />
-                <span className="text-[13px] font-medium text-brand-ink">
-                  Click to upload or drag and drop
-                </span>
-              </button>
+              <FieldLabel htmlFor="leave-attachments">Attachment (Optional)</FieldLabel>
+              {createdRequestId ? (
+                attachedName ? (
+                  <div className="flex items-center justify-between gap-2 rounded-[12px] border border-[#c3c6d2] bg-white px-4 py-3 text-sm">
+                    <span className="truncate text-brand-ink">{attachedName}</span>
+                    <span className="shrink-0 text-xs font-semibold text-green-600">Attached ✓</span>
+                  </div>
+                ) : (
+                  <label
+                    htmlFor="leave-attachments"
+                    className="flex w-full cursor-pointer flex-col items-center justify-center gap-1.5 rounded-[12px] border-2 border-dashed border-[#c3c6d2] bg-white px-6 py-8 text-center hover:border-brand"
+                  >
+                    <CloudUpload className="h-6 w-6 text-brand" aria-hidden="true" />
+                    <span className="text-[13px] font-medium text-brand-ink">
+                      {uploadMutation.isPending ? "Uploading…" : "Click to upload (PDF, image, or Word, ≤10 MB)"}
+                    </span>
+                    <input
+                      id="leave-attachments"
+                      type="file"
+                      accept=".pdf,.png,.jpg,.jpeg,.webp,.doc,.docx"
+                      className="sr-only"
+                      onChange={onFilePicked}
+                      disabled={uploadMutation.isPending}
+                    />
+                  </label>
+                )
+              ) : (
+                <div
+                  aria-disabled="true"
+                  className="flex w-full flex-col items-center justify-center gap-1.5 rounded-[12px] border-2 border-dashed border-[#c3c6d2] bg-[#f6f3f4] px-6 py-8 text-center"
+                >
+                  <CloudUpload className="h-6 w-6 text-brand-muted" aria-hidden="true" />
+                  <span className="text-[13px] font-medium text-brand-muted">
+                    Submit the request first, then attach a document here.
+                  </span>
+                </div>
+              )}
+              {attachError ? <FieldError message={attachError} /> : null}
             </div>
           </div>
 
           <div className="flex items-center justify-end gap-3 border-t border-[#c3c6d2]/50 bg-white px-6 py-4">
+            {createdRequestId ? (
+              <button
+                type="button"
+                onClick={() => onOpenChange(false)}
+                className="rounded-[10px] bg-brand px-6 py-2.5 text-sm font-bold text-white transition-opacity hover:bg-[#1467d6]"
+              >
+                Done
+              </button>
+            ) : (
+            <>
             <DialogClose className="rounded-[10px] px-5 py-2.5 text-sm font-bold text-brand-ink hover:bg-[#f6f3f4]">
               Cancel
             </DialogClose>
@@ -241,6 +302,8 @@ export function RequestLeaveDrawer({ open, onOpenChange }: RequestLeaveDrawerPro
             >
               {mutation.isPending ? "Submitting…" : "Submit Request"}
             </button>
+            </>
+            )}
           </div>
         </form>
       </SheetContent>

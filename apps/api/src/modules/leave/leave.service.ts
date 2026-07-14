@@ -11,6 +11,8 @@ import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.serv
 import { AuthPrincipal } from '../../common/decorators';
 import { PERMISSIONS } from '@timeforge/shared';
 import { NotificationsService } from '../notifications/notifications.service';
+import { UploadService } from '../storage/upload.service';
+import { StorageService } from '../storage/storage.service';
 import { CreateLeaveRequestDto, LeaveDecisionDto, LeaveRequestQuery } from './dto';
 
 /** Default annual allocation per type, used to lazily provision a balance row on first read. */
@@ -25,7 +27,19 @@ export class LeaveService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
+    private readonly uploads: UploadService,
+    private readonly storage: StorageService,
   ) {}
+
+  private readonly ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
+  private readonly ATTACHMENT_TYPES = [
+    'image/png',
+    'image/jpeg',
+    'image/webp',
+    'application/pdf',
+    'application/msword',
+    'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+  ];
 
   private can(p: AuthPrincipal, perm: string): boolean {
     return p.permissions.includes('*') || p.permissions.includes(perm);
@@ -211,6 +225,73 @@ export class LeaveService {
       if ((await this.teamUserIds(p)).includes(request.userId)) return;
     }
     throw new ForbiddenException('You do not have access to this leave request');
+  }
+
+  // ── Attachments (single file per request, stored on attachmentKey) ───────
+
+  /** Owner uploads/replaces the attachment on their own PENDING request. */
+  async uploadAttachment(
+    p: AuthPrincipal,
+    id: string,
+    file: { buffer: Buffer; mimetype: string; size: number; originalname: string },
+  ): Promise<LeaveRequest> {
+    const request = await this.prisma.leaveRequest.findFirst({
+      where: { id, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+    });
+    if (!request) throw new NotFoundException('Leave request not found');
+    if (request.userId !== p.userId) {
+      throw new ForbiddenException('You can only attach files to your own leave requests');
+    }
+    if (request.status !== 'PENDING') {
+      throw new ConflictException(`Cannot modify attachments on a ${request.status} request`);
+    }
+
+    const { key } = await this.uploads.upload(
+      {
+        folder: 'documents',
+        filename: file.originalname,
+        data: file.buffer,
+        contentType: file.mimetype,
+        size: file.size,
+      },
+      { maxBytes: this.ATTACHMENT_MAX_BYTES, allowedMimeTypes: this.ATTACHMENT_TYPES },
+    );
+
+    // Replace: drop the previous file if one existed.
+    if (request.attachmentKey) void this.storage.remove(request.attachmentKey).catch(() => {});
+
+    return this.prisma.leaveRequest.update({
+      where: { id },
+      data: { attachmentKey: key, updatedBy: p.userId, version: { increment: 1 } },
+    });
+  }
+
+  /** Signed download URL — visible to anyone who can view the request (owner or reviewer). */
+  async getAttachmentSignedUrl(p: AuthPrincipal, id: string): Promise<{ url: string }> {
+    const request = await this.findOne(p, id); // enforces assertCanView
+    if (!request.attachmentKey) throw new NotFoundException('This request has no attachment');
+    const url = await this.storage.signedUrl(request.attachmentKey);
+    return { url };
+  }
+
+  /** Owner removes the attachment from their own PENDING request. */
+  async removeAttachment(p: AuthPrincipal, id: string): Promise<LeaveRequest> {
+    const request = await this.prisma.leaveRequest.findFirst({
+      where: { id, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+    });
+    if (!request) throw new NotFoundException('Leave request not found');
+    if (request.userId !== p.userId) {
+      throw new ForbiddenException('You can only remove attachments from your own leave requests');
+    }
+    if (request.status !== 'PENDING') {
+      throw new ConflictException(`Cannot modify attachments on a ${request.status} request`);
+    }
+    if (!request.attachmentKey) throw new NotFoundException('This request has no attachment');
+    void this.storage.remove(request.attachmentKey).catch(() => {});
+    return this.prisma.leaveRequest.update({
+      where: { id },
+      data: { attachmentKey: null, updatedBy: p.userId, version: { increment: 1 } },
+    });
   }
 
   // ── Cancel (self) ───────────────────────────────────────────────────────
