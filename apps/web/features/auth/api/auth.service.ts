@@ -1,4 +1,4 @@
-import { apiClient } from "@/lib/api/client";
+import { apiClient, setRefreshTokenMemory } from "@/lib/api/client";
 
 export interface AuthUser {
   id: string;
@@ -9,6 +9,7 @@ export interface AuthUser {
 
 export interface LoginResponse {
   accessToken: string;
+  refreshToken: string;
   tokenType: string;
   expiresIn: number;
   user: AuthUser;
@@ -16,6 +17,7 @@ export interface LoginResponse {
 
 export interface RefreshResponse {
   accessToken: string;
+  refreshToken: string;
   tokenType: string;
   expiresIn: number;
 }
@@ -33,10 +35,15 @@ export interface RegisterPayload {
   phone: string;
   jobTitle: string;
   departmentId: string;
+  requestedRole: "EMPLOYEE" | "INTERN";
 }
 
 export async function login(email: string, password: string): Promise<LoginResponse> {
   const { data } = await apiClient.post<LoginResponse>("/auth/login", { email, password });
+  // Store the refresh token in memory as a body fallback for cross-site cookie blocking
+  if (data.refreshToken) {
+    setRefreshTokenMemory(data.refreshToken);
+  }
   return data;
 }
 
@@ -73,5 +80,9 @@ export async function logout(): Promise<void> {
 // restore a session after a hard page load/reload.
 export async function refresh(): Promise<RefreshResponse> {
   const { data } = await apiClient.post<RefreshResponse>("/auth/refresh");
+  // Store the new refresh token in memory as a body fallback
+  if (data.refreshToken) {
+    setRefreshTokenMemory(data.refreshToken);
+  }
   return data;
 }

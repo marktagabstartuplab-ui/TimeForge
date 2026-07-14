@@ -1,4 +1,9 @@
-import { IsEmail, IsNotEmpty, IsString, IsUUID, Matches, MaxLength, MinLength } from 'class-validator';
+import { IsEmail, IsIn, IsNotEmpty, IsString, IsUUID, Matches, MaxLength, MinLength } from 'class-validator';
+
+// Roles a member of the public may request at self-registration. Privileged
+// roles (SUPERVISOR/HR/FINANCE/ADMIN) are never self-requestable — an admin
+// assigns those. Kept in sync with the frontend register schema.
+export const SELF_REQUESTABLE_ROLES = ['EMPLOYEE', 'INTERN'] as const;
 
 export class LoginDto {
   @IsEmail()
@@ -18,9 +23,9 @@ export class ForgotPasswordDto {
 // Registration, password reset, and change-password all require an uppercase
 // letter, a lowercase letter, and a special character. Kept in sync with the
 // frontend `strongPassword` schema (apps/web/features/auth/schemas/auth.schema.ts).
-export const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*[^A-Za-z0-9]).+$/;
+export const STRONG_PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)(?=.*[^A-Za-z0-9]).+$/;
 export const STRONG_PASSWORD_MESSAGE =
-  'password must include an uppercase letter, a lowercase letter, and a special character';
+  'password must include an uppercase letter, a lowercase letter, a number, and a special character';
 
 export class ResetPasswordDto {
   @IsString()
@@ -60,8 +65,11 @@ export class RegisterDto {
 
   @IsString()
   @IsNotEmpty()
-  // Exactly 11 digits (e.g. Philippine mobile 09XXXXXXXXX).
-  @Matches(/^\d{11}$/, { message: 'phone must be exactly 11 digits' })
+  // Philippine mobile, either local (09XXXXXXXXX) or +63 international
+  // (+639XXXXXXXXX). Country-aware per the brief's +63 example.
+  @Matches(/^(?:\+63|0)9\d{9}$/, {
+    message: 'phone must be a valid PH mobile number (09XXXXXXXXX or +639XXXXXXXXX)',
+  })
   phone!: string;
 
   @IsString()
@@ -71,4 +79,9 @@ export class RegisterDto {
 
   @IsUUID()
   departmentId!: string;
+
+  // What the user asked to be — a request only; the admin assigns the real role
+  // on approval. Restricted to non-privileged roles.
+  @IsIn(SELF_REQUESTABLE_ROLES)
+  requestedRole!: (typeof SELF_REQUESTABLE_ROLES)[number];
 }

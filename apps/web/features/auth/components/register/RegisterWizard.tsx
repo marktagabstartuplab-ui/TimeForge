@@ -48,6 +48,7 @@ export function RegisterWizard() {
       phone: step1.phone,
       jobTitle: "Employee",
       departmentId: step1.departmentId,
+      requestedRole: values.requestedRole,
     });
     // Never auto-login — back to sign-in with the email prefilled and a
     // success banner (LoginForm reads these params).
@@ -69,11 +70,7 @@ export function RegisterWizard() {
       {step === 1 ? (
         <RegisterStep1Form defaultValues={step1} onNext={handleNext} />
       ) : (
-        <RegisterStep2Form
-          onSubmit={handleSubmit}
-          onBack={() => setStep(1)}
-          defaultDepartmentId={step1.departmentId}
-        />
+        <RegisterStep2Form onSubmit={handleSubmit} onBack={() => setStep(1)} />
       )}
     </AuthSplitLayout>
   );

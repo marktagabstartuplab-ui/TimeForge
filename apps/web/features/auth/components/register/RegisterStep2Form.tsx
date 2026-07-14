@@ -4,12 +4,11 @@ import { useState } from "react";
 import Link from "next/link";
 import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useQuery } from "@tanstack/react-query";
 import { Lock, ArrowRight } from "lucide-react";
-import { Checkbox } from "@/components/ui/checkbox";
 import {
   Select,
   SelectContent,
+  SelectItem,
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
@@ -18,25 +17,21 @@ import { FieldLabel } from "../fields";
 import { PasswordField } from "../PasswordField";
 import { SubmitButton } from "../SubmitButton";
 import { FieldError, FormBanner } from "../FormMessages";
-import { registerStep2Schema, type RegisterStep2Values } from "../../schemas/auth.schema";
-import { fetchDepartments } from "../../api/auth.service";
+import {
+  registerStep2Schema,
+  type RegisterStep2Values,
+  REQUESTABLE_ROLES,
+} from "../../schemas/auth.schema";
 import { ApiError } from "@/lib/api/client";
 
 interface Props {
   onSubmit: (values: RegisterStep2Values) => Promise<void>;
   onBack: () => void;
-  /** Department chosen on step 1 — prefilled here, still editable. */
-  defaultDepartmentId?: string;
 }
 
-export function RegisterStep2Form({ onSubmit, onBack, defaultDepartmentId }: Props) {
+export function RegisterStep2Form({ onSubmit, onBack }: Props) {
   const [submitting, setSubmitting] = useState(false);
   const [serverError, setServerError] = useState<string | null>(null);
-
-  const { data: departments, isLoading: departmentsLoading } = useQuery({
-    queryKey: ["auth", "departments"],
-    queryFn: fetchDepartments,
-  });
 
   const {
     register,
@@ -48,13 +43,10 @@ export function RegisterStep2Form({ onSubmit, onBack, defaultDepartmentId }: Pro
     defaultValues: {
       password: "",
       confirmPassword: "",
+      requestedRole: "EMPLOYEE",
       workCategory: "",
-      agreeToTerms: false,
     },
   });
-
-  // Department is chosen in step 1 — shown here read-only, not re-selectable.
-  const selectedDepartmentName = departments?.find((d) => d.id === defaultDepartmentId)?.name;
 
   const submit = async (values: RegisterStep2Values) => {
     setServerError(null);
@@ -101,13 +93,12 @@ export function RegisterStep2Form({ onSubmit, onBack, defaultDepartmentId }: Pro
             invalid={Boolean(errors.password)}
             {...register("password")}
           />
-          {/* Figma copy says 12 chars + special symbol, but the backend
-              policy (RegisterDto) is 8–128 chars — backend is truth. */}
           {errors.password ? (
             <FieldError message={errors.password.message} />
           ) : (
             <p className="mt-1 text-xs text-brand-muted/80">
-              At least 8 characters, with an uppercase &amp; lowercase letter and a special character.
+              At least 8 characters, with an uppercase &amp; lowercase letter, a number, and a
+              special character.
             </p>
           )}
         </div>
@@ -128,15 +119,39 @@ export function RegisterStep2Form({ onSubmit, onBack, defaultDepartmentId }: Pro
 
         <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
           <div>
-            <FieldLabel htmlFor="departmentId">Department</FieldLabel>
-            <div
-              id="departmentId"
-              aria-label="Department"
-              className="flex h-11 w-full items-center rounded-lg border border-[#c3c6d2] bg-slate-50 px-3 text-sm text-brand-ink"
-            >
-              {departmentsLoading ? "Loading…" : selectedDepartmentName ?? "—"}
-            </div>
-            <p className="mt-1 text-xs text-brand-muted/80">Chosen in the previous step.</p>
+            <FieldLabel htmlFor="requestedRole">Requested Role</FieldLabel>
+            <Controller
+              control={control}
+              name="requestedRole"
+              render={({ field }) => (
+                <Select
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  items={REQUESTABLE_ROLES.map((r) => ({ value: r.value, label: r.label }))}
+                >
+                  <SelectTrigger
+                    id="requestedRole"
+                    aria-label="Requested Role"
+                    aria-invalid={Boolean(errors.requestedRole)}
+                    className="h-11 w-full rounded-lg border-[#c3c6d2]"
+                  >
+                    <SelectValue placeholder="Select..." />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {REQUESTABLE_ROLES.map((r) => (
+                      <SelectItem key={r.value} value={r.value}>
+                        {r.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              )}
+            />
+            {errors.requestedRole ? (
+              <FieldError message={errors.requestedRole.message} />
+            ) : (
+              <p className="mt-1 text-xs text-brand-muted/80">An admin confirms your role on approval.</p>
+            )}
           </div>
 
           <div>
@@ -154,33 +169,6 @@ export function RegisterStep2Form({ onSubmit, onBack, defaultDepartmentId }: Pro
             <p className="mt-1 text-xs text-brand-muted/80">Set later by your admin.</p>
           </div>
         </div>
-
-        <div className="flex items-start gap-2 pt-1">
-          <Controller
-            control={control}
-            name="agreeToTerms"
-            render={({ field }) => (
-              <Checkbox
-                id="agreeToTerms"
-                className="mt-0.5"
-                checked={field.value === true}
-                onCheckedChange={(checked) => field.onChange(checked === true)}
-              />
-            )}
-          />
-          <label htmlFor="agreeToTerms" className="text-xs leading-relaxed text-brand-muted">
-            I agree to the{" "}
-            <Link href="?modal=terms" className="font-semibold text-brand hover:underline">
-              Terms of Service
-            </Link>{" "}
-            and acknowledge the{" "}
-            <Link href="?modal=privacy" className="font-semibold text-brand hover:underline">
-              Privacy Policy
-            </Link>
-            .
-          </label>
-        </div>
-        <FieldError message={errors.agreeToTerms?.message} />
 
         <SubmitButton loading={submitting} loadingText="Setting up…">
           Complete Setup

@@ -57,7 +57,7 @@ export class AuthService {
   async login(email: string, password: string, ip?: string, device?: string) {
     const normalizedEmail = email.toLowerCase();
     const user = await this.prisma.user.findFirst({
-      where: { email: normalizedEmail },
+      where: { email: normalizedEmail, deletedAt: null },
       include: { roles: { include: { role: true } } },
     });
 
@@ -307,7 +307,11 @@ export class AuthService {
         phone: dto.phone,
         jobTitle: dto.jobTitle,
         departmentId: department.id,
-        employmentType: EmploymentType.EMPLOYEE,
+        requestedRole: dto.requestedRole,
+        // Interns register as the INTERN employment type; everyone else EMPLOYEE.
+        // The actual RBAC Role stays EMPLOYEE until an admin assigns otherwise.
+        employmentType:
+          dto.requestedRole === 'INTERN' ? EmploymentType.INTERN : EmploymentType.EMPLOYEE,
         status: UserStatus.PENDING,
         isApproved: false,
       },
@@ -523,6 +527,7 @@ export class AuthService {
       select: { id: true },
     });
     const fullName = `${dto.firstName} ${dto.lastName}`;
+    const requestedLabel = dto.requestedRole === 'INTERN' ? 'Intern' : 'Employee';
     await Promise.all(
       admins.map((admin) =>
         this.notifications.create({
@@ -533,8 +538,13 @@ export class AuthService {
           category: 'ACCOUNT',
           priority: 'HIGH',
           title: 'New employee awaiting approval',
-          message: `${fullName} registered and is awaiting approval.`,
-          metadata: { userId: pendingUserId, name: fullName, email: dto.email.toLowerCase() },
+          message: `${fullName} registered as "${requestedLabel}" and is awaiting approval.`,
+          metadata: {
+            userId: pendingUserId,
+            name: fullName,
+            email: dto.email.toLowerCase(),
+            requestedRole: dto.requestedRole,
+          },
         }),
       ),
     );

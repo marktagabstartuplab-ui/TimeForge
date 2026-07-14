@@ -84,11 +84,11 @@ export function RegisterStep1Form({ defaultValues, onNext }: Props) {
           <IconInput
             id="phone"
             type="tel"
-            inputMode="numeric"
-            maxLength={11}
+            inputMode="tel"
+            maxLength={13}
             icon={Phone}
             autoComplete="tel"
-            placeholder="09123456789"
+            placeholder="09123456789 or +639123456789"
             aria-label="Phone Number"
             invalid={Boolean(errors.phone)}
             {...register("phone")}

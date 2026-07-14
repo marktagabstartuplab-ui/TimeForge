@@ -273,6 +273,10 @@ model User {
   jobTitle        String?        @map("job_title")
   status          UserStatus     @default(PENDING)
   isApproved      Boolean        @default(false) @map("is_approved")
+  // Role the user asked for at self-registration (EMPLOYEE | INTERN). It's a
+  // request only — the admin assigns the real Role/UserRole on approval. Stored
+  // for the approval UI + admin notification; not a security boundary.
+  requestedRole   String?        @map("requested_role")
   employmentType  EmploymentType @default(EMPLOYEE) @map("employment_type")
   hourlyRate      Decimal?       @map("hourly_rate") @db.Decimal(12, 2)
   payrollEligible Boolean        @default(true) @map("payroll_eligible")
@@ -408,6 +412,7 @@ model RefreshToken {
   @@index([tenantId, userId])
   @@index([tenantId, expiresAt])
   @@index([familyId])
+  @@index([tokenHash])
   @@map("refresh_tokens")
 }
 

@@ -21,7 +21,10 @@ export const registerStep1Schema = z.object({
   phone: z
     .string()
     .min(1, "Phone number is required")
-    .regex(/^\d{11}$/, "Phone number must be exactly 11 digits"),
+    .regex(
+      /^(?:\+63|0)9\d{9}$/,
+      "Enter a valid PH mobile number (09XXXXXXXXX or +639XXXXXXXXX)",
+    ),
   departmentId: z.string().min(1, "Select a department").uuid("Select a department"),
   agreeToTerms: z.boolean().refine((v) => v === true, {
     message: "You must agree to the Terms of Service",
@@ -38,19 +41,25 @@ export const strongPassword = z
   .max(128, "Password must be at most 128 characters")
   .regex(/[a-z]/, "Include at least one lowercase letter")
   .regex(/[A-Z]/, "Include at least one uppercase letter")
+  .regex(/\d/, "Include at least one number")
   .regex(/[^A-Za-z0-9]/, "Include at least one special character");
 
-// Step 2. Department is chosen in step 1 and only *displayed* here (read-only),
-// so it isn't a form field. workCategory is shown for design parity only (no
-// backend field for signup) and is not sent.
+// Roles a member of the public may request at registration. Kept in sync with
+// the backend SELF_REQUESTABLE_ROLES (apps/api/src/modules/auth/dto.ts).
+export const REQUESTABLE_ROLES = [
+  { value: "EMPLOYEE", label: "Employee" },
+  { value: "INTERN", label: "Intern" },
+] as const;
+
+// Step 2. Department was chosen in step 1; here the user picks a Requested Role
+// (an admin assigns the real role on approval). Terms are agreed once, in step
+// 1 — not duplicated here. workCategory is design-parity only and not sent.
 export const registerStep2Schema = z
   .object({
     password: strongPassword,
     confirmPassword: z.string().min(1, "Please confirm your password"),
+    requestedRole: z.enum(["EMPLOYEE", "INTERN"], { message: "Select a requested role" }),
     workCategory: z.string().optional(),
-    agreeToTerms: z.boolean().refine((v) => v === true, {
-      message: "You must agree to the Terms of Service",
-    }),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",
