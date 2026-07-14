@@ -42,6 +42,10 @@ export default () => ({
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
     bucket: process.env.SUPABASE_STORAGE_BUCKET ?? 'timeforge',
   },
+  mail: {
+    // 'auto' | 'edge' | 'smtp' | 'mock' — see env.validation.ts / MailerService.
+    driver: process.env.MAIL_DRIVER ?? 'auto',
+  },
   smtp: {
     host: process.env.SMTP_HOST ?? 'smtp.gmail.com',
     port: parseInt(process.env.SMTP_PORT ?? '587', 10),

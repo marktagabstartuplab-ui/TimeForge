@@ -22,6 +22,11 @@ const schema = z
     SUPABASE_ANON_KEY: z.string().optional(),
     SUPABASE_SERVICE_ROLE_KEY: z.string().optional(),
     SUPABASE_STORAGE_BUCKET: z.string().optional(),
+    // Transactional email transport selection. 'auto' (default) prefers the
+    // Supabase Edge Function whenever Supabase is configured, else falls back
+    // to SMTP, else a console mock. Set 'edge' on hosts that block outbound
+    // SMTP (e.g. Railway) to force the edge function even when SMTP_* are set.
+    MAIL_DRIVER: z.enum(['auto', 'edge', 'smtp', 'mock']).default('auto'),
     // Google SMTP Configuration
     SMTP_HOST: z.string().default('smtp.gmail.com'),
     SMTP_PORT: z.coerce.number().default(587),
