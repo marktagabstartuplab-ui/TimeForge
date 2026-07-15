@@ -253,13 +253,21 @@ export class PayrollService {
       OVERTIME_DAILY_THRESHOLD_HOURS * HALF_PERIOD_WORK_DAYS * 60;
 
     const report = await this.prisma.$transaction(async (tx) => {
-      // Delete existing report for this period (re-generation)
-      await tx.payrollReport.deleteMany({
-        where: {
-          payrollPeriodId: periodId,
-          tenantId: p.tenantId,
-        },
+      // Delete any existing report for this period (re-generation). PayrollLineItem
+      // has no cascade delete on payrollReportId, so the child rows must be removed
+      // before the parent report or this violates the FK constraint.
+      const existingReports = await tx.payrollReport.findMany({
+        where: { payrollPeriodId: periodId, tenantId: p.tenantId },
+        select: { id: true },
       });
+      if (existingReports.length > 0) {
+        await tx.payrollLineItem.deleteMany({
+          where: { payrollReportId: { in: existingReports.map((r) => r.id) } },
+        });
+        await tx.payrollReport.deleteMany({
+          where: { payrollPeriodId: periodId, tenantId: p.tenantId },
+        });
+      }
 
       const newReport = await tx.payrollReport.create({
         data: {
