@@ -21,8 +21,28 @@ export interface Timesheet {
   version: number;
 }
 
+export interface TimesheetApproval {
+  id: string;
+  lastAction: string;
+  resultingState: TimesheetStatus;
+  remark: string | null;
+  actedAt: string;
+  supervisor: { firstName: string; lastName: string } | null;
+}
+
+export interface TimesheetDetail extends Timesheet {
+  /** Newest first — approvals[0] is the action that produced the current status. */
+  approvals: TimesheetApproval[];
+}
+
 export async function listTimesheets(params: { status?: string; from?: string; to?: string; limit?: number } = {}): Promise<Page<Timesheet>> {
   const { data } = await apiClient.get<Page<Timesheet>>("/timesheets", { params });
+  return data;
+}
+
+/** Fetches a single timesheet with its approval history (supervisor remarks). */
+export async function getTimesheetDetail(id: string): Promise<TimesheetDetail> {
+  const { data } = await apiClient.get<TimesheetDetail>(`/timesheets/${id}`);
   return data;
 }
 

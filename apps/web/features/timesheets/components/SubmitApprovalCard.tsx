@@ -15,6 +15,9 @@ interface SubmitApprovalCardProps {
   error: string | null;
   onSubmit: (notes: string) => void;
   onSaveDraft: (notes: string) => void;
+  /** Supervisor's remark from the action that produced the current REJECTED status. */
+  rejectionRemark?: string | null;
+  rejectionBy?: string | null;
 }
 
 /** Merges the three human-input fields into the single `summary` API field. */
@@ -44,6 +47,8 @@ export function SubmitApprovalCard({
   error,
   onSubmit,
   onSaveDraft,
+  rejectionRemark,
+  rejectionBy,
 }: SubmitApprovalCardProps) {
   const [workSummary, setWorkSummary] = useState("");
   const [accomplishments, setAccomplishments] = useState("");
@@ -51,7 +56,9 @@ export function SubmitApprovalCard({
   const canSubmit = useCan("timesheet:submit");
 
   const status = timesheet?.status ?? "DRAFT";
-  const locked = status !== "DRAFT" && status !== "REVISION_REQUESTED";
+  // A REJECTED timesheet must be editable again so the employee can correct
+  // and resubmit it (same record: Reject -> Edit -> Resubmit -> Review).
+  const locked = status !== "DRAFT" && status !== "REVISION_REQUESTED" && status !== "REJECTED";
 
   const combinedNotes = buildSummary(workSummary, accomplishments, blockers);
 
@@ -68,6 +75,15 @@ export function SubmitApprovalCard({
             I hereby certify that the hours recorded above represent a true and accurate record of
             the time spent on official duties during this pay period.
           </p>
+
+          {status === "REJECTED" && rejectionRemark ? (
+            <div className="mt-3 rounded-[10px] border border-red-200 bg-red-50 px-3 py-2.5">
+              <p className="text-xs font-semibold uppercase tracking-wide text-red-700">
+                Supervisor&apos;s Rejection Remarks{rejectionBy ? ` — ${rejectionBy}` : ""}
+              </p>
+              <p className="mt-1 text-sm text-red-700">{rejectionRemark}</p>
+            </div>
+          ) : null}
 
           <div className="mt-4 flex flex-col gap-3">
             <div className="flex items-center gap-3">
@@ -149,6 +165,12 @@ export function SubmitApprovalCard({
             />
           </div>
 
+          {status === "REJECTED" && !locked ? (
+            <p role="status" className="rounded-[8px] bg-brand-cyan/10 px-3 py-2 text-sm text-brand-navy">
+              This timesheet was rejected — make your corrections above and resubmit for review.
+            </p>
+          ) : null}
+
           {error ? (
             <p role="alert" className="rounded-[8px] bg-red-50 px-3 py-2 text-sm text-red-600">
               {error}
@@ -180,7 +202,10 @@ export function SubmitApprovalCard({
               <button
                 type="button"
                 onClick={() => onSaveDraft(combinedNotes)}
-                disabled={savingDraft || locked}
+                // A REJECTED timesheet has no draft-save step in the API (only
+                // resubmission) — correct it and use Submit Timesheet directly.
+                disabled={savingDraft || locked || status === "REJECTED"}
+                title={status === "REJECTED" ? "Rejected timesheets are resubmitted directly — use Submit Timesheet" : undefined}
                 className="flex h-11 items-center justify-center rounded-[10px] bg-[#e4e2e3] px-6 text-sm font-bold text-brand-navy transition-colors hover:bg-[#d8d6d7] disabled:opacity-60"
               >
                 {savingDraft ? <Loader2 className="mr-2 h-4 w-4 animate-spin" aria-hidden="true" /> : null}

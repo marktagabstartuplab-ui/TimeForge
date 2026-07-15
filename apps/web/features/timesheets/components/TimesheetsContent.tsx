@@ -14,6 +14,7 @@ import { listProjects } from "@/features/time-tracking/api/catalog.service";
 import {
   attachEntries,
   createTimesheet,
+  getTimesheetDetail,
   listTimesheets,
   submitTimesheet,
   updateTimesheet,
@@ -79,6 +80,17 @@ export function TimesheetsContent() {
 
   const timesheet: Timesheet | null = timesheetsQuery.data?.data[0] ?? null;
 
+  // Only fetched when rejected — that's the one state where the employee needs
+  // to see the supervisor's remark. Approval history isn't in the list response.
+  const timesheetDetailQuery = useQuery({
+    queryKey: ["timesheets", "detail", timesheet?.id],
+    queryFn: () => getTimesheetDetail(timesheet!.id),
+    enabled: Boolean(timesheet?.id) && timesheet?.status === "REJECTED",
+  });
+  const latestRejection = timesheetDetailQuery.data?.approvals.find(
+    (a) => a.resultingState === "REJECTED",
+  );
+
   // ── Period-level aggregation ───────────────────────────────────────────────
   const entries = useMemo(() => entriesQuery.data?.data ?? [], [entriesQuery.data]);
   const summary = useMemo(
@@ -110,8 +122,14 @@ export function TimesheetsContent() {
     });
   };
 
-  /** Attach completed, not-yet-attached period entries to the draft. */
+  /**
+   * Attach completed, not-yet-attached period entries to the draft. Only valid
+   * for a DRAFT sheet (the API rejects attaching to any other status) — a
+   * REJECTED/REVISION_REQUESTED resubmit reuses the entries already attached
+   * from its original submission instead of pulling in newly-loose ones.
+   */
   const attachLooseEntries = async (sheet: Timesheet): Promise<Timesheet> => {
+    if (sheet.status !== "DRAFT") return sheet;
     const loose = entries.filter((e) => e.endTime && !e.timesheetId).map((e) => e.id);
     if (loose.length === 0) return sheet;
     return attachEntries(sheet.id, loose);
@@ -285,6 +303,12 @@ export function TimesheetsContent() {
         submitting={submit.isPending}
         savingDraft={saveDraft.isPending}
         error={actionError}
+        rejectionRemark={latestRejection?.remark ?? null}
+        rejectionBy={
+          latestRejection?.supervisor
+            ? `${latestRejection.supervisor.firstName} ${latestRejection.supervisor.lastName}`
+            : null
+        }
         onSubmit={(notes) => {
           setActionError(null);
           submit.mutate(notes);

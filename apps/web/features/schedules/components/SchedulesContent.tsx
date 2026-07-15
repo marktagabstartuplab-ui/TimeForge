@@ -134,7 +134,11 @@ export function SchedulesContent() {
           <div className="ml-auto">
             <Select value={departmentId} onValueChange={(v) => setDepartmentId(v ?? "ALL")}>
               <SelectTrigger aria-label="Filter by department" className="h-9 w-48 rounded-[8px] border-[#c3c6d2]/60 bg-white px-3 text-sm">
-                <SelectValue placeholder="All Departments" />
+                <SelectValue placeholder="All Departments">
+                  {departmentId === "ALL"
+                    ? "All Departments"
+                    : departments?.find((d) => d.id === departmentId)?.name ?? departmentId}
+                </SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All Departments</SelectItem>
