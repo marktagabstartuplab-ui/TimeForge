@@ -11,7 +11,7 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   '/dashboard': 'dashboard:read_self',
   '/time-tracking': 'scrum:read',
   '/timesheets': 'timesheet:read',
-  '/schedules': 'schedule:read_team',
+  '/schedules': 'schedule:read',
   '/kpi-dashboard': 'kpi_progress:read_team',
   '/supervisor/ai-insights': 'ai:trigger_team',
   '/supervisor/leave': 'leave_request:decide',
