@@ -20,6 +20,7 @@ import { WorkDetailsCard } from "./WorkDetailsCard";
 import { QuickSelectRail } from "./QuickSelectRail";
 import { TodayProgressCard } from "./TodayProgressCard";
 import { TodayEntriesList } from "./TodayEntriesList";
+import { ScrumHistoryCard } from "./ScrumHistoryCard";
 import { EodReviewModal } from "./EodReviewModal";
 import { startOfDay, endOfDay, toIsoDate, weekWindow } from "@/lib/time";
 
@@ -191,6 +192,8 @@ export function TimeTrackingContent() {
             />
 
             <TodayEntriesList entries={entries} />
+
+            <ScrumHistoryCard />
           </div>
 
           {/* Right rail */}
