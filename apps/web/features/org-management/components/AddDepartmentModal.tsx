@@ -117,7 +117,7 @@ export function AddDepartmentModal({
                     ...(employeesPage?.data.map((e) => ({ value: e.id, label: `${e.firstName} ${e.lastName}` })) ?? []),
                   ]}
                 >
-                  <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="No manager assigned">{field.value && field.value !== "NONE" ? (() => { const e = employeesPage?.data.find((emp) => emp.id === field.value); return e ? `${e.firstName} ${e.lastName}` : undefined; })() : field.value === "NONE" ? "No manager assigned" : undefined}</SelectValue></SelectTrigger>
                   <SelectContent>
                     <SelectItem value="NONE">No manager assigned</SelectItem>
                     {employeesPage?.data.map((e) => (
