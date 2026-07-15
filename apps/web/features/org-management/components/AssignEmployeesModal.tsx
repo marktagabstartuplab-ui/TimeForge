@@ -101,7 +101,7 @@ export function AssignEmployeesModal({
           <div>
             <Label className="mb-1.5">Department</Label>
             <Select value={departmentId} onValueChange={(v) => setDepartmentId(v ?? "")}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Select a department" /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select a department">{departmentId ? departments.find((d) => d.id === departmentId)?.name : undefined}</SelectValue></SelectTrigger>
               <SelectContent>
                 {departments.map((d) => (
                   <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
