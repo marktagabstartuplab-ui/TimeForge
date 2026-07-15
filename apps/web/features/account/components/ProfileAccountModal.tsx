@@ -205,7 +205,7 @@ export function ProfileAccountModal() {
               <Button
                 type="button"
                 onClick={handleSubmit((values) => saveProfile.mutate(values))}
-                disabled={saveProfile.isPending || (!isDirty && !professionalDirty)}
+                disabled={saveProfile.isPending}
               >
                 {saveProfile.isPending ? <Loader2 className="animate-spin" aria-hidden="true" /> : null}
                 Save Changes
