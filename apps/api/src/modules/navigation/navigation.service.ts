@@ -31,6 +31,7 @@ const MENU_CATALOG: MenuItemDef[] = [
   { id: 'supervisor-ai-insights', label: 'AI Insights', icon: 'sparkles', route: '/supervisor/ai-insights', section: 'MANAGEMENT', permission: 'ai:trigger_team' },
   { id: 'supervisor-leave', label: 'Leave Management', icon: 'calendar-clock', route: '/supervisor/leave', section: 'MANAGEMENT', permission: 'leave_request:decide' },
   // ── MANAGEMENT ──
+  { id: 'team',         label: 'My Team',      icon: 'users',        route: '/team',               section: 'MANAGEMENT',       permission: 'user:read' },
   { id: 'employees',    label: 'Employees',    icon: 'users',        route: '/admin/employees',    section: 'MANAGEMENT',       permission: 'user:read' },
   { id: 'departments',  label: 'Departments',  icon: 'building-2',   route: '/admin/departments',  section: 'MANAGEMENT',       permission: 'org:read_dashboard' },
   { id: 'approvals',    label: 'Approvals',    icon: 'check-square', route: '/admin/approvals',    section: 'MANAGEMENT',       permission: 'user:update',               badge: 'pendingApprovals' },
@@ -99,6 +100,9 @@ export class NavigationService {
       if (item.id === 'schedules' && isEmployeeOnly) return false;
       // Performance Insights is an individual-contributor view — employees only.
       if (item.id === 'performance') return user.roles.includes('EMPLOYEE');
+      // "My Team" is the Supervisor's department-scoped employee directory —
+      // supervisors only (Admin/HR keep the org-wide Employees page instead).
+      if (item.id === 'team') return isSupervisorOnly;
       // Team KPI Dashboard is a direct-reports management tool — supervisors only.
       if (item.id === 'kpi-dashboard') return user.roles.includes('SUPERVISOR');
       // Supervisor's AI Insights tool is distinct from the org-wide one Admin/HR see

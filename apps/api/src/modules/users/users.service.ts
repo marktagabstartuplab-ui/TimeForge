@@ -86,8 +86,26 @@ export class UsersService {
       deletedAt: null,
     };
     if (query.status) baseWhere['status'] = query.status;
-    if (query.departmentId) baseWhere['departmentId'] = query.departmentId;
     if (query.teamId) baseWhere['teamId'] = query.teamId;
+
+    // Department scoping (security). Callers with an org-wide user view — Admin
+    // (`*`) and HR/Finance (`dashboard:read_org`) — keep the unchanged org-wide
+    // listing. A Supervisor (only `dashboard:read_team`) is restricted to the
+    // department(s) they head (Department.managerId), so they can never list
+    // employees from another department, regardless of the departmentId they pass.
+    const orgWideUserView =
+      caller.permissions.includes('*') || caller.permissions.includes('dashboard:read_org');
+    if (orgWideUserView) {
+      if (query.departmentId) baseWhere['departmentId'] = query.departmentId;
+    } else {
+      const managed = await this.deptScope.managedDepartmentIds(caller);
+      const allowed = query.departmentId
+        ? managed.includes(query.departmentId)
+          ? [query.departmentId]
+          : []
+        : managed;
+      baseWhere['departmentId'] = { in: allowed };
+    }
     if (query.q) {
       baseWhere['OR'] = [
         { firstName: { contains: query.q, mode: 'insensitive' } },
