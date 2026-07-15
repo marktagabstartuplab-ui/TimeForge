@@ -53,6 +53,41 @@ function computeShiftSummary(date: string, startTime: string, endTime: string) {
   return { hours, breakMinutes } as const;
 }
 
+const DRAFT_KEY = "timeforge.shift-add-draft";
+
+interface ShiftDraft {
+  userId: string;
+  departmentId: string;
+  date: string;
+  startTime: string;
+  endTime: string;
+  shiftType: ShiftType;
+  notes: string;
+}
+
+function saveLocalDraft(data: ShiftDraft) {
+  if (typeof window !== "undefined") {
+    window.localStorage.setItem(DRAFT_KEY, JSON.stringify(data));
+  }
+}
+
+function readLocalDraft(): ShiftDraft | null {
+  if (typeof window === "undefined") return null;
+  try {
+    const raw = window.localStorage.getItem(DRAFT_KEY);
+    if (!raw) return null;
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
+function clearLocalDraft() {
+  if (typeof window !== "undefined") {
+    window.localStorage.removeItem(DRAFT_KEY);
+  }
+}
+
 interface AddShiftDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -82,10 +117,6 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
     : employees?.data ?? [];
   const singleDept = visibleDepartments.length === 1 ? visibleDepartments[0].id : null;
 
-  useEffect(() => {
-    if (singleDept && open && !departmentId) setDepartmentId(singleDept);
-  }, [singleDept, open, departmentId]);
-
   const reset = () => {
     setUserId("");
     setDepartmentId(singleDept ?? "");
@@ -96,6 +127,27 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
     setNotes("");
     setError(null);
   };
+
+  useEffect(() => {
+    if (open) {
+      const draft = readLocalDraft();
+      if (draft) {
+        setUserId(draft.userId ?? "");
+        setDepartmentId(draft.departmentId ?? (singleDept ?? ""));
+        setDate(draft.date ?? "");
+        setStartTime(draft.startTime ?? "");
+        setEndTime(draft.endTime ?? "");
+        setShiftType(draft.shiftType ?? "MORNING");
+        setNotes(draft.notes ?? "");
+      } else {
+        reset();
+      }
+    }
+  }, [open, singleDept]);
+
+  useEffect(() => {
+    if (singleDept && open && !departmentId) setDepartmentId(singleDept);
+  }, [singleDept, open, departmentId]);
 
   const summary = computeShiftSummary(date, startTime, endTime);
 
@@ -115,7 +167,20 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
     onSuccess: (_, publish) => {
       onToast({ message: publish ? "Shift published." : "Draft saved.", tone: "success" });
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
-      reset();
+      if (publish) {
+        clearLocalDraft();
+        reset();
+      } else {
+        saveLocalDraft({
+          userId,
+          departmentId,
+          date,
+          startTime,
+          endTime,
+          shiftType,
+          notes,
+        });
+      }
       onOpenChange(false);
     },
     onError: (err) => setError(err instanceof ApiError ? err.message : "Could not save the shift."),
