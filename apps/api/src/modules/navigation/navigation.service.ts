@@ -110,8 +110,6 @@ export class NavigationService {
       // HR validates attendance/hours and prepares payroll; administering Employees
       // and Departments, and system settings (SYSTEM section), belong to the Admin.
       if (isHrOnly && (item.id === 'employees' || item.id === 'departments' || item.section === 'SYSTEM')) return false;
-      // HR uses Payroll Processing for timesheet workflows, not the standard employee/supervisor Timesheets page.
-      if (isHrOnly && item.id === 'timesheets') return false;
       // Finance has its own dedicated workspace (section 'FINANCE' below, exactly 4 items:
       // Dashboard, Payroll Processing, Financial Reports, AI Insights). Finance's broad
       // permission set (payroll_period:read, dashboard:read_org, user:read, org:read, etc.)
