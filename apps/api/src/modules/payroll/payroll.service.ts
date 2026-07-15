@@ -141,9 +141,15 @@ export class PayrollService {
   }
 
   /**
-   * Compute payroll line items from PAYROLL_READY timesheets in this period.
+   * Compute payroll line items from Supervisor-approved timesheets in this period.
    * Only payroll_eligible = true AND status = ACTIVE users are included (BR-PAY-05).
-   * Only PAYROLL_READY hours count toward estimated pay (BR-PAY-01).
+   * Approved hours (status APPROVED or the optional PAYROLL_READY marker) count
+   * toward estimated pay (BR-PAY-01) — matching the APPROVED/PAYROLL_READY
+   * "counts as approved" convention used everywhere else in the codebase
+   * (dashboard, reports, performance, supervisor stats). A supervisor's
+   * approval decision (ApprovalsService.decide) sets status='APPROVED'; that
+   * alone must be sufficient for the timesheet to appear here — the optional
+   * markPayrollReady step is not a prerequisite for visibility.
    *
    * M2: an Idempotency-Key is required by the controller; a retried request with
    * the same key returns the previously-generated report instead of reprocessing.
@@ -165,12 +171,15 @@ export class PayrollService {
       if (cachedReport) return cachedReport;
     }
 
-    // Gather all PAYROLL_READY timesheets within the period date range
+    // Gather all Supervisor-approved timesheets within the period date range.
+    // APPROVED is the status ApprovalsService.decide() sets on approval; PAYROLL_READY
+    // is the optional downstream marker (markPayrollReady) — both count as "approved"
+    // here so approval alone is enough for the record to reach this queue.
     const timesheets = await this.prisma.timesheet.findMany({
       where: {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
-        status: 'PAYROLL_READY',
+        status: { in: ['APPROVED', 'PAYROLL_READY'] },
         deletedAt: null,
         periodStart: { gte: period.startDate },
         periodEnd: { lte: period.endDate },

@@ -51,8 +51,9 @@ export class PayrollController {
   }
 
   /**
-   * Compute payroll line items from PAYROLL_READY timesheets. Idempotent on re-run
-   * (M2: Idempotency-Key required -- matches the AI/Admin money-mutation pattern).
+   * Compute payroll line items from Supervisor-approved (APPROVED/PAYROLL_READY)
+   * timesheets. Idempotent on re-run (M2: Idempotency-Key required -- matches the
+   * AI/Admin money-mutation pattern).
    */
   @Post('periods/:id/generate')
   @HttpCode(200)
