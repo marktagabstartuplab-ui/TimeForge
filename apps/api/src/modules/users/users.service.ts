@@ -160,7 +160,14 @@ export class UsersService {
   /** Flattens department/organization to {id, name} and swaps the raw storage key for a signed avatar URL. */
   private async shapeProfile(user: ProfileUser): Promise<Record<string, unknown>> {
     const { avatarKey, department, organization, ...rest } = user;
-    const avatarUrl = avatarKey ? await this.storage.signedUrl(avatarKey) : null;
+    let avatarUrl = null;
+    if (avatarKey) {
+      try {
+        avatarUrl = await this.storage.signedUrl(avatarKey);
+      } catch (err) {
+        console.error(`[UsersService] Failed to generate signed URL for avatarKey: ${avatarKey}`, err);
+      }
+    }
     return {
       ...rest,
       department: department ? { id: department.id, name: department.name } : null,
