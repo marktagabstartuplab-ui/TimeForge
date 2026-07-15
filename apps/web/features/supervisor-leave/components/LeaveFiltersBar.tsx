@@ -65,7 +65,7 @@ export function LeaveFiltersBar({ filters, onFiltersChange }: LeaveFiltersBarPro
           onValueChange={(v) => update({ type: v ?? "" })}
         >
           <SelectTrigger className="h-8 w-36">
-            <SelectValue placeholder="All Types" />
+            <SelectValue placeholder="All Types">{filters.type ? LEAVE_TYPE_OPTIONS.find((o) => o.value === filters.type)?.label : "All Types"}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="">All Types</SelectItem>
@@ -83,7 +83,7 @@ export function LeaveFiltersBar({ filters, onFiltersChange }: LeaveFiltersBarPro
           onValueChange={(v) => update({ status: v ?? "" })}
         >
           <SelectTrigger className="h-8 w-32">
-            <SelectValue placeholder="All Statuses" />
+            <SelectValue placeholder="All Statuses">{filters.status ? STATUS_OPTIONS.find((o) => o.value === filters.status)?.label : "All Statuses"}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             {STATUS_OPTIONS.map((opt) => (
@@ -100,7 +100,7 @@ export function LeaveFiltersBar({ filters, onFiltersChange }: LeaveFiltersBarPro
           onValueChange={(v) => update({ departmentId: v ?? "" })}
         >
           <SelectTrigger className="h-8 w-40">
-            <SelectValue placeholder="All Departments" />
+            <SelectValue placeholder="All Departments">{filters.departmentId ? departments.find((d) => d.id === filters.departmentId)?.name : "All Departments"}</SelectValue>
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="">All Departments</SelectItem>

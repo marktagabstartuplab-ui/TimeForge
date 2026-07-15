@@ -204,7 +204,7 @@ export function PayrollProcessingContent() {
             }}
           >
             <SelectTrigger className="h-10 min-w-[220px] rounded-[10px] border-[#c3c6d2] bg-white text-sm">
-              <SelectValue placeholder={isPeriodsLoading ? "Loading periods…" : "Select a period"} />
+              <SelectValue placeholder={isPeriodsLoading ? "Loading periods…" : "Select a period"}>{activePeriod ? `${formatDateRange(activePeriod.startDate, activePeriod.endDate)} · ${activePeriod.status}` : undefined}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {periods.map((p) => (

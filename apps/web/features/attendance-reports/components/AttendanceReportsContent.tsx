@@ -158,7 +158,7 @@ export function AttendanceReportsContent() {
               }}
             >
               <SelectTrigger className="h-10 w-full rounded-[10px] border-[#c3c6d2] bg-white text-sm">
-                <SelectValue />
+                <SelectValue placeholder="All Departments">{departmentId ? departments.find((d) => d.id === departmentId)?.name : "All Departments"}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All Departments</SelectItem>
@@ -180,7 +180,7 @@ export function AttendanceReportsContent() {
               }}
             >
               <SelectTrigger className="h-10 w-full rounded-[10px] border-[#c3c6d2] bg-white text-sm">
-                <SelectValue placeholder="Current month" />
+                <SelectValue placeholder="Current month">{payrollPeriodId && payrollPeriodId !== "ALL" ? (() => { const p = periods.find((x) => x.id === payrollPeriodId); return p ? `${formatDate(p.startDate)} - ${formatDate(p.endDate)}` : "Current Month"; })() : "Current Month"}</SelectValue>
               </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">Current Month</SelectItem>
@@ -238,7 +238,7 @@ export function AttendanceReportsContent() {
                 }}
               >
                 <SelectTrigger className="h-10 w-full rounded-[10px] border-[#c3c6d2] bg-white text-sm">
-                  <SelectValue />
+                  <SelectValue placeholder="All Statuses">{status !== "ALL" ? STATUS_LABEL[status] : "All Statuses"}</SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   <SelectItem value="ALL">All Statuses</SelectItem>

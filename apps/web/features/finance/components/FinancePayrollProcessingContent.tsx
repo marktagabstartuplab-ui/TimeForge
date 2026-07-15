@@ -219,7 +219,7 @@ export function FinancePayrollProcessingContent() {
             onValueChange={(v) => setSelectedPeriodId(v || null)}
           >
             <SelectTrigger className="h-10 min-w-[220px] rounded-[10px] border-[#c3c6d2] bg-white text-sm">
-              <SelectValue placeholder={isPeriodsLoading ? "Loading periods…" : "Select a period"} />
+              <SelectValue placeholder={isPeriodsLoading ? "Loading periods…" : "Select a period"}>{activePeriodId && periods.length > 0 ? (() => { const p = periods.find((x) => x.id === activePeriodId); return p ? `${formatDateRange(p.startDate, p.endDate)} · ${p.status}` : undefined; })() : undefined}</SelectValue>
             </SelectTrigger>
             <SelectContent>
               {periods.map((p) => (
