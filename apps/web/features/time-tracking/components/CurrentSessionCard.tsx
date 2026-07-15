@@ -28,6 +28,12 @@ interface CurrentSessionCardProps {
   loading: boolean;
   /** Opens the End of Day Review (the only path that stops AND reviews). */
   onTimeOut: () => void;
+  /** False until today's Daily Scrum plan + Work Details are saved (QA: Time
+   *  Out & Review must not be reachable before then — same gate the header
+   *  "End of Day Review" button already uses). */
+  reviewReady: boolean;
+  /** Human-readable reason(s) reviewReady is false, shown as a tooltip + inline note. */
+  reviewBlockedReason?: string | null;
 }
 
 /**
@@ -43,6 +49,8 @@ export function CurrentSessionCard({
   runningClientId,
   loading,
   onTimeOut,
+  reviewReady,
+  reviewBlockedReason,
 }: CurrentSessionCardProps) {
   const queryClient = useQueryClient();
   const [now, setNow] = useState(() => Date.now());
@@ -212,7 +220,8 @@ export function CurrentSessionCard({
               <button
                 type="button"
                 onClick={onTimeOut}
-                disabled={pending}
+                disabled={pending || !reviewReady}
+                title={!reviewReady ? reviewBlockedReason ?? undefined : undefined}
                 className={cn(btnBase, "bg-brand-navy text-white hover:bg-[#00394e]")}
               >
                 <LogOut className="h-4 w-4" aria-hidden="true" />
@@ -240,7 +249,8 @@ export function CurrentSessionCard({
               <button
                 type="button"
                 onClick={onTimeOut}
-                disabled={pending}
+                disabled={pending || !reviewReady}
+                title={!reviewReady ? reviewBlockedReason ?? undefined : undefined}
                 className={cn(btnBase, "bg-brand-navy text-white hover:bg-[#00394e]")}
               >
                 <LogOut className="h-4 w-4" aria-hidden="true" />
@@ -267,6 +277,12 @@ export function CurrentSessionCard({
             </button>
           )}
         </div>
+
+        {(running || onBreak) && !reviewReady && reviewBlockedReason ? (
+          <p role="status" className="w-full rounded-[8px] bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">
+            {reviewBlockedReason}
+          </p>
+        ) : null}
       </div>
 
       {/* Live session context — only while a session or break is active. */}
