@@ -19,6 +19,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "dashboard:read_self",
     "project:read", "client:read", "work_category:read", "department:read", "team:read",
     "leave_request:create", "leave_request:read", "leave_request:cancel", "leave_balance:read",
+    "schedule:read",
   ],
   SUPERVISOR: [
     "user:read",
