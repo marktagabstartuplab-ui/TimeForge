@@ -11,6 +11,10 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   '/dashboard': 'dashboard:read_self',
   '/time-tracking': 'scrum:read',
   '/timesheets': 'timesheet:read',
+  // Shared by both the Employee "My Schedule" (schedule:read) and the
+  // Supervisor/HR/Admin "Team Schedules" (schedule:read_team) nav items —
+  // use the least-privileged permission the page actually needs; everyone
+  // with schedule:read_team also holds schedule:read.
   '/schedules': 'schedule:read',
   '/kpi-dashboard': 'kpi_progress:read_team',
   '/supervisor/ai-insights': 'ai:trigger_team',

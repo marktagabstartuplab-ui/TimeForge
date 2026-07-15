@@ -100,6 +100,9 @@ export class NavigationService {
       if (item.id === 'schedules' && isEmployeeOnly) return false;
       // Performance Insights is an individual-contributor view — employees only.
       if (item.id === 'performance') return user.roles.includes('EMPLOYEE');
+      // "My Schedule" (self-only view) is for plain Employees; Supervisor/HR/Admin
+      // already get the team-wide "Team Schedules" item instead.
+      if (item.id === 'my-schedule') return user.roles.includes('EMPLOYEE');
       // "My Team" is the Supervisor's department-scoped employee directory —
       // supervisors only (Admin/HR keep the org-wide Employees page instead).
       if (item.id === 'team') return isSupervisorOnly;

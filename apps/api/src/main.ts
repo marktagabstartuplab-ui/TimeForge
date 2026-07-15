@@ -17,7 +17,7 @@ async function bootstrap() {
 
   const config = app.get(ConfigService);
 
-  app.use(helmet());
+  app.use(helmet({ crossOriginResourcePolicy: false }));
   app.use(cookieParser());
 
   // Trust proxy for correct IP detection behind reverse proxies (affects rate limiting + security logs)
