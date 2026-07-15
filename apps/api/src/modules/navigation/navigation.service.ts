@@ -144,6 +144,9 @@ export class NavigationService {
       if (item.id === 'reports' && (isAdmin || permissions.includes('dashboard:read_team') || permissions.includes('org:read_dashboard'))) {
         route = '/admin/reports';
       }
+      if (item.id === 'timesheets' && (isAdmin || permissions.includes('timesheet:read_org'))) {
+        route = '/admin/timesheets';
+      }
       // Supervisors land on the per-employee Team Scrum Submissions review, not the personal entry page.
       if (item.id === 'daily-scrum' && isSupervisorOnly) {
         route = '/team-scrum';
