@@ -326,7 +326,13 @@ export function HRTimesheetsContent() {
                             <span className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-[#e4e2e3] text-xs font-bold text-brand-navy">
                               {initials}
                             </span>
-                            <span className="font-semibold text-brand-navy">{r.employee}</span>
+                            <button
+                              type="button"
+                              onClick={() => setSelectedDetail(r)}
+                              className="text-left font-semibold text-brand-navy hover:underline"
+                            >
+                              {r.employee}
+                            </button>
                           </div>
                         </td>
                         <td className="py-3.5 px-5 text-brand-ink whitespace-nowrap">
@@ -350,11 +356,11 @@ export function HRTimesheetsContent() {
                         <td className="py-3.5 px-5 text-right">
                           <button
                             type="button"
-                            onClick={() => r.supervisorRemark ? setSelectedRemark(r) : setSelectedDetail(r)}
-                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand hover:text-brand-navy transition-colors"
+                            onClick={() => setSelectedRemark(r)}
+                            className="inline-flex items-center gap-1.5 text-xs font-semibold text-brand hover:underline transition-colors"
                           >
-                            <MessageSquare className="h-3.5 w-3.5" />
-                            <span>View<br />Supervisor<br />Remarks</span>
+                            <MessageSquare className="h-3.5 w-3.5 shrink-0" />
+                            View Supervisor Remarks
                           </button>
                         </td>
                       </tr>
@@ -503,7 +509,9 @@ export function HRTimesheetsContent() {
               <p className="text-xs text-brand-muted">{formatDate(selectedRemark.periodEnd)}</p>
             </div>
             <div className="rounded-[12px] border border-[#c3c6d2]/40 bg-[#f6f3f4] p-4">
-              <p className="text-sm text-brand-ink">{selectedRemark.supervisorRemark}</p>
+              <p className="text-sm text-brand-ink">
+                {selectedRemark.supervisorRemark || "No supervisor remarks have been recorded for this timesheet yet."}
+              </p>
             </div>
             {selectedRemark.supervisorName ? (
               <p className="mt-3 text-xs text-brand-muted">
