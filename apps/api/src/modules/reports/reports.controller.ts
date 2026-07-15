@@ -4,12 +4,13 @@ import {
   Delete,
   Get,
   HttpCode,
-  Header,
   Param,
   ParseUUIDPipe,
   Post,
   Query,
+  Res,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { IsEnum, IsISO8601, IsOptional, IsUUID } from 'class-validator';
 import { ReportsService, ReportsQuery, AttendanceReportQuery } from './reports.service';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
@@ -78,14 +79,15 @@ export class ReportsController {
 
   @Get('attendance-report/export')
   @RequirePermissions('attendance:read_org')
-  @Header('Content-Type', 'text/csv')
-  @Header('Content-Disposition', 'attachment')
   async exportAttendanceReport(
     @CurrentUser() u: AuthPrincipal,
-    @Query() query: AttendanceReportQuery & { format: 'CSV' | 'XLSX' | 'PDF' },
+    @Query() query: AttendanceReportQuery & { format?: 'CSV' | 'XLSX' | 'PDF' },
+    @Res({ passthrough: true }) res: Response,
   ) {
-    const result = await this.svc.exportAttendanceReport(u, query);
-    return result.csv;
+    const { buffer, contentType, filename } = await this.svc.exportAttendanceReport(u, query);
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(buffer);
   }
 
   @Get('payroll')

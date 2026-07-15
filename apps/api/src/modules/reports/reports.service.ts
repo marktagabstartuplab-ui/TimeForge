@@ -414,17 +414,16 @@ export class ReportsService {
     };
   }
 
-  async exportAttendanceReport(p: AuthPrincipal, query: AttendanceReportQuery & { format: 'CSV' | 'XLSX' | 'PDF' }) {
+  async exportAttendanceReport(
+    p: AuthPrincipal,
+    query: AttendanceReportQuery & { format?: 'CSV' | 'XLSX' | 'PDF' },
+  ): Promise<{ buffer: Buffer; contentType: string; filename: string }> {
     this.requireFinanceOrAdmin(p);
 
     const report = await this.getAttendanceReport(p, query);
-
-    const header = 'Employee,Department,Days Logged,Expected Days,Absences,Tardiness,Attendance %,Status\n';
-    const csvRows = report.data.map(
-      (r) =>
-        `"${r.name}","${r.department ?? ''}",${r.daysLogged},${r.expectedDays},${r.absences},${r.tardiness},${r.attendancePercent}%,"${r.status}"`,
-    );
-    const csv = header + csvRows.join('\n') + '\n';
+    const rows = report.data;
+    const period = `${report.period.from.split('T')[0]}-to-${report.period.to.split('T')[0]}`;
+    const format = (query.format ?? 'CSV').toUpperCase();
 
     await this.prisma.auditLog.create({
       data: {
@@ -432,11 +431,79 @@ export class ReportsService {
         actorId: p.userId,
         action: AuditAction.ADMIN_ACTION,
         entityType: 'attendance_export',
-        metadata: { format: query.format, period: report.period },
+        metadata: { format, period: report.period },
       },
     });
 
-    return { csv, filename: `attendance-report-${report.period.from.split('T')[0]}-to-${report.period.to.split('T')[0]}.csv` };
+    if (format === 'XLSX') {
+      const ExcelJS = await import('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('Attendance');
+      sheet.columns = [
+        { header: 'Employee', key: 'name', width: 25 },
+        { header: 'Department', key: 'department', width: 20 },
+        { header: 'Days Logged', key: 'daysLogged', width: 14 },
+        { header: 'Expected Days', key: 'expectedDays', width: 14 },
+        { header: 'Absences', key: 'absences', width: 12 },
+        { header: 'Tardiness', key: 'tardiness', width: 12 },
+        { header: 'Attendance %', key: 'attendancePercent', width: 14 },
+        { header: 'Status', key: 'status', width: 12 },
+      ];
+      for (const r of rows) sheet.addRow({ ...r, department: r.department ?? '' });
+      const buf = await workbook.xlsx.writeBuffer();
+      return {
+        buffer: Buffer.from(buf as ArrayBuffer),
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        filename: `attendance-report-${period}.xlsx`,
+      };
+    }
+
+    if (format === 'PDF') {
+      const { default: PDFDocument } = await import('pdfkit');
+      const doc = new PDFDocument({ margin: 40, size: 'A4', layout: 'landscape' });
+      const chunks: Buffer[] = [];
+      doc.on('data', (c: Buffer) => chunks.push(c));
+      doc.fontSize(18).text('Attendance Report', { align: 'center' });
+      doc.fontSize(9).text(`${report.period.from.split('T')[0]} → ${report.period.to.split('T')[0]} · ${rows.length} employees`, { align: 'center' });
+      doc.moveDown(1);
+      const cols = ['Employee', 'Department', 'Logged', 'Expected', 'Absences', 'Tardy', 'Attend %', 'Status'];
+      const colW = [140, 130, 70, 70, 70, 60, 80, 90];
+      const drawRow = (vals: string[], isHeader: boolean) => {
+        let x = 40;
+        doc.font(isHeader ? 'Helvetica-Bold' : 'Helvetica').fontSize(isHeader ? 9 : 8);
+        vals.forEach((v, i) => {
+          doc.text(v, x, doc.y, { width: colW[i], lineBreak: false });
+          x += colW[i];
+        });
+        doc.moveDown(0.5);
+      };
+      drawRow(cols, true);
+      for (const r of rows) {
+        drawRow(
+          [r.name, r.department ?? '', String(r.daysLogged), String(r.expectedDays), String(r.absences), String(r.tardiness), `${r.attendancePercent}%`, r.status],
+          false,
+        );
+      }
+      doc.end();
+      const buffer = await new Promise<Buffer>((resolve, reject) => {
+        const timeout = setTimeout(() => reject(new Error('PDF generation timed out')), 30_000);
+        doc.on('end', () => { clearTimeout(timeout); resolve(Buffer.concat(chunks)); });
+        doc.on('error', (err: Error) => { clearTimeout(timeout); reject(err); });
+      });
+      return { buffer, contentType: 'application/pdf', filename: `attendance-report-${period}.pdf` };
+    }
+
+    // CSV (default)
+    const header = 'Employee,Department,Days Logged,Expected Days,Absences,Tardiness,Attendance %,Status\n';
+    const csvRows = rows.map(
+      (r) =>
+        `"${r.name}","${r.department ?? ''}",${r.daysLogged},${r.expectedDays},${r.absences},${r.tardiness},${r.attendancePercent}%,"${r.status}"`,
+    );
+    return {
+      buffer: Buffer.from(header + csvRows.join('\n') + '\n', 'utf-8'),
+      contentType: 'text/csv',
+      filename: `attendance-report-${period}.csv`,
+    };
   }
 
   /** Real payroll totals from the most recently generated report (BR-PAY-05: interns already excluded at generation time). */
