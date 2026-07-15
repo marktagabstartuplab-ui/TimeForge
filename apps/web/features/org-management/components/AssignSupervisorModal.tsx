@@ -82,7 +82,7 @@ export function AssignSupervisorModal({
           <div>
             <Label className="mb-1.5">Department</Label>
             <Select value={departmentId} onValueChange={(v) => setDepartmentId(v ?? "")}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Select a department" /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select a department">{departmentId ? departments.find((d) => d.id === departmentId)?.name : undefined}</SelectValue></SelectTrigger>
               <SelectContent>
                 {departments.map((d) => (
                   <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
@@ -94,7 +94,7 @@ export function AssignSupervisorModal({
           <div>
             <Label className="mb-1.5">Supervisor</Label>
             <Select value={managerId} onValueChange={(v) => setManagerId(v ?? "")}>
-              <SelectTrigger className="w-full"><SelectValue placeholder="Select an employee" /></SelectTrigger>
+              <SelectTrigger className="w-full"><SelectValue placeholder="Select an employee">{managerId ? (() => { const e = employeesPage?.data.find((emp) => emp.id === managerId); return e ? `${e.firstName} ${e.lastName}` : undefined; })() : undefined}</SelectValue></SelectTrigger>
               <SelectContent>
                 {employeesPage?.data.map((e) => (
                   <SelectItem key={e.id} value={e.id}>{e.firstName} {e.lastName}</SelectItem>

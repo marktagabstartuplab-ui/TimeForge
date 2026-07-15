@@ -131,7 +131,7 @@ export function CreateProjectModal({
               name="departmentId"
               render={({ field }) => (
                 <Select value={field.value} onValueChange={field.onChange}>
-                  <SelectTrigger className="w-full"><SelectValue placeholder="Select a department" /></SelectTrigger>
+                  <SelectTrigger className="w-full"><SelectValue placeholder="Select a department">{field.value ? departments.find((d) => d.id === field.value)?.name : undefined}</SelectValue></SelectTrigger>
                   <SelectContent>
                     {departments.map((d) => (
                       <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
@@ -151,7 +151,7 @@ export function CreateProjectModal({
                 name="clientId"
                 render={({ field }) => (
                   <Select value={field.value ?? "NONE"} onValueChange={(v) => field.onChange(v === "NONE" ? undefined : v)}>
-                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="No client">{field.value && field.value !== "NONE" ? clients?.find((c) => c.id === field.value)?.name : field.value === "NONE" ? "No client" : undefined}</SelectValue></SelectTrigger>
                     <SelectContent>
                       <SelectItem value="NONE">No client</SelectItem>
                       {clients?.map((c) => (
@@ -169,7 +169,7 @@ export function CreateProjectModal({
                 name="status"
                 render={({ field }) => (
                   <Select value={field.value} onValueChange={field.onChange}>
-                    <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+                    <SelectTrigger className="w-full"><SelectValue placeholder="Select status">{STATUSES.find((s) => s.value === field.value)?.label}</SelectValue></SelectTrigger>
                     <SelectContent>
                       {STATUSES.map((s) => (
                         <SelectItem key={s.value} value={s.value}>{s.label}</SelectItem>
