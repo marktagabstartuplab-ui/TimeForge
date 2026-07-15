@@ -100,9 +100,27 @@ export function TimeTrackingContent() {
     )[0] ?? null;
   }, [summary.running, onBreak, entries]);
 
-  // EOD Review is only meaningful once the day's plan is committed and work has
-  // started — gate the button until then (QA #17) instead of opening an empty review.
-  const canReviewDay = Boolean(scrumEntry?.today) && entries.length > 0;
+  // EOD Review ("End of Day Review" header button and "Time Out & Review" in
+  // CurrentSessionCard — the same action, two entry points) is only meaningful
+  // once the day's plan is committed, work has started, AND Work Details are
+  // saved for the current session (QA: employees could time out with Daily
+  // Scrum/Work Details still empty). Single source of truth reused by both
+  // buttons so they can never disagree.
+  const hasScrumPlan = Boolean(scrumEntry?.today);
+  const hasWorkDetails = Boolean(editableEntry?.task?.trim() && editableEntry?.description?.trim());
+  const canReviewDay = hasScrumPlan && entries.length > 0 && hasWorkDetails;
+  const reviewBlockedReason = canReviewDay
+    ? null
+    : [
+        !hasScrumPlan ? "save today's Daily Scrum commitments" : null,
+        hasScrumPlan && entries.length === 0 ? "clock in and log some work" : null,
+        entries.length > 0 && !hasWorkDetails ? "complete and save Work Details (task & description)" : null,
+      ]
+        .filter((r): r is string => Boolean(r))
+        .reduce((sentence, part, i, arr) => {
+          if (i === 0) return `Please ${part}`;
+          return i === arr.length - 1 ? `${sentence}, and ${part}` : `${sentence}, ${part}`;
+        }, "") + " before ending your day.";
 
   const departmentName = useMemo(() => {
     const id = meQuery.data?.departmentId;
@@ -124,11 +142,7 @@ export function TimeTrackingContent() {
             type="button"
             onClick={() => setEodOpen(true)}
             disabled={!canReviewDay}
-            title={
-              canReviewDay
-                ? undefined
-                : "Save today's daily plan and clock in before ending your day."
-            }
+            title={canReviewDay ? undefined : reviewBlockedReason ?? undefined}
             className="flex h-11 items-center gap-2 rounded-[10px] border border-[#c3c6d2]/60 bg-white px-5 text-sm font-bold text-brand-navy transition-colors hover:bg-[#f6f3f4] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
           >
             <SunsetIcon className="h-[18px] w-[18px] text-brand" aria-hidden="true" />
@@ -174,6 +188,8 @@ export function TimeTrackingContent() {
               runningClientId={summary.running?.clientId ?? null}
               loading={entriesQuery.isFetching}
               onTimeOut={() => setEodOpen(true)}
+              reviewReady={canReviewDay}
+              reviewBlockedReason={reviewBlockedReason}
             />
 
             <ScrumTaskCard
