@@ -38,7 +38,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
   ],
   HR: [
     "user:read",
-    "timesheet:read", "timesheet:read_org",
+    "timesheet:read_org",
     "kpi_progress:read_org", "kpi:read_org", "kpi_template:read",
     "attendance:read_org",
     "payroll_period:read",
@@ -51,7 +51,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
   ],
   FINANCE: [
     "user:read",
-    "timesheet:read", "timesheet:read_org",
+    "timesheet:read_org",
     "kpi_progress:read_org", "kpi:read_org",
     "payroll:read", "payroll_period:read", "payroll_period:create", "payroll_period:update",
     "payroll:generate", "payroll:export", "payroll_rate:read", "payroll_rate:update",
