@@ -12,6 +12,8 @@ interface MetricCardProps {
   /** Highlighted card (brand border), e.g. Est. Total Payout. */
   emphasis?: boolean;
   className?: string;
+  /** Override the value color, e.g. "text-brand" or "text-red-600". */
+  valueClassName?: string;
 }
 
 /**
@@ -27,6 +29,7 @@ export function MetricCard({
   caption,
   emphasis,
   className,
+  valueClassName,
 }: MetricCardProps) {
   return (
     <div
@@ -51,7 +54,7 @@ export function MetricCard({
           </span>
         ) : null}
       </div>
-      <p className="text-[26px] font-bold leading-none text-brand-ink">
+      <p className={cn("text-[26px] font-bold leading-none text-brand-ink", valueClassName)}>
         {value}
         {valueSuffix ? (
           <span className="ml-1 text-sm font-normal text-brand-muted">{valueSuffix}</span>
