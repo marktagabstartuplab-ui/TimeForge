@@ -91,10 +91,16 @@ export class ScrumService {
       throw new UnprocessableEntityException('entryDate must be a valid date');
     }
 
-    // entryDate must not be in the future (compare by date only, UTC)
-    const today = new Date();
-    today.setUTCHours(23, 59, 59, 999);
-    if (entryDate > today) {
+    // entryDate must not be in the future. Clients send their *local* calendar
+    // date, which for timezones ahead of UTC (e.g. UTC+8) is one day ahead of
+    // the server's UTC date between local midnight and local 08:00 — a strict
+    // UTC comparison rejected every scrum save in that window ("entryDate
+    // cannot be in the future"), blocking the whole Daily Scrum/EOD workflow.
+    // Allow one day of timezone grace (local offsets max out under +14h).
+    const latestAllowed = new Date();
+    latestAllowed.setUTCDate(latestAllowed.getUTCDate() + 1);
+    latestAllowed.setUTCHours(23, 59, 59, 999);
+    if (entryDate > latestAllowed) {
       throw new UnprocessableEntityException('entryDate cannot be in the future');
     }
 

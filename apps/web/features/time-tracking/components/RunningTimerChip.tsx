@@ -23,10 +23,17 @@ import { hasPermission } from "@/features/auth/rbac";
 export function RunningTimerChip() {
   const [now, setNow] = useState(() => Date.now());
   const { user } = useAuth();
-  // Roles without time_entry:read (Finance, HR) can never have a work session —
-  // polling this endpoint for them just retries a permanent 403 forever.
-  const isExcludedRole = user?.roles.some((r) => r === "HR" || r === "FINANCE") ?? false;
-  const canHaveWorkSession = !isExcludedRole && hasPermission(user?.roles, "time_entry:read");
+  // The running-session chip is an Employee/Intern feature (Intern is not an
+  // access role — interns hold EMPLOYEE, per packages/shared permissions). It
+  // must not render for Admin/HR/Finance/Supervisor, even when such an account
+  // has an active session (e.g. Admin's wildcard permission passes
+  // time_entry:read). Also avoids polling a permanent 403 for HR/Finance.
+  const isPrivilegedRole =
+    user?.roles.some((r) => r === "ADMIN" || r === "SUPERVISOR" || r === "HR" || r === "FINANCE") ?? false;
+  const canHaveWorkSession =
+    !isPrivilegedRole &&
+    (user?.roles.includes("EMPLOYEE") ?? false) &&
+    hasPermission(user?.roles, "time_entry:read");
 
   const { data: workSession } = useQuery({
     queryKey: ["work-session", "current"],
@@ -45,6 +52,10 @@ export function RunningTimerChip() {
     return () => clearInterval(id);
   }, [running]);
 
+  // Render-guard, not just a fetch-guard: another component on the page (e.g.
+  // the dashboard clock-in card) can populate the shared ["work-session",
+  // "current"] cache, which this disabled query would still read.
+  if (!canHaveWorkSession) return null;
   if (!running || !session) return null;
 
   const breakMinutes = session.breakMinutes ?? 0;

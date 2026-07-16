@@ -1,6 +1,7 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, Prisma } from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { CacheService } from '../../infra/cache.service';
 import { buildPage, decodeCursor, ListQuery, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { CreateDepartmentDto, UpdateDepartmentDto } from './dto';
@@ -33,7 +34,20 @@ function shapeDepartment(dept: DepartmentWithRelations, counts?: DepartmentCount
 
 @Injectable()
 export class DepartmentsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly cache: CacheService,
+  ) {}
+
+  /**
+   * The Organizational Management dashboard (department directory, counts,
+   * hierarchy) is served from a 120s server-side cache — without busting it,
+   * a newly created/edited department doesn't appear until the TTL expires,
+   * even though the client refetches immediately.
+   */
+  private async bustOrgDashboardCache(organizationId: string): Promise<void> {
+    await this.cache.del(`org:dashboard:${organizationId}`);
+  }
 
   /** Active headcount per department, split into interns vs. everyone else. */
   private async countsByDepartment(
@@ -105,6 +119,7 @@ export class DepartmentsService {
     if (dto.managerId) await this.validateManager(tenantId, orgId, dto.managerId);
     const created = await this.createRow(tenantId, orgId, actorId, dto);
     await this.audit(tenantId, actorId, AuditAction.ADMIN_ACTION, 'department', created.id, { event: 'DEPARTMENT_CREATED', name: created.name });
+    await this.bustOrgDashboardCache(orgId);
     return shapeDepartment(created);
   }
 
@@ -158,6 +173,7 @@ export class DepartmentsService {
     }
 
     await this.audit(caller.tenantId, caller.userId, AuditAction.ADMIN_ACTION, 'department', id, { event: 'DEPARTMENT_UPDATED', ...rest });
+    await this.bustOrgDashboardCache(caller.organizationId);
     return shapeDepartment(updated);
   }
 
@@ -179,6 +195,7 @@ export class DepartmentsService {
     if (existing.version !== version) throw new ConflictException('Version mismatch');
     await this.prisma.department.update({ where: { id }, data: { deletedAt: new Date(), updatedBy: actorId, version: { increment: 1 } } });
     await this.audit(tenantId, actorId, AuditAction.ADMIN_ACTION, 'department', id, { event: 'DEPARTMENT_DELETED', name: existing.name });
+    await this.bustOrgDashboardCache(orgId);
   }
 
   private async audit(tenantId: string, actorId: string, action: AuditAction, entityType: string, entityId: string, metadata: Prisma.InputJsonValue) {

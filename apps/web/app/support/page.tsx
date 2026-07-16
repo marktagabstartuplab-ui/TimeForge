@@ -2,6 +2,7 @@ import type { Metadata } from "next";
 import { Mail, MessageCircle, BookOpen } from "lucide-react";
 import { AuthTopBar } from "@/features/auth/components/AuthTopBar";
 import { AuthFooter } from "@/features/auth/components/AuthFooter";
+import { SupportBackButton } from "@/features/auth/components/SupportBackButton";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { Button } from "@/components/ui/button";
@@ -19,7 +20,10 @@ export default function SupportPage() {
       <AuthTopBar />
       <main className="mx-auto w-full max-w-3xl flex-1 px-4 py-12 sm:px-6 lg:px-8">
         <div className="flex flex-col gap-6">
-          <PageHeader title="Support" subtitle="Get help with your TimeForge account." />
+          <div>
+            <SupportBackButton />
+            <PageHeader title="Support" subtitle="Get help with your TimeForge account." />
+          </div>
 
           <SectionCard title="Contact Us">
             <div className="flex items-center justify-between gap-4">

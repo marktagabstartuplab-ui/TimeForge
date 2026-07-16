@@ -42,6 +42,11 @@ export class AuthController {
     this.setRefreshCookie(res, result.refreshToken);
     return {
       accessToken: result.accessToken,
+      // Body copy of the refresh token — the client keeps it as a fallback for
+      // when the cross-site httpOnly cookie isn't sent (e.g. Safari ITP, or a
+      // frontend/backend domain split). The cookie remains the primary path;
+      // tokens are rotated on every refresh and reuse is detected server-side.
+      refreshToken: result.refreshToken,
       tokenType: 'Bearer',
       expiresIn: result.expiresIn,
       user: result.user,
@@ -56,7 +61,13 @@ export class AuthController {
     const raw = req.cookies?.[REFRESH_COOKIE] ?? (req.body as { refreshToken?: string })?.refreshToken;
     const tokens = await this.auth.refresh(raw, req.ip);
     this.setRefreshCookie(res, tokens.refreshToken);
-    return { accessToken: tokens.accessToken, tokenType: 'Bearer', expiresIn: tokens.expiresIn };
+    return {
+      accessToken: tokens.accessToken,
+      // Rotated token for the client's body-based fallback (see login()).
+      refreshToken: tokens.refreshToken,
+      tokenType: 'Bearer',
+      expiresIn: tokens.expiresIn,
+    };
   }
 
   @Public()

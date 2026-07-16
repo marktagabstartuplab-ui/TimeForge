@@ -18,6 +18,7 @@ import { FieldError, FormBanner } from "@/features/auth/components/FormMessages"
 import {
   createScrumEntry,
   listScrumEntries,
+  listScrumTasks,
   updateScrumEntry,
   type ScrumEntry,
 } from "@/features/scrum/api/scrum.service";
@@ -66,6 +67,16 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
     enabled: open,
   });
   const scrum = freshScrum?.data[0] ?? scrumEntry;
+
+  // The plan lives in ScrumTask rows (task-driven flow) — the legacy `today`
+  // free text is created empty, so commitments must come from the tasks. Same
+  // query key as ScrumTaskCard/TimeTrackingContent → served from the shared cache.
+  const { data: scrumTasks } = useQuery({
+    queryKey: ["scrum-tasks", scrum?.id],
+    queryFn: () => listScrumTasks(scrum!.id),
+    enabled: open && Boolean(scrum),
+  });
+  const commitments = scrumTasks ?? [];
 
   const {
     register,
@@ -164,7 +175,35 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
               <p className="mb-2 text-xs font-bold uppercase tracking-[1px] text-brand-muted">
                 Today&apos;s Commitments
               </p>
-              {scrum?.today ? (
+              {commitments.length > 0 ? (
+                <ul className="flex flex-col gap-2">
+                  {commitments.map((task) => (
+                    <li
+                      key={task.id}
+                      className="flex items-start justify-between gap-3 rounded-[12px] border border-[#c3c6d2]/50 bg-white p-4 shadow-[0px_1px_1px_rgba(0,0,0,0.05)]"
+                    >
+                      <div className="flex items-start gap-2.5">
+                        <Target className="mt-0.5 h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
+                        <div>
+                          <p className="text-sm font-semibold text-brand-ink">{task.title}</p>
+                          {task.expectedOutput ? (
+                            <p className="mt-0.5 text-xs text-brand-muted">{task.expectedOutput}</p>
+                          ) : null}
+                        </div>
+                      </div>
+                      <span
+                        className={
+                          task.taskStatus === "COMPLETED"
+                            ? "shrink-0 rounded-full bg-[#f0fdf4] px-2.5 py-0.5 text-xs font-bold text-[#16a34a]"
+                            : "shrink-0 rounded-full bg-[#f6f3f4] px-2.5 py-0.5 text-xs font-bold text-brand-muted"
+                        }
+                      >
+                        {task.taskStatus === "COMPLETED" ? "Completed" : task.taskStatus === "IN_PROGRESS" ? "In progress" : "Pending"}
+                      </span>
+                    </li>
+                  ))}
+                </ul>
+              ) : scrum?.today ? (
                 <div className="rounded-[12px] border border-[#c3c6d2]/50 bg-white p-4 shadow-[0px_1px_1px_rgba(0,0,0,0.05)]">
                   <div className="flex items-start justify-between gap-3">
                     <div className="flex items-start gap-2.5">

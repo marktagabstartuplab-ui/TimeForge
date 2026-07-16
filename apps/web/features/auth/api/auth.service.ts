@@ -1,4 +1,4 @@
-import { apiClient, setRefreshTokenMemory } from "@/lib/api/client";
+import { apiClient, getRefreshTokenMemory, setRefreshTokenMemory } from "@/lib/api/client";
 
 export interface AuthUser {
   id: string;
@@ -73,14 +73,24 @@ export async function fetchDepartments(): Promise<Department[]> {
 }
 
 export async function logout(): Promise<void> {
-  await apiClient.post("/auth/logout");
+  try {
+    await apiClient.post("/auth/logout");
+  } finally {
+    // Drop the body-fallback copy of the refresh token along with the session.
+    setRefreshTokenMemory(null);
+  }
 }
 
 // Exchanges the httpOnly refresh cookie for a new access token — used to
-// restore a session after a hard page load/reload.
+// restore a session after a hard page load/reload. Sends the stored fallback
+// token in the body for environments where the cross-site cookie isn't sent.
 export async function refresh(): Promise<RefreshResponse> {
-  const { data } = await apiClient.post<RefreshResponse>("/auth/refresh");
-  // Store the new refresh token in memory as a body fallback
+  const fallback = getRefreshTokenMemory();
+  const { data } = await apiClient.post<RefreshResponse>(
+    "/auth/refresh",
+    fallback ? { refreshToken: fallback } : {},
+  );
+  // Store the rotated refresh token for the next body-based fallback.
   if (data.refreshToken) {
     setRefreshTokenMemory(data.refreshToken);
   }

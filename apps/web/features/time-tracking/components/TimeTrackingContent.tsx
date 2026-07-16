@@ -10,7 +10,7 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { Toast, type ToastState } from "@/components/shared/Toast";
 import { listTimeEntries, listAllTimeEntries } from "../api/time-entries.service";
 import { getCurrentWorkSession } from "../api/work-sessions.service";
-import { listScrumEntries, getScrumEntry } from "@/features/scrum/api/scrum.service";
+import { listScrumEntries, getScrumEntry, listScrumTasks } from "@/features/scrum/api/scrum.service";
 import { getMe } from "@/features/account/api/account.service";
 import { fetchDepartments } from "@/features/auth/api/auth.service";
 import { summarizeDay } from "../lib/day-summary";
@@ -98,6 +98,15 @@ export function TimeTrackingContent() {
   const scrumEntry = deepLinkQuery.data ?? scrumQuery.data?.data[0] ?? null;
   const onBreak = workSessionQuery.data?.onBreak ?? false;
 
+  // Today's plan lives in ScrumTask rows (task-driven flow) — the legacy
+  // free-text `today` field is created empty, so it can't be the gate. Same
+  // query key as ScrumTaskCard, so this is served from the shared cache.
+  const scrumTasksQuery = useQuery({
+    queryKey: ["scrum-tasks", scrumEntry?.id],
+    queryFn: () => listScrumTasks(scrumEntry!.id),
+    enabled: Boolean(scrumEntry),
+  });
+
   // Work Details must stay editable while clocked in — including on break, when
   // the backend has stopped the running entry (QA #16). Fall back to today's most
   // recent entry so the card doesn't lock the moment a break starts.
@@ -115,7 +124,10 @@ export function TimeTrackingContent() {
   // saved for the current session (QA: employees could time out with Daily
   // Scrum/Work Details still empty). Single source of truth reused by both
   // buttons so they can never disagree.
-  const hasScrumPlan = Boolean(scrumEntry?.today);
+  // Plan committed = today's entry has at least one planned task (or legacy
+  // free-text `today` content from before the task-driven flow).
+  const hasScrumPlan =
+    Boolean(scrumEntry) && ((scrumTasksQuery.data?.length ?? 0) > 0 || Boolean(scrumEntry?.today));
   const hasWorkDetails = Boolean(editableEntry?.task?.trim() && editableEntry?.description?.trim());
   const canReviewDay = hasScrumPlan && entries.length > 0 && hasWorkDetails;
   const reviewBlockedReason = canReviewDay

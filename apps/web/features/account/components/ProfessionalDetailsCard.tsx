@@ -72,7 +72,16 @@ export function ProfessionalDetailsCard({
         <div>
           <Label className="mb-1.5">Department</Label>
           {isEditing && onDepartmentChange ? (
-            <Select value={selectedDepartmentId ?? me.departmentId ?? "NONE"} onValueChange={(v) => onDepartmentChange(v === "NONE" || v === null ? "" : v)}>
+            <Select
+              value={selectedDepartmentId ?? me.departmentId ?? "NONE"}
+              onValueChange={(v) => onDepartmentChange(v === "NONE" || v === null ? "" : v)}
+              // base-ui Select renders the raw value (a UUID) in the trigger
+              // unless given an items map — same fix as the directory filters.
+              items={[
+                { value: "NONE", label: "No department" },
+                ...departments.map((d) => ({ value: d.id, label: d.name })),
+              ]}
+            >
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="NONE">No department</SelectItem>

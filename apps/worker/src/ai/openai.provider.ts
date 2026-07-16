@@ -47,8 +47,13 @@ export class OpenAiProvider {
       return this.stub(systemPrompt, userPrompt, startedAt);
     }
 
+    // Org-wide currency rule appended to every feature prompt in one place:
+    // TimeForge amounts are Philippine Pesos everywhere (BR: ₱, never $).
+    const currencyRule =
+      ' All monetary amounts are in Philippine Pesos — always write them with the ₱ symbol (or "PHP"), never "$" or USD.';
+
     const messages: OpenAiMessage[] = [
-      { role: 'system',  content: systemPrompt },
+      { role: 'system',  content: systemPrompt + currencyRule },
       { role: 'user',    content: userPrompt   },
     ];
 

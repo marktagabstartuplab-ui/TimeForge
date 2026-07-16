@@ -31,11 +31,27 @@ export const apiClient = axios.create({
 // In-memory access token, set by the AuthProvider on login. Kept out of
 // localStorage on purpose; the refresh token stays in an httpOnly cookie.
 let accessToken: string | null = null;
-// Body-based refresh token fallback — when the browser blocks cross-site
-// cookies (e.g. Safari ITP), the cookie isn't sent and the refresh fails.
-// Storing the refresh token in memory and sending it in the request body
-// works around this. The httpOnly cookie remains the primary mechanism.
-let refreshTokenMemory: string | null = null;
+
+// Body-based refresh token fallback — when the browser doesn't send the
+// cross-site httpOnly cookie (e.g. Safari ITP, or a frontend/backend domain
+// split like Vercel + Railway), the cookie-based refresh fails. We keep the
+// rotated refresh token and send it in the request body instead. Backed by
+// sessionStorage (not localStorage) so it survives a hard reload of the same
+// tab — otherwise refreshing the page logs the user out whenever the cookie
+// path is unavailable — while still dying with the tab. The httpOnly cookie
+// remains the primary mechanism; tokens rotate on every refresh and reuse is
+// detected server-side.
+const REFRESH_FALLBACK_KEY = "tf.refresh-fallback";
+
+function readStoredRefreshToken(): string | null {
+  try {
+    return typeof window !== "undefined" ? window.sessionStorage.getItem(REFRESH_FALLBACK_KEY) : null;
+  } catch {
+    return null; // storage disabled — memory-only fallback still applies
+  }
+}
+
+let refreshTokenMemory: string | null = readStoredRefreshToken();
 
 export function setAccessToken(token: string | null): void {
   accessToken = token;
@@ -43,6 +59,18 @@ export function setAccessToken(token: string | null): void {
 
 export function setRefreshTokenMemory(token: string | null): void {
   refreshTokenMemory = token;
+  try {
+    if (typeof window === "undefined") return;
+    if (token) window.sessionStorage.setItem(REFRESH_FALLBACK_KEY, token);
+    else window.sessionStorage.removeItem(REFRESH_FALLBACK_KEY);
+  } catch {
+    // Storage unavailable — in-memory fallback still works for this page life.
+  }
+}
+
+/** The current body-fallback refresh token (cookie remains primary). */
+export function getRefreshTokenMemory(): string | null {
+  return refreshTokenMemory;
 }
 
 /**
@@ -93,7 +121,7 @@ function refreshAccessToken(): Promise<string> {
         setAccessToken(data.accessToken);
         // Keep the rotated refresh token for future body-based fallbacks.
         if (data.refreshToken) {
-          refreshTokenMemory = data.refreshToken;
+          setRefreshTokenMemory(data.refreshToken);
         }
         return data.accessToken;
       })
@@ -123,8 +151,9 @@ apiClient.interceptors.response.use(
         return apiClient.request(config);
       } catch {
         // Refresh token invalid/expired/reused — the session can't be
-        // recovered. Clear the token and let AuthProvider redirect to /login.
+        // recovered. Clear the tokens and let AuthProvider redirect to /login.
         setAccessToken(null);
+        setRefreshTokenMemory(null);
         onSessionExpired?.();
       }
     }

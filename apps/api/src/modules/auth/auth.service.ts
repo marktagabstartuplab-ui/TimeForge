@@ -390,8 +390,12 @@ export class AuthService {
     const user = await this.prisma.user.findFirst({
       where: { email: normalized, deletedAt: null },
     });
-    // Always return 202 — don't reveal whether the email exists
-    if (!user || user.status !== 'ACTIVE') return;
+    // Always return 202 — don't reveal whether the email exists.
+    // INVITED users are included: the admin-invite email directs them to
+    // "Forgot password?" to set their first password, so dropping non-ACTIVE
+    // users here made every invitation a dead end (the reset email never
+    // arrived). PENDING/REJECTED/SUSPENDED/DEACTIVATED remain excluded.
+    if (!user || (user.status !== 'ACTIVE' && user.status !== 'INVITED')) return;
 
     const token = randomBytes(32).toString('hex');
     const tokenHash = this.sha256(token);
@@ -451,6 +455,15 @@ export class AuthService {
         passwordResetExpiresAt: null,
         failedLoginAttempts: 0,
         lockoutUntil: null,
+        // Completing a reset is how an INVITED user activates their account:
+        // the token only ever existed in their inbox, so it proves email
+        // ownership (verification) AND sets their first password. Login
+        // rejects non-ACTIVE statuses and unverified emails, so without both
+        // flips an invited user could set a password yet still never sign in.
+        // Other statuses / already-verified users are unchanged.
+        ...(user.status === 'INVITED'
+          ? { status: UserStatus.ACTIVE, emailVerifiedAt: user.emailVerifiedAt ?? new Date() }
+          : {}),
       },
     });
 
