@@ -44,6 +44,7 @@ import { SectionCard } from "@/components/shared/SectionCard";
 import { Toast, type ToastState } from "@/components/shared/Toast";
 import { ProgressBar } from "@/components/shared/ProgressBar";
 import { ErrorState } from "@/components/shared/ErrorState";
+import { useAuth } from "@/providers/auth-provider";
 import {
   AreaChart,
   Area,
@@ -113,6 +114,8 @@ function TrendIcon({ trend, className }: { trend: string; className?: string }) 
 
 export function SupervisorAiInsightsContent() {
   const [toast, setToast] = useState<ToastState | null>(null);
+  const { user } = useAuth();
+  const isSupervisorOnly = user?.roles.some((r) => r === "SUPERVISOR") && !user?.roles.some((r) => r === "ADMIN" || r === "HR" || r === "FINANCE");
   const [period, setPeriod] = useState<"daily" | "weekly" | "monthly">("weekly");
   const [insightPriority, setInsightPriority] = useState<string>("ALL");
   const [alertSeverity, setAlertSeverity] = useState<string>("ALL");
@@ -237,17 +240,19 @@ export function SupervisorAiInsightsContent() {
             <RefreshCw className="h-4 w-4" />
             <span className="hidden sm:inline ml-1">Refresh</span>
           </Button>
-          <div className="flex items-center gap-1 border border-[#c3c6d2] rounded-lg p-0.5 bg-white">
-            <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("CSV")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
-              <FileText className="h-3 w-3 mr-1" /> CSV
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("XLSX")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
-              <Download className="h-3 w-3 mr-1" /> Excel
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("PDF")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
-              <FileText className="h-3 w-3 mr-1" /> PDF
-            </Button>
-          </div>
+          {!isSupervisorOnly && (
+            <div className="flex items-center gap-1 border border-[#c3c6d2] rounded-lg p-0.5 bg-white">
+              <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("CSV")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
+                <FileText className="h-3 w-3 mr-1" /> CSV
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("XLSX")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
+                <Download className="h-3 w-3 mr-1" /> Excel
+              </Button>
+              <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("PDF")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
+                <FileText className="h-3 w-3 mr-1" /> PDF
+              </Button>
+            </div>
+          )}
         </div>
       </div>
 
