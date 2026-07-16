@@ -171,7 +171,12 @@ export function SupervisorAiInsightsContent() {
 
   const exportMutation = useMutation({
     mutationFn: (format: "CSV" | "XLSX" | "PDF") => queueSupervisorAiExport({ format }),
-    onSuccess: (res) => setToast({ message: res.message, tone: "success" }),
+    onSuccess: (res: any) => {
+      setToast({ message: "Export completed. Downloading...", tone: "success" });
+      if (res.url) {
+        window.open(res.url, "_blank");
+      }
+    },
     onError: (err: any) => setToast({ message: err?.message || "Export failed.", tone: "error" }),
   });
 
@@ -240,19 +245,17 @@ export function SupervisorAiInsightsContent() {
             <RefreshCw className="h-4 w-4" />
             <span className="hidden sm:inline ml-1">Refresh</span>
           </Button>
-          {!isSupervisorOnly && (
-            <div className="flex items-center gap-1 border border-[#c3c6d2] rounded-lg p-0.5 bg-white">
-              <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("CSV")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
-                <FileText className="h-3 w-3 mr-1" /> CSV
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("XLSX")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
-                <Download className="h-3 w-3 mr-1" /> Excel
-              </Button>
-              <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("PDF")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
-                <FileText className="h-3 w-3 mr-1" /> PDF
-              </Button>
-            </div>
-          )}
+          <div className="flex items-center gap-1 border border-[#c3c6d2] rounded-lg p-0.5 bg-white">
+            <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("CSV")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
+              <FileText className="h-3 w-3 mr-1" /> CSV
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("XLSX")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
+              <Download className="h-3 w-3 mr-1" /> Excel
+            </Button>
+            <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("PDF")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
+              <FileText className="h-3 w-3 mr-1" /> PDF
+            </Button>
+          </div>
         </div>
       </div>
 

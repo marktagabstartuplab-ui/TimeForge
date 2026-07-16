@@ -11,6 +11,7 @@ import { AuthPrincipal } from '../../common/decorators';
 import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { PERMISSIONS } from '@timeforge/shared';
 import { SupervisorAiExportDto, SupervisorAiQuery } from './dto';
+import { StorageService } from '../storage/storage.service';
 
 @Injectable()
 export class SupervisorAiService {
@@ -20,6 +21,7 @@ export class SupervisorAiService {
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
     private readonly deptScope: DepartmentScopeService,
+    private readonly storage: StorageService,
     @InjectQueue('performance-export') private readonly exportQueue: Queue,
   ) {}
 
@@ -865,13 +867,98 @@ export class SupervisorAiService {
       select: { id: true, firstName: true, lastName: true },
     });
 
-    const job = await this.exportQueue.add('performance-export-job', {
-      tenantId: p.tenantId,
-      organizationId: p.organizationId,
-      userIds: members.map((m) => m.id),
-      format: dto.format,
-      actorId: p.userId,
-    }, { attempts: 3, backoff: { type: 'exponential', delay: 5000 } });
+    const key = `exports/performance_${p.userId}_${Date.now()}.${dto.format.toLowerCase()}`;
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: members.map((m) => m.id) }, deletedAt: null },
+      include: {
+        securityLogs: { take: 5 },
+        kpiProgress: { include: { kpiTemplate: true } },
+      },
+    });
+
+    if (dto.format === 'CSV') {
+      const csvLines = ['User ID,Name,Email,KPI Module,Current Value,Target Value,Score'];
+      users.forEach((u) => {
+        u.kpiProgress.forEach((k) => {
+          const score = Number(k.targetValue) > 0 ? Math.min(100, Math.round((Number(k.currentValue) / Number(k.targetValue)) * 100)) : 0;
+          csvLines.push(
+            [
+              u.id,
+              `"${u.firstName} ${u.lastName}"`,
+              u.email,
+              `"${k.kpiTemplate.name}"`,
+              k.currentValue,
+              k.targetValue,
+              score,
+            ].join(','),
+          );
+        });
+      });
+      const buffer = Buffer.from(csvLines.join('\n'), 'utf-8');
+      await this.storage.put(key, buffer, { contentType: 'text/csv' });
+    } else if (dto.format === 'XLSX') {
+      const ExcelJS = await import('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      const sheet = workbook.addWorksheet('Performance');
+      sheet.columns = [
+        { header: 'User ID', key: 'id', width: 36 },
+        { header: 'Name', key: 'name', width: 25 },
+        { header: 'Email', key: 'email', width: 25 },
+        { header: 'KPI Module', key: 'kpi', width: 30 },
+        { header: 'Current Value', key: 'current', width: 15 },
+        { header: 'Target Value', key: 'target', width: 15 },
+        { header: 'Score %', key: 'score', width: 10 },
+      ];
+
+      users.forEach((u) => {
+        u.kpiProgress.forEach((k) => {
+          const score = Number(k.targetValue) > 0 ? Math.min(100, Math.round((Number(k.currentValue) / Number(k.targetValue)) * 100)) : 0;
+          sheet.addRow({
+            id: u.id,
+            name: `${u.firstName} ${u.lastName}`,
+            email: u.email,
+            kpi: k.kpiTemplate.name,
+            current: Number(k.currentValue),
+            target: Number(k.targetValue),
+            score,
+          });
+        });
+      });
+
+      const excelBuffer = await workbook.xlsx.writeBuffer();
+      const buffer = Buffer.from(excelBuffer as ArrayBuffer);
+      await this.storage.put(key, buffer, { contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
+    } else {
+      const { default: PDFDocument } = await import('pdfkit');
+      const doc = new PDFDocument({ margin: 50 });
+      const chunks: Buffer[] = [];
+      doc.on('data', (chunk) => chunks.push(chunk));
+
+      doc.fontSize(20).text('Employee Performance Audit Report', { align: 'center' });
+      doc.moveDown(2);
+
+      users.forEach((u) => {
+        doc.fontSize(14).text(`Employee: ${u.firstName} ${u.lastName} (${u.email})`, { underline: true });
+        doc.moveDown(0.5);
+
+        u.kpiProgress.forEach((k) => {
+          const score = Number(k.targetValue) > 0 ? Math.min(100, Math.round((Number(k.currentValue) / Number(k.targetValue)) * 100)) : 0;
+          doc.fontSize(10).text(`- KPI: ${k.kpiTemplate.name} | Progress: ${k.currentValue}/${k.targetValue} (${score}%)`);
+        });
+
+        doc.moveDown(1.5);
+      });
+
+      doc.end();
+
+      const buffer = await new Promise<Buffer>((resolve) => {
+        doc.on('end', () => resolve(Buffer.concat(chunks)));
+      });
+
+      await this.storage.put(key, buffer, { contentType: 'application/pdf' });
+    }
+
+    const signedUrl = await this.storage.signedUrl(key, 3600);
 
     await this.prisma.auditLog.create({
       data: {
@@ -879,12 +966,12 @@ export class SupervisorAiService {
         actorId: p.userId,
         action: 'AI_USAGE',
         entityType: 'supervisor_ai_export',
-        entityId: job.id ?? '',
+        entityId: p.userId,
         metadata: { format: dto.format, memberCount: members.length },
       },
     });
 
-    return { jobId: job.id, status: 'QUEUED', message: `Export queued as ${dto.format}` };
+    return { jobId: key, url: signedUrl, status: 'COMPLETED', message: `Export completed as ${dto.format}` };
   }
 
   // ─────── Helpers ───────
