@@ -43,8 +43,14 @@ export type DailyScrumValues = z.infer<typeof dailyScrumSchema>;
 
 /** Work Details card — context saved onto the running time entry. */
 export const workDetailsSchema = z.object({
-  task: z.string().max(200, "Keep the task name under 200 characters").optional(),
-  workDescription: z.string().max(4500, "Keep the description under 4500 characters").optional(),
+  task: z
+    .string()
+    .min(1, "Task is required — briefly describe what you're working on")
+    .max(200, "Keep the task name under 200 characters"),
+  workDescription: z
+    .string()
+    .min(1, "Work Description is required — detail the specific work for this session")
+    .max(4500, "Keep the description under 4500 characters"),
   deliverables: z.string().max(5000, "Keep the deliverables under 5000 characters").optional(),
   departmentId: z.string().optional(),
   clientId: z.string().optional(),

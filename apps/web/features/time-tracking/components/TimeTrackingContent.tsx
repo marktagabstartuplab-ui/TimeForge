@@ -124,24 +124,38 @@ export function TimeTrackingContent() {
   // saved for the current session (QA: employees could time out with Daily
   // Scrum/Work Details still empty). Single source of truth reused by both
   // buttons so they can never disagree.
+  //
   // Plan committed = today's entry has at least one planned task (or legacy
   // free-text `today` content from before the task-driven flow).
+  const scrumTasks = scrumTasksQuery.data ?? [];
   const hasScrumPlan =
-    Boolean(scrumEntry) && ((scrumTasksQuery.data?.length ?? 0) > 0 || Boolean(scrumEntry?.today));
-  const hasWorkDetails = Boolean(editableEntry?.task?.trim() && editableEntry?.description?.trim());
+    Boolean(scrumEntry) && (scrumTasks.length > 0 || Boolean(scrumEntry?.today));
+  // All tasks completed = scrum is 100% done. When that's the case, we don't
+  // require Work Details to be filled in on the current running entry — the
+  // employee has demonstrably finished their commitments (QA: previously this
+  // permanently blocked EOD even after 100% task completion).
+  const allTasksCompleted =
+    scrumTasks.length > 0 && scrumTasks.every((t) => t.taskStatus === "COMPLETED");
+  const scrumIsLocked = scrumEntry?.isLocked ?? (scrumEntry?.status === "COMPLETED");
+  const hasWorkDetails =
+    allTasksCompleted ||
+    scrumIsLocked ||
+    Boolean(editableEntry?.task?.trim() && editableEntry?.description?.trim());
   const canReviewDay = hasScrumPlan && entries.length > 0 && hasWorkDetails;
   const reviewBlockedReason = canReviewDay
     ? null
     : [
         !hasScrumPlan ? "save today's Daily Scrum commitments" : null,
         hasScrumPlan && entries.length === 0 ? "clock in and log some work" : null,
-        entries.length > 0 && !hasWorkDetails ? "complete and save Work Details (task & description)" : null,
+        entries.length > 0 && !hasWorkDetails
+          ? "complete and save Work Details (task & description)"
+          : null,
       ]
         .filter((r): r is string => Boolean(r))
         .reduce((sentence, part, i, arr) => {
           if (i === 0) return `Please ${part}`;
           return i === arr.length - 1 ? `${sentence}, and ${part}` : `${sentence}, ${part}`;
-        }, "") + " before ending your day.";
+        }, "") + " before ending your day."
 
   const departmentName = useMemo(() => {
     const id = meQuery.data?.departmentId;
