@@ -78,6 +78,12 @@ export function CurrentSessionCard({
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["time-entries"] });
     queryClient.invalidateQueries({ queryKey: ["work-session", "current"] });
+    // The backend auto-unlocks today's locked scrum entry on clock-in so the
+    // employee can plan new tasks for the new session. Invalidate here so
+    // ScrumTaskCard immediately reflects the unlocked state instead of showing
+    // stale "Completed & Locked" data from the previous session's cache.
+    queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
+    queryClient.invalidateQueries({ queryKey: ["scrum-tasks"] });
   };
 
   const clockIn = useMutation({
