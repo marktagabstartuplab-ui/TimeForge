@@ -191,7 +191,7 @@ export function TimeTrackingContent() {
           role="status"
           className="rounded-[12px] border border-[#16a34a]/30 bg-[#f0fdf4] px-4 py-3 text-sm font-medium text-[#16a34a]"
         >
-          End of day review submitted — you&apos;re timed out. Starting the timer again reopens your day.
+          End of day review submitted — you&apos;re timed out. See you tomorrow!
         </p>
       ) : null}
 
