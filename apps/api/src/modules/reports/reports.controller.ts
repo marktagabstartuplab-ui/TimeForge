@@ -2,6 +2,7 @@ import {
   Body,
   Controller,
   Delete,
+  ForbiddenException,
   Get,
   HttpCode,
   Param,
@@ -145,11 +146,15 @@ export class ReportsController {
   }
 
   @Post('generate')
-  @RequirePermissions('dashboard:read_org')
   async generateReport(
     @CurrentUser() u: AuthPrincipal,
     @Body() dto: GenerateReportDto,
   ) {
+    const hasOrg = u.permissions.includes('dashboard:read_org');
+    const hasTeam = u.permissions.includes('dashboard:read_team');
+    if (!hasOrg && !hasTeam && !u.permissions.includes('*')) {
+      throw new ForbiddenException('Missing required permission');
+    }
     return this.svc.triggerGeneration(u, dto.category, dto.format, {
       userId: dto.userId,
       departmentId: dto.departmentId,
