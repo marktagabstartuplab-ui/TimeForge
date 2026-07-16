@@ -68,6 +68,10 @@ export function CurrentSessionCard({
   const session = workSession?.session ?? null;
   const onBreak = workSession?.onBreak ?? false;
   const running = Boolean(session?.isActive && !onBreak);
+  // Day is complete when today's session was explicitly closed via EOD
+  // (clockOut is set, isActive is false). Employees cannot re-clock-in
+  // until the next calendar day.
+  const dayCompleted = Boolean(session?.clockOut && !session?.isActive);
 
   useEffect(() => {
     if (!running && !onBreak) return;
@@ -78,12 +82,6 @@ export function CurrentSessionCard({
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["time-entries"] });
     queryClient.invalidateQueries({ queryKey: ["work-session", "current"] });
-    // The backend auto-unlocks today's locked scrum entry on clock-in so the
-    // employee can plan new tasks for the new session. Invalidate here so
-    // ScrumTaskCard immediately reflects the unlocked state instead of showing
-    // stale "Completed & Locked" data from the previous session's cache.
-    queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
-    queryClient.invalidateQueries({ queryKey: ["scrum-tasks"] });
   };
 
   const clockIn = useMutation({
@@ -92,11 +90,11 @@ export function CurrentSessionCard({
       clockInSession(
         selectedTask
           ? {
-              projectId: selectedTask.projectId ?? undefined,
-              clientId: selectedTask.clientId ?? undefined,
-              workCategoryId: selectedTask.workCategoryId ?? undefined,
-              description: selectedTask.title,
-            }
+            projectId: selectedTask.projectId ?? undefined,
+            clientId: selectedTask.clientId ?? undefined,
+            workCategoryId: selectedTask.workCategoryId ?? undefined,
+            description: selectedTask.title,
+          }
           : {},
       ),
     onSuccess: invalidate,

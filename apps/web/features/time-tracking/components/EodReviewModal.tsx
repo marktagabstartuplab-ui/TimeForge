@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -82,11 +82,22 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
     register,
     control,
     handleSubmit,
+    reset,
     formState: { errors },
   } = useForm<EodReviewValues>({
     resolver: zodResolver(eodReviewSchema),
     defaultValues: { accomplishments: "", finalBlockers: "", confirmed: false },
   });
+
+  // Clear the form every time the modal opens so a second EOD review doesn't
+  // pre-fill with text from the previous submission.
+  useEffect(() => {
+    if (open) {
+      reset({ accomplishments: "", finalBlockers: "", confirmed: false });
+      setServerError(null);
+      setCommitmentDone(false);
+    }
+  }, [open, reset]);
 
   const submit = useMutation({
     mutationFn: async (values: EodReviewValues) => {

@@ -52,6 +52,28 @@ export class WorkSessionsService {
     });
     if (active) throw new ConflictException('You already have an active session');
 
+    // Block re-clock-in if today's session was already completed via EOD
+    // (clockOut set + isActive false). New sessions are only allowed the
+    // next calendar day (after midnight). This prevents employees from
+    // starting a second session after submitting their End of Day Review.
+    const todayStart = this.today();
+    const todayEnd = new Date(todayStart);
+    todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
+    const todayCompletedSession = await this.prisma.workSession.findFirst({
+      where: {
+        tenantId: p.tenantId,
+        userId: p.userId,
+        workDate: { gte: todayStart, lt: todayEnd },
+        clockOut: { not: null },
+        isActive: false,
+      },
+    });
+    if (todayCompletedSession) {
+      throw new ConflictException(
+        "Today\u2019s work session is complete. New sessions are available from tomorrow.",
+      );
+    }
+
     const session = await this.prisma.workSession.create({
       data: {
         tenantId: p.tenantId,
@@ -79,43 +101,6 @@ export class WorkSessionsService {
     });
     await this.event(p, session.id, 'CLOCK_IN');
     await this.audit(p, AuditAction.ADMIN_ACTION, 'work_session', session.id, { event: 'CLOCK_IN' });
-
-    // If today's scrum entry is locked (100% completion from a prior session),
-    // auto-unlock it so the employee can plan new tasks for this new session.
-    // Progress and existing completed tasks are preserved — only the lock is
-    // lifted, allowing the "Plan New Task" form to appear again (QA: "today's
-    // commitments should reset after new session").
-    const todayStart = this.today();
-    const todayEnd = new Date(todayStart);
-    todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
-    const lockedEntry = await this.prisma.scrumEntry.findFirst({
-      where: {
-        tenantId: p.tenantId,
-        organizationId: p.organizationId,
-        userId: p.userId,
-        entryDate: { gte: todayStart, lt: todayEnd },
-        isLocked: true,
-        deletedAt: null,
-      },
-    });
-    if (lockedEntry) {
-      await this.prisma.scrumEntry.update({
-        where: { id: lockedEntry.id },
-        data: {
-          isLocked: false,
-          // Reset status to IN_PROGRESS so the employee can add more tasks.
-          // Progress percentage is kept as-is (completed tasks stay completed).
-          status: 'IN_PROGRESS',
-          updatedBy: p.userId,
-          version: { increment: 1 },
-        },
-      });
-      await this.audit(p, AuditAction.ADMIN_ACTION, 'scrum_entry', lockedEntry.id, {
-        event: 'SCRUM_AUTO_UNLOCKED_ON_NEW_SESSION',
-        workSessionId: session.id,
-      });
-    }
-
     return this.current(p);
   }
 
