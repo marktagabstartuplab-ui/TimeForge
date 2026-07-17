@@ -59,7 +59,7 @@ export function NotificationCard({ notification: n, onMarkRead, onArchive, onDel
             className="flex items-center gap-1 font-medium text-brand-muted hover:text-brand-navy"
           >
             <Archive className="h-3.5 w-3.5" aria-hidden="true" />
-            Archive
+            {n.isArchived ? "Unarchive" : "Archive"}
           </button>
           <button
             type="button"

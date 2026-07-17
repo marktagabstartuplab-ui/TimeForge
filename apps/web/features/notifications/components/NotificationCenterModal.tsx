@@ -35,11 +35,12 @@ import { useNotificationsRealtime } from "../hooks/useNotificationsRealtime";
 import { CATEGORY_LABELS, groupByDate } from "../lib/notification-copy";
 import { NotificationCard } from "./NotificationCard";
 
-type TabValue = "ALL" | "UNREAD" | NotificationCategory;
+type TabValue = "ALL" | "UNREAD" | "ARCHIVED" | NotificationCategory;
 
 const TABS: { value: TabValue; label: string }[] = [
   { value: "ALL", label: "All" },
   { value: "UNREAD", label: "Unread" },
+  { value: "ARCHIVED", label: "Archived" },
   { value: "DAILY_SCRUM", label: CATEGORY_LABELS.DAILY_SCRUM },
   { value: "TIMESHEETS", label: CATEGORY_LABELS.TIMESHEETS },
   { value: "PAYROLL", label: CATEGORY_LABELS.PAYROLL },
@@ -70,12 +71,22 @@ export function NotificationCenterModal() {
   const onHighPriority = useCallback((t: ToastState) => setToast(t), []);
   useNotificationsRealtime(user?.id, onHighPriority);
 
-  const category = tab === "ALL" || tab === "UNREAD" ? undefined : tab;
+  const isArchivedTab = tab === "ARCHIVED";
+  const category = tab === "ALL" || tab === "UNREAD" || tab === "ARCHIVED" ? undefined : tab;
   const unreadOnly = tab === "UNREAD";
 
   const listQuery = useQuery({
-    queryKey: ["notifications", "list", { category, unreadOnly, search, sortBy, page }],
-    queryFn: () => listNotifications({ category, unreadOnly, search: search || undefined, sortBy, page, pageSize: 8 }),
+    queryKey: ["notifications", "list", { category, unreadOnly, archived: isArchivedTab, search, sortBy, page }],
+    queryFn: () =>
+      listNotifications({
+        category,
+        unreadOnly,
+        archived: isArchivedTab,
+        search: search || undefined,
+        sortBy,
+        page,
+        pageSize: 8,
+      }),
     enabled: isOpen,
   });
 

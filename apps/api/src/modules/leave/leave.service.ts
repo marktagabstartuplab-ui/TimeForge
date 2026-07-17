@@ -137,7 +137,7 @@ export class LeaveService {
         title: 'New leave request',
         message: `${requester.firstName} ${requester.lastName} requested ${days} day(s) of ${dto.type.toLowerCase()} leave.`,
         priority: 'NORMAL',
-        actionUrl: '/leave',
+        actionUrl: '/supervisor/leave',
         actionLabel: 'Review Request',
       });
     }
@@ -400,7 +400,7 @@ export class LeaveService {
           ? `Your ${request.type.toLowerCase()} leave request has been approved.`
           : `Your leave request was rejected: ${dto.remark}`,
       priority: dto.action === 'APPROVE' ? 'NORMAL' : 'HIGH',
-      actionUrl: '/leave',
+      actionUrl: '/dashboard',
       actionLabel: 'View Details',
     });
 
