@@ -77,6 +77,10 @@ export function TeamProductivityReportContent() {
   const { data: historyData, isLoading: isHistoryLoading, refetch: refetchHistory } = useQuery({
     queryKey: ["reports", "history", historyQueryParams],
     queryFn: () => getReportsHistory(historyQueryParams),
+    refetchInterval: (query) => {
+      const data = query.state.data as any;
+      return (data?.data ?? []).some((r: any) => r.status === "PENDING") ? 3000 : false;
+    },
   });
 
   // Export Mutation
@@ -104,7 +108,8 @@ export function TeamProductivityReportContent() {
       setToast({ message: `Report download logged successfully.`, tone: "success" });
       refetchHistory();
       if (data.filePath) {
-        window.open(`/api/storage/${data.filePath}`, "_blank");
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+        window.open(`${baseUrl}/api/v1/storage/${data.filePath}`, "_blank");
       }
     },
     onError: (err: any) => {

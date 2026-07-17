@@ -40,4 +40,28 @@ export class StorageController {
     res.setHeader('Cache-Control', 'private, max-age=3600');
     res.send(file);
   }
+
+  @Public()
+  @Get('reports/:filename')
+  async getReport(@Param('filename') filename: string, @Res() res: Response): Promise<void> {
+    // Guard against path traversal — only a bare filename inside reports/.
+    if (filename.includes('/') || filename.includes('\\') || filename.includes('..')) {
+      throw new NotFoundException('Not found');
+    }
+    let file: Buffer;
+    try {
+      file = await this.storage.get(`reports/${filename}`);
+    } catch {
+      throw new NotFoundException('Report not found');
+    }
+    const ext = filename.split('.').pop()?.toLowerCase() ?? '';
+    let contentType = 'application/octet-stream';
+    if (ext === 'csv') contentType = 'text/csv';
+    else if (ext === 'xlsx') contentType = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+    else if (ext === 'pdf') contentType = 'application/pdf';
+
+    res.setHeader('Content-Type', contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${filename}"`);
+    res.send(file);
+  }
 }
