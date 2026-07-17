@@ -166,11 +166,15 @@ export class ReportsController {
 
   @Post('export')
   @HttpCode(200)
-  @RequirePermissions('audit:read_scoped')
   async auditDownload(
     @CurrentUser() u: AuthPrincipal,
     @Body() dto: { reportId: string },
   ) {
+    const hasAudit = u.permissions.includes('audit:read_scoped');
+    const hasTeam = u.permissions.includes('dashboard:read_team');
+    if (!hasAudit && !hasTeam && !u.permissions.includes('*')) {
+      throw new ForbiddenException('Missing required permission');
+    }
     return this.svc.auditDownload(u, dto.reportId);
   }
 
