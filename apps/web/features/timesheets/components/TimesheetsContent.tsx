@@ -18,6 +18,7 @@ import {
   listTimesheets,
   submitTimesheet,
   updateTimesheet,
+  downloadTimesheetPdf,
   type Timesheet,
 } from "../api/timesheets.service";
 import { summarizePeriod } from "../lib/period-summary";
@@ -168,6 +169,16 @@ export function TimesheetsContent() {
       setActionError(err instanceof ApiError ? err.message : "Could not submit the timesheet"),
   });
 
+  const downloadPdfMutation = useMutation({
+    mutationFn: () => {
+      if (!timesheet) return Promise.reject(new Error("No timesheet generated yet."));
+      return downloadTimesheetPdf(timesheet.id);
+    },
+    onSuccess: () => setActionError(null),
+    onError: (err: any) =>
+      setActionError(err instanceof ApiError ? err.message : (err?.message || "PDF download failed.")),
+  });
+
   const loading = timesheetsQuery.isLoading || entriesQuery.isLoading;
   const todayLoading = todayEntriesQuery.isLoading;
 
@@ -182,16 +193,22 @@ export function TimesheetsContent() {
               render={
                 <button
                   type="button"
-                  aria-disabled="true"
-                  onClick={(e) => e.preventDefault()}
-                  className="flex h-11 cursor-not-allowed items-center gap-2 rounded-[10px] border border-brand/40 bg-white px-5 text-sm font-bold text-brand opacity-70"
+                  disabled={!timesheet || downloadPdfMutation.isPending}
+                  onClick={() => downloadPdfMutation.mutate()}
+                  className="flex h-11 items-center gap-2 rounded-[10px] border border-brand bg-white px-5 text-sm font-bold text-brand hover:bg-brand/5 disabled:opacity-50 disabled:cursor-not-allowed"
                 >
-                  <Download className="h-[18px] w-[18px]" aria-hidden="true" />
+                  {downloadPdfMutation.isPending ? (
+                    <span className="h-4 w-4 animate-spin rounded-full border-2 border-brand border-t-transparent" />
+                  ) : (
+                    <Download className="h-[18px] w-[18px]" aria-hidden="true" />
+                  )}
                   Download PDF
                 </button>
               }
             />
-            <TooltipContent>Needs backend support — no timesheet export endpoint yet.</TooltipContent>
+            <TooltipContent>
+              {timesheet ? "Download a PDF copy of this timesheet" : "Save draft or submit timesheet to enable PDF download"}
+            </TooltipContent>
           </Tooltip>
         }
       />

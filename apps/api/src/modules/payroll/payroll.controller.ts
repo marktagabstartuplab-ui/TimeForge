@@ -12,8 +12,10 @@ import {
   Patch,
   Post,
   Query,
+  Res,
   UnprocessableEntityException,
 } from '@nestjs/common';
+import type { Response } from 'express';
 import { PayrollService } from './payroll.service';
 import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, RunActionDto, PayrollExportRequestDto, PayrollActionDto, PayrollRejectActionDto } from './dto';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
@@ -138,6 +140,19 @@ export class PayrollController {
   @RequirePermissions('payroll:read_self')
   getMyStatus(@CurrentUser() u: AuthPrincipal) {
     return this.svc.getMyPayrollStatus(u);
+  }
+
+  @Get('me/payslips/:id/pdf')
+  @RequirePermissions('payroll:read_self')
+  async downloadPayslipPdf(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.svc.exportPayslipPdf(u, id);
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.send(result.buffer);
   }
 
   // -- Hourly Rate Management (Finance / Admin) --

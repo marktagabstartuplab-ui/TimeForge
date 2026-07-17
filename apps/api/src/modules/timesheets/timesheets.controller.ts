@@ -146,6 +146,19 @@ export class TimesheetsController {
     return this.svc.findOneDetail(u, id);
   }
 
+  @Get(':id/export/pdf')
+  @RequirePermissions('timesheet:read')
+  async exportSinglePdf(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.svc.exportPdfSingle(u, id);
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.send(result.buffer);
+  }
+
   // -- Employee lifecycle --
 
   @Post()

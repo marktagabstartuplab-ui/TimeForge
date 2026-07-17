@@ -574,6 +574,123 @@ export class PayrollService {
     return { flaggedCount: report.lineItems.length };
   }
 
+  async exportPayslipPdf(p: AuthPrincipal, id: string): Promise<{ buffer: Buffer; contentType: string; filename: string }> {
+    const item = await this.prisma.payrollLineItem.findFirst({
+      where: { id, tenantId: p.tenantId },
+      include: {
+        user: { select: { firstName: true, lastName: true, email: true, jobTitle: true, department: { select: { name: true } } } },
+        payrollReport: {
+          include: {
+            period: true,
+          },
+        },
+      },
+    });
+    if (!item) throw new NotFoundException('Payslip not found');
+    
+    const isAllowedRole = p.roles.some((r) => r === 'FINANCE' || r === 'ADMIN' || r === 'HR');
+    if (item.userId !== p.userId && !isAllowedRole) {
+      throw new ForbiddenException('Not permitted to view this payslip');
+    }
+
+    const { default: PDFDocument } = await import('pdfkit');
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    const chunks: Buffer[] = [];
+    doc.on('data', (c: Buffer) => chunks.push(c));
+
+    doc.fontSize(20).font('Helvetica-Bold').text('TimeForge Payslip', { align: 'center' });
+    doc.moveDown(1.5);
+
+    const startY = doc.y;
+    doc.fontSize(10).font('Helvetica-Bold').text('EMPLOYEE DETAILS:', 40, startY);
+    doc.font('Helvetica')
+      .text(`Name: ${item.user.firstName} ${item.user.lastName}`)
+      .text(`Job Title: ${item.user.jobTitle ?? 'Employee'}`)
+      .text(`Department: ${item.user.department?.name ?? 'No Department'}`)
+      .text(`Email: ${item.user.email}`);
+
+    const rightX = 300;
+    doc.font('Helvetica-Bold').text('PAYSLIP DETAILS:', rightX, startY);
+    doc.font('Helvetica')
+      .text(`Pay Period: ${item.payrollReport.period.startDate.toISOString().slice(0, 10)} to ${item.payrollReport.period.endDate.toISOString().slice(0, 10)}`, rightX)
+      .text(`Status: ${item.payrollReport.period.status}`, rightX)
+      .text(`Issued On: ${item.createdAt.toISOString().slice(0, 10)}`, rightX);
+
+    doc.moveDown(2);
+    
+    const currentY = doc.y;
+    doc.moveTo(40, currentY).lineTo(doc.page.width - 40, currentY).stroke();
+    doc.moveDown(1);
+
+    doc.fontSize(12).font('Helvetica-Bold').text('Earnings Breakdown');
+    doc.moveDown(0.5);
+
+    const cols = ['Description', 'Hours / Rate', 'Amount'];
+    const colW = [250, 150, 120];
+    let x = 40;
+    doc.fontSize(10).font('Helvetica-Bold');
+    cols.forEach((c, i) => {
+      doc.text(c, x, doc.y, { width: colW[i], lineBreak: false });
+      x += colW[i];
+    });
+    doc.moveDown(0.5);
+    doc.font('Helvetica');
+    
+    const tableLineY = doc.y;
+    doc.moveTo(40, tableLineY).lineTo(doc.page.width - 40, tableLineY).stroke();
+    doc.moveDown(0.5);
+
+    const rate = Number(item.hourlyRate);
+    const approved = Number(item.approvedHours);
+    const overtime = Number(item.overtimeHours);
+    const regular = Math.max(0, approved - overtime);
+
+    const regPay = regular * rate;
+    const otPay = overtime * rate * 1.25;
+    const gross = Number(item.estimatedPay);
+
+    const drawTableRow = (desc: string, rateVal: string, amount: string) => {
+      const rowY = doc.y;
+      doc.text(desc, 40, rowY, { width: colW[0] });
+      doc.text(rateVal, 40 + colW[0], rowY, { width: colW[1] });
+      doc.text(amount, 40 + colW[0] + colW[1], rowY, { width: colW[2] });
+      doc.moveDown(0.5);
+    };
+
+    drawTableRow('Regular Hours', `${regular.toFixed(2)} hrs @ ₱${rate.toFixed(2)}/hr`, `₱${regPay.toFixed(2)}`);
+    drawTableRow('Overtime Hours', `${overtime.toFixed(2)} hrs @ ₱${(rate * 1.25).toFixed(2)}/hr`, `₱${otPay.toFixed(2)}`);
+
+    doc.moveDown(0.5);
+    const totalLineY = doc.y;
+    doc.moveTo(40, totalLineY).lineTo(doc.page.width - 40, totalLineY).stroke();
+    doc.moveDown(0.5);
+
+    doc.fontSize(11).font('Helvetica-Bold');
+    const grossY = doc.y;
+    doc.text('Gross Earnings', 40, grossY, { width: colW[0] });
+    doc.text(`₱${gross.toFixed(2)}`, 40 + colW[0] + colW[1], grossY, { width: colW[2] });
+
+    doc.moveDown(3);
+    doc.fontSize(8).font('Helvetica-Oblique').text('This is a system-generated payslip from TimeForge. No signature is required.', { align: 'center' });
+
+    doc.end();
+    const buffer = await new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: p.tenantId,
+        actorId: p.userId,
+        action: AuditAction.ADMIN_ACTION,
+        entityType: 'payslip_export',
+        entityId: id,
+        metadata: { format: 'PDF', employeeId: item.userId },
+      },
+    }).catch(() => {});
+
+    const filename = `payslip-${item.user.lastName}-${item.payrollReport.period.startDate.toISOString().slice(0, 10)}.pdf`;
+    return { buffer, contentType: 'application/pdf', filename };
+  }
+
   /**
    * Employee self-endpoint: returns their own payroll status (including base rate and estimated pay).
    */

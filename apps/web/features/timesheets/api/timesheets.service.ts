@@ -65,3 +65,18 @@ export async function submitTimesheet(id: string, payload: { summary?: string; v
   const { data } = await apiClient.post<Timesheet>(`/timesheets/${id}/submit`, payload);
   return data;
 }
+
+/** Fetches the timesheet PDF export file and triggers a client-side download. */
+export async function downloadTimesheetPdf(id: string): Promise<void> {
+  const { data: blob } = await apiClient.get<Blob>(`/timesheets/${id}/export/pdf`, {
+    responseType: "blob",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `timesheet-${id}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}

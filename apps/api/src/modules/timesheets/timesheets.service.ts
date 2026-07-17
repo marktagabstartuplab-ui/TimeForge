@@ -882,6 +882,135 @@ export class TimesheetsService {
     return { buffer, contentType: 'application/pdf', filename: `hr-timesheets-${new Date().toISOString().slice(0, 10)}.pdf` };
   }
 
+  async exportPdfSingle(p: AuthPrincipal, id: string): Promise<{ buffer: Buffer; contentType: string; filename: string }> {
+    const sheet = await this.prisma.timesheet.findFirst({
+      where: { id, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+      include: {
+        user: { select: { firstName: true, lastName: true, email: true, department: { select: { name: true } } } },
+        entries: {
+          where: { deletedAt: null },
+          orderBy: { startTime: 'asc' },
+          include: { project: { select: { name: true } } },
+        },
+        approvals: { orderBy: { createdAt: 'desc' }, take: 1, include: { supervisor: { select: { firstName: true, lastName: true } } } },
+      },
+    });
+    if (!sheet) throw new NotFoundException('Timesheet not found');
+    await this.assertCanView(p, sheet.userId);
+
+    const { default: PDFDocument } = await import('pdfkit');
+    const doc = new PDFDocument({ margin: 40, size: 'A4' });
+    const chunks: Buffer[] = [];
+    doc.on('data', (c: Buffer) => chunks.push(c));
+
+    doc.fontSize(20).font('Helvetica-Bold').text('TimeForge Timesheet Report', { align: 'center' });
+    doc.moveDown(1);
+
+    doc.fontSize(10).font('Helvetica-Bold').text('Employee Details:');
+    doc.font('Helvetica')
+      .text(`Name: ${sheet.user.firstName} ${sheet.user.lastName}`)
+      .text(`Email: ${sheet.user.email}`)
+      .text(`Department: ${sheet.user.department?.name ?? 'No Department'}`);
+    
+    doc.moveDown(0.5);
+    doc.font('Helvetica-Bold').text('Timesheet Details:');
+    doc.font('Helvetica')
+      .text(`Period: ${sheet.periodStart.toISOString().slice(0, 10)} to ${sheet.periodEnd.toISOString().slice(0, 10)}`)
+      .text(`Status: ${sheet.status}`)
+      .text(`Total Hours: ${(sheet.totalMinutes / 60).toFixed(2)} hrs`);
+
+    if (sheet.summary) {
+      doc.moveDown(0.5);
+      doc.font('Helvetica-Bold').text('Notes / Accomplishments:');
+      doc.font('Helvetica').text(sheet.summary);
+    }
+
+    if (sheet.approvals[0]) {
+      const app = sheet.approvals[0];
+      doc.moveDown(0.5);
+      doc.font('Helvetica-Bold').text('Approval History:');
+      doc.font('Helvetica')
+        .text(`Supervisor: ${app.supervisor.firstName} ${app.supervisor.lastName}`)
+        .text(`Decision: ${app.lastAction}`)
+        .text(`Date: ${app.actedAt.toISOString().slice(0, 10)}`)
+        .text(`Remarks: ${app.remark ?? 'No remarks'}`);
+    }
+
+    doc.moveDown(1.5);
+    doc.fontSize(12).font('Helvetica-Bold').text('Time Entries Log', { underline: true });
+    doc.moveDown(0.5);
+
+    const cols = ['Date', 'Project', 'Activity', 'Clock In', 'Clock Out', 'Duration'];
+    const colW = [70, 90, 120, 90, 90, 60];
+    let x = 40;
+    doc.fontSize(9).font('Helvetica-Bold');
+    cols.forEach((c, i) => {
+      doc.text(c, x, doc.y, { width: colW[i], lineBreak: false });
+      x += colW[i];
+    });
+    doc.moveDown(0.5);
+    doc.font('Helvetica');
+
+    const currentY = doc.y;
+    doc.moveTo(40, currentY).lineTo(doc.page.width - 40, currentY).stroke();
+    doc.moveDown(0.3);
+
+    for (const entry of sheet.entries) {
+      const dateStr = entry.startTime.toISOString().slice(0, 10);
+      const projName = entry.project?.name ?? 'None';
+      const desc = entry.description ?? 'No details';
+      const inTime = new Date(entry.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
+      const outTime = entry.endTime 
+        ? new Date(entry.endTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' }) 
+        : 'Active';
+      const dur = entry.durationMinutes ? `${(entry.durationMinutes / 60).toFixed(2)}h` : '—';
+
+      x = 40;
+      doc.fontSize(8);
+      
+      const rowY = doc.y;
+      doc.text(dateStr, x, rowY, { width: colW[0] });
+      doc.text(projName, x + colW[0], rowY, { width: colW[1] });
+      doc.text(desc, x + colW[0] + colW[1], rowY, { width: colW[2] });
+      doc.text(inTime, x + colW[0] + colW[1] + colW[2], rowY, { width: colW[3] });
+      doc.text(outTime, x + colW[0] + colW[1] + colW[2] + colW[3], rowY, { width: colW[4] });
+      doc.text(dur, x + colW[0] + colW[1] + colW[2] + colW[3] + colW[4], rowY, { width: colW[5] });
+
+      doc.moveDown(0.5);
+      
+      if (doc.y > doc.page.height - 60) {
+        doc.addPage();
+        x = 40;
+        doc.fontSize(9).font('Helvetica-Bold');
+        cols.forEach((c, i) => {
+          doc.text(c, x, doc.y, { width: colW[i], lineBreak: false });
+          x += colW[i];
+        });
+        doc.moveDown(0.5);
+        doc.font('Helvetica');
+        doc.moveTo(40, doc.y).lineTo(doc.page.width - 40, doc.y).stroke();
+        doc.moveDown(0.3);
+      }
+    }
+
+    doc.end();
+    const buffer = await new Promise<Buffer>((resolve) => doc.on('end', () => resolve(Buffer.concat(chunks))));
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: p.tenantId,
+        actorId: p.userId,
+        action: AuditAction.ADMIN_ACTION,
+        entityType: 'timesheet_single_export',
+        entityId: id,
+        metadata: { format: 'PDF', periodStart: sheet.periodStart, periodEnd: sheet.periodEnd },
+      },
+    });
+
+    const filename = `timesheet-${sheet.user.lastName}-${sheet.periodStart.toISOString().slice(0, 10)}.pdf`;
+    return { buffer, contentType: 'application/pdf', filename };
+  }
+
   private async buildHrExportWhere(p: AuthPrincipal, query: TimesheetQuery): Promise<Prisma.TimesheetWhereInput> {
     const where: Prisma.TimesheetWhereInput = {
       tenantId: p.tenantId,

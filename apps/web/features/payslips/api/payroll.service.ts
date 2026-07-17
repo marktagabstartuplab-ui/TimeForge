@@ -36,3 +36,18 @@ export async function getUserRate(userId: string): Promise<UserRate> {
   const { data } = await apiClient.get<UserRate>(`/payroll/rates/${userId}`);
   return data;
 }
+
+/** Fetches the individual payslip PDF and triggers a client-side download. */
+export async function downloadPayslipPdf(id: string): Promise<void> {
+  const { data: blob } = await apiClient.get<Blob>(`/payroll/me/payslips/${id}/pdf`, {
+    responseType: "blob",
+  });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `payslip-${id}.pdf`;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
