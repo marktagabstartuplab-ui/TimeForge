@@ -193,7 +193,7 @@ export function SecurityOversightContent() {
               <span className="text-xs font-semibold text-brand-muted uppercase">Uptime</span>
             </div>
             <div className="mt-4 w-full bg-gray-100 rounded-full h-2">
-              <div className="bg-[#0052cc] h-2 rounded-full" style={{ width: `${health?.uptimePercent ?? 99}%` }}></div>
+              <div className="bg-[#0052cc] h-2 rounded-full" style={{ width: `${health?.uptimePercent ?? 99.9}%` }}></div>
             </div>
             <p className="mt-3 text-xs text-brand-muted">Last check: 3 seconds ago</p>
           </div>
@@ -202,26 +202,36 @@ export function SecurityOversightContent() {
           <div className="rounded-[16px] border border-[#c3c6d2]/50 bg-white p-5 shadow-[0px_1px_2px_rgba(0,0,0,0.05)]">
             <span className="text-xs font-bold text-brand-muted uppercase tracking-wider">Threat Level Indicator</span>
             <div className="mt-4 flex items-end justify-between h-14 px-2">
-              <div className="flex flex-col items-center gap-1.5 w-8">
-                <div className="bg-gray-100 w-3 h-4 rounded-t"></div>
-                <span className="text-[10px] text-brand-muted font-bold">MON</span>
-              </div>
-              <div className="flex flex-col items-center gap-1.5 w-8">
-                <div className="bg-gray-100 w-3 h-8 rounded-t"></div>
-                <span className="text-[10px] text-brand-muted font-bold">TUE</span>
-              </div>
-              <div className="flex flex-col items-center gap-1.5 w-8">
-                <div className="bg-sky-400 w-3 h-12 rounded-t animate-pulse"></div>
-                <span className="text-[10px] text-brand-muted font-bold">WED</span>
-              </div>
-              <div className="flex flex-col items-center gap-1.5 w-8">
-                <div className="bg-gray-100 w-3.5 h-6 rounded-t"></div>
-                <span className="text-[10px] text-brand-muted font-bold">THU</span>
-              </div>
-              <div className="flex flex-col items-center gap-1.5 w-8">
-                <div className="bg-gray-100 w-3 h-2 rounded-t"></div>
-                <span className="text-[10px] text-brand-muted font-bold">FRI</span>
-              </div>
+              {isHealthLoading ? (
+                <div className="text-xs text-brand-muted w-full text-center">Loading trend...</div>
+              ) : health?.threatLevelByDay && health.threatLevelByDay.length > 0 ? (
+                health.threatLevelByDay.map((t, idx) => {
+                  const barHeight = Math.min(4 + t.count * 12, 48);
+                  const isToday = idx === health.threatLevelByDay!.length - 1;
+                  return (
+                    <div key={t.day} className="flex flex-col items-center gap-1.5 w-8">
+                      <div 
+                        className={cn(
+                          "w-3 rounded-t transition-all duration-300",
+                          t.count > 0 
+                            ? (isToday ? "bg-red-500 animate-pulse" : "bg-red-400") 
+                            : (isToday ? "bg-sky-400" : "bg-gray-200")
+                        )}
+                        style={{ height: `${barHeight}px` }}
+                        title={`${t.count} failed/denied requests`}
+                      />
+                      <span className="text-[10px] text-brand-muted font-bold">{t.day}</span>
+                    </div>
+                  );
+                })
+              ) : (
+                ["MON", "TUE", "WED", "THU", "FRI"].map((day) => (
+                  <div key={day} className="flex flex-col items-center gap-1.5 w-8">
+                    <div className="bg-gray-100 w-3 h-2 rounded-t" />
+                    <span className="text-[10px] text-brand-muted font-bold">{day}</span>
+                  </div>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -439,9 +449,11 @@ export function SecurityOversightContent() {
           <div className="relative bg-gray-100 rounded-lg overflow-hidden h-40 border border-gray-200 flex items-center justify-center">
             {/* Draw a stylized representation of map grids using Tailwind styles */}
             <div className="absolute inset-0 opacity-20 bg-[radial-gradient(#000_1px,transparent_1px)] [background-size:16px_16px]"></div>
-            <div className="h-10 w-24 bg-[#0052cc]/10 border border-[#0052cc]/30 rounded-full flex items-center justify-center gap-1.5 shadow">
+            <div className="h-10 px-4 bg-[#0052cc]/10 border border-[#0052cc]/30 rounded-full flex items-center justify-center gap-1.5 shadow">
               <span className="h-2 w-2 rounded-full bg-[#0052cc] animate-ping"></span>
-              <span className="text-xs font-bold text-brand-navy">Active Session: USA</span>
+              <span className="text-xs font-bold text-brand-navy">
+                Active Session: {isHealthLoading ? "..." : (health?.lastGeoLocation || "Manila, PH")}
+              </span>
             </div>
           </div>
         </div>
@@ -455,15 +467,21 @@ export function SecurityOversightContent() {
             <div className="flex flex-col gap-3 text-sm">
               <div className="flex items-center justify-between border-b border-[#c3c6d2]/20 pb-2">
                 <span className="text-brand-muted">SOC2 Controls</span>
-                <span className="font-bold text-[#15803d]">Compliant</span>
+                <span className="font-bold text-[#15803d]">
+                  {isHealthLoading ? "..." : (health?.compliance?.soc2 || "Compliant")}
+                </span>
               </div>
               <div className="flex items-center justify-between border-b border-[#c3c6d2]/20 pb-2">
                 <span className="text-brand-muted">GDPR Compliance</span>
-                <span className="font-bold text-[#15803d]">Compliant</span>
+                <span className="font-bold text-[#15803d]">
+                  {isHealthLoading ? "..." : (health?.compliance?.gdpr || "Compliant")}
+                </span>
               </div>
               <div className="flex items-center justify-between">
                 <span className="text-brand-muted">Last Audit</span>
-                <span className="font-bold text-brand-navy">Oct 12, 2023</span>
+                <span className="font-bold text-brand-navy">
+                  {isHealthLoading ? "..." : health?.compliance?.lastAuditDate ? formatDate(health.compliance.lastAuditDate) : "N/A"}
+                </span>
               </div>
             </div>
           </div>

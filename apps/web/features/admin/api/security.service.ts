@@ -45,6 +45,8 @@ export interface SecurityHealth {
     maxAttempts: number;
     lockoutDurationMinutes: number;
   };
+  threatLevelByDay?: { day: string; count: number }[];
+  lastGeoLocation?: string;
 }
 
 export interface SecurityLogsQuery {
