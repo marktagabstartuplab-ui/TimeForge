@@ -74,3 +74,16 @@ export async function listSessions(): Promise<Session[]> {
 export async function logoutOtherDevices(): Promise<void> {
   await apiClient.delete("/users/me/sessions");
 }
+
+export interface TeamMemberPresence {
+  id: string;
+  firstName: string;
+  lastName: string;
+  jobTitle: string | null;
+  isOnline: boolean;
+}
+
+export async function getTeamPresence(): Promise<TeamMemberPresence[]> {
+  const { data } = await apiClient.get<TeamMemberPresence[]>("/users/me/team-presence");
+  return data;
+}

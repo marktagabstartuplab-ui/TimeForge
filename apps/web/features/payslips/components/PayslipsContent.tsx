@@ -21,37 +21,33 @@ import {
   SelectTrigger,
   SelectValue,
 } from "@/components/ui/select";
-import { getMyPayroll, getUserRate, downloadPayslipPdf, type PayrollLineItemSelf } from "../api/payroll.service";
+import { getMyPayroll, downloadPayslipPdf, type PayrollLineItemSelf } from "../api/payroll.service";
+import { getMe, getTeamPresence } from "@/features/account/api/account.service";
 import { listTimeEntries } from "@/features/time-tracking/api/time-entries.service";
 import { RecentActivityCard } from "./RecentActivityCard";
 import { useCan } from "@/features/auth/rbac";
 import { useAuth } from "@/providers/auth-provider";
 import { formatPeriodRange, minutesBetween, toIsoDate, weekWindow } from "@/lib/time";
 
-const DAY_LABELS = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+
+function hoursOf(item: PayrollLineItemSelf): number {
+  return Number(item.approvedHours) + Number(item.overtimeHours);
+}
 
 function periodLabel(item: PayrollLineItemSelf): string {
   const { startDate, endDate } = item.payrollReport.period;
   return formatPeriodRange(new Date(startDate), new Date(endDate));
 }
 
-function hoursOf(item: PayrollLineItemSelf): number {
-  return Number(item.approvedHours) + Number(item.overtimeHours);
-}
-
 export function PayslipsContent() {
   const { user } = useAuth();
-  const canSeeRate = useCan("payroll_rate:read") || Boolean(user?.id);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 
   const payrollQuery = useQuery({ queryKey: ["payroll", "me"], queryFn: getMyPayroll });
-
-  const rateQuery = useQuery({
-    queryKey: ["payroll", "rate", user?.id],
-    queryFn: () => getUserRate(user!.id),
-    enabled: canSeeRate && Boolean(user?.id),
-  });
+  const meQuery = useQuery({ queryKey: ["account", "me"], queryFn: getMe });
+  const presenceQuery = useQuery({ queryKey: ["account", "team-presence"], queryFn: getTeamPresence });
 
   const downloadPayslipMutation = useMutation({
     mutationFn: (id: string) => downloadPayslipPdf(id),
@@ -87,7 +83,7 @@ export function PayslipsContent() {
   const selected = items.find((i) => i.id === selectedId) ?? items[0] ?? null;
 
   const accumulatedHours = selected ? hoursOf(selected) : 0;
-  const rate = rateQuery.data?.hourlyRate != null ? Number(rateQuery.data.hourlyRate) : null;
+  const rate = meQuery.data?.hourlyRate != null ? Number(meQuery.data.hourlyRate) : null;
 
   const columns: DataTableColumn<PayrollLineItemSelf>[] = [
     {
@@ -164,10 +160,34 @@ export function PayslipsContent() {
           )}
         </SectionCard>
         <SectionCard title="Team Status">
-          <EmptyState
-            variant="restricted"
-            message="Needs backend support — there is no team presence API yet."
-          />
+          {presenceQuery.isLoading ? (
+            <p className="text-sm text-brand-muted">Loading…</p>
+          ) : !presenceQuery.data || presenceQuery.data.length === 0 ? (
+            <EmptyState message="No team members in department yet." />
+          ) : (
+            <ul className="flex flex-col divide-y divide-[#c3c6d2]/40">
+              {presenceQuery.data.map((m) => (
+                <li key={m.id} className="flex items-center justify-between gap-3 py-2.5">
+                  <div className="flex flex-col min-w-0">
+                    <span className="truncate text-sm font-medium text-brand-navy">
+                      {m.firstName} {m.lastName}
+                    </span>
+                    {m.jobTitle && (
+                      <span className="truncate text-[11px] text-brand-muted">
+                        {m.jobTitle}
+                      </span>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center">
+                    <StatusBadge
+                      label={m.isOnline ? "Clocked In" : "Clocked Out"}
+                      tone={m.isOnline ? "success" : "neutral"}
+                    />
+                  </div>
+                </li>
+              ))}
+            </ul>
+          )}
         </SectionCard>
       </div>
 

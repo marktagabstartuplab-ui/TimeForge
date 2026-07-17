@@ -159,6 +159,53 @@ export class UsersService {
     return this.findOne(caller, caller.userId);
   }
 
+  async getTeamPresence(p: AuthPrincipal) {
+    const caller = await this.prisma.user.findFirst({
+      where: { id: p.userId, tenantId: p.tenantId, deletedAt: null },
+      select: { departmentId: true },
+    });
+    if (!caller || !caller.departmentId) {
+      return [];
+    }
+
+    const members = await this.prisma.user.findMany({
+      where: {
+        tenantId: p.tenantId,
+        departmentId: caller.departmentId,
+        status: 'ACTIVE',
+        deletedAt: null,
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        jobTitle: true,
+      },
+      orderBy: { lastName: 'asc' },
+    });
+
+    const openSessions = await this.prisma.workSession.findMany({
+      where: {
+        tenantId: p.tenantId,
+        userId: { in: members.map((m) => m.id) },
+        clockOut: null,
+      },
+      select: {
+        userId: true,
+      },
+    });
+
+    const activeUserIds = new Set(openSessions.map((s) => s.userId));
+
+    return members.map((m) => ({
+      id: m.id,
+      firstName: m.firstName,
+      lastName: m.lastName,
+      jobTitle: m.jobTitle,
+      isOnline: activeUserIds.has(m.id),
+    }));
+  }
+
   /** Flattens department/organization to {id, name} and swaps the raw storage key for a signed avatar URL. */
   private async shapeProfile(user: ProfileUser): Promise<Record<string, unknown>> {
     const { avatarKey, department, organization, ...rest } = user;

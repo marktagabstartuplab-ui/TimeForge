@@ -47,6 +47,12 @@ export class UsersController {
     return this.svc.findMe(u);
   }
 
+  @Get('me/team-presence')
+  @RequirePermissions('user:read_self')
+  getTeamPresence(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.getTeamPresence(u);
+  }
+
   @Patch('me')
   @RequirePermissions('user:read_self')
   updateMe(@CurrentUser() u: AuthPrincipal, @Body() dto: UpdateMeDto) {
