@@ -31,6 +31,7 @@ import {
   lockPeriod,
   flagDiscrepancies,
   exportPayroll,
+  mostRecentlyUpdatedPeriod,
   type PayrollPeriodType,
 } from "../api/payroll-processing.service";
 
@@ -84,7 +85,7 @@ export function PayrollProcessingContent() {
 
   useEffect(() => {
     if (!selectedPeriodId && periods.length > 0) {
-      setSelectedPeriodId(periods[0].id);
+      setSelectedPeriodId((mostRecentlyUpdatedPeriod(periods) ?? periods[0]).id);
     }
   }, [periods, selectedPeriodId]);
 

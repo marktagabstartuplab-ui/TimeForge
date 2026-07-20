@@ -34,6 +34,7 @@ import {
   createPeriod,
   generateReport,
   exportPayroll,
+  mostRecentlyUpdatedPeriod,
   type PayrollPeriodType,
 } from "@/features/payroll-processing/api/payroll-processing.service";
 import {
@@ -95,7 +96,7 @@ export function FinancePayrollProcessingContent() {
 
   useEffect(() => {
     if (!selectedPeriodId && periods.length > 0) {
-      setSelectedPeriodId(periods[0].id);
+      setSelectedPeriodId((mostRecentlyUpdatedPeriod(periods) ?? periods[0]).id);
     }
   }, [periods, selectedPeriodId]);
 

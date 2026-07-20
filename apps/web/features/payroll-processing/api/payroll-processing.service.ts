@@ -11,7 +11,18 @@ export interface PayrollPeriod {
   endDate: string;
   lockedAt: string | null;
   exportedAt: string | null;
+  updatedAt: string;
   version: number;
+}
+
+/** The period HR/Finance most recently touched (generated, locked, exported) —
+ *  a better landing default than the newest-dated period, which is often an
+ *  empty future one. */
+export function mostRecentlyUpdatedPeriod(periods: PayrollPeriod[]): PayrollPeriod | null {
+  if (periods.length === 0) return null;
+  return periods.reduce((best, p) =>
+    new Date(p.updatedAt).getTime() > new Date(best.updatedAt).getTime() ? p : best,
+  );
 }
 
 export interface PayrollLineItem {

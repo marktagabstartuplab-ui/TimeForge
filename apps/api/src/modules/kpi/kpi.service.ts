@@ -210,17 +210,7 @@ export class KpiService {
     });
 
     for (const tpl of templates) {
-      // ── appliesTo scope check ──────────────────────────────────────────────
-      const appliesTo = tpl.appliesTo as { roles?: string[]; departments?: string[] } | null;
-      if (appliesTo) {
-        if (appliesTo.roles && appliesTo.roles.length > 0) {
-          const overlap = userRoles.some((r) => appliesTo.roles!.includes(r));
-          if (!overlap) continue; // user's role not in allowed roles for this KPI
-        }
-        if (appliesTo.departments && appliesTo.departments.length > 0) {
-          if (!userDepartmentId || !appliesTo.departments.includes(userDepartmentId)) continue;
-        }
-      }
+      if (!this.templateAppliesToUser(tpl.appliesTo, userRoles, userDepartmentId)) continue;
 
       // ── increment value ──────────────────────────────────────────────────
       const increment = tpl.metricType === 'HOURS' ? approvedHours : 1;
@@ -261,17 +251,50 @@ export class KpiService {
     }
   }
 
+  /** Shared appliesTo scope check: a template with no appliesTo (or empty
+   *  role/department lists) applies to everyone; otherwise the user's role or
+   *  department must be in the allowed set. */
+  private templateAppliesToUser(
+    appliesToRaw: unknown,
+    userRoles: string[],
+    userDepartmentId: string | null,
+  ): boolean {
+    const appliesTo = appliesToRaw as { roles?: string[]; departments?: string[] } | null;
+    if (!appliesTo) return true;
+    if (appliesTo.roles && appliesTo.roles.length > 0) {
+      if (!userRoles.some((r) => appliesTo.roles!.includes(r))) return false;
+    }
+    if (appliesTo.departments && appliesTo.departments.length > 0) {
+      if (!userDepartmentId || !appliesTo.departments.includes(userDepartmentId)) return false;
+    }
+    return true;
+  }
+
   /**
    * GET /kpi/my-summary — returns the current user's KPI progress entries
    * enriched with target and percentage for the current period.
+   * Respects appliesTo scoping — only KPIs targeting the caller's role/department.
    */
   async getMyProgressSummary(p: AuthPrincipal) {
     const now = new Date();
 
-    // Fetch all org templates that apply to this user
-    const templates = await this.prisma.kpiTemplate.findMany({
-      where: { tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
-    });
+    // Fetch all org templates, then keep only those scoped to this user
+    const [allTemplates, user] = await Promise.all([
+      this.prisma.kpiTemplate.findMany({
+        where: { tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+      }),
+      this.prisma.user.findFirst({
+        where: { id: p.userId, tenantId: p.tenantId },
+        select: {
+          departmentId: true,
+          roles: { select: { role: { select: { name: true, key: true } } } },
+        },
+      }),
+    ]);
+    const roleNames = user?.roles.flatMap((r) => [r.role.name, r.role.key]) ?? [];
+    const templates = allTemplates.filter((tpl) =>
+      this.templateAppliesToUser(tpl.appliesTo, roleNames, user?.departmentId ?? null),
+    );
 
     const results = await Promise.all(
       templates.map(async (tpl) => {

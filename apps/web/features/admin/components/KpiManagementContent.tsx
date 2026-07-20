@@ -19,6 +19,7 @@ import {
   type KpiPeriod,
 } from "../api/kpi-management.service";
 import { ApiError } from "@/lib/api/client";
+import { listDepartments } from "@/features/schedules/api/departments-picker.service";
 
 const METRIC_TYPES: KpiMetricType[] = ["COUNT", "HOURS", "PERCENT", "CURRENCY", "CUSTOM"];
 const PERIODS: KpiPeriod[] = ["DAILY", "WEEKLY", "MONTHLY", "PAYROLL_PERIOD"];
@@ -40,11 +41,22 @@ export function KpiManagementContent() {
   const [modalOpen, setModalOpen] = useState(false);
   const [editing, setEditing] = useState<KpiTemplateRow | null>(null);
   const [form, setForm] = useState<KpiTemplatePayload>(EMPTY_FORM);
+  const [selectedDepts, setSelectedDepts] = useState<string[]>([]);
 
   const { data: templates = [], isLoading } = useQuery({
     queryKey: ["admin", "kpi-templates"],
     queryFn: listKpiTemplates,
   });
+
+  const { data: departments = [] } = useQuery({
+    queryKey: ["admin", "departments-picker"],
+    queryFn: listDepartments,
+  });
+
+  const deptName = (id: string) => departments.find((d) => d.id === id)?.name ?? "Unknown";
+
+  const toggleDept = (id: string) =>
+    setSelectedDepts((prev) => (prev.includes(id) ? prev.filter((d) => d !== id) : [...prev, id]));
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ["admin", "kpi-templates"] });
 
@@ -81,6 +93,7 @@ export function KpiManagementContent() {
   const openCreate = () => {
     setEditing(null);
     setForm(EMPTY_FORM);
+    setSelectedDepts([]);
     setModalOpen(true);
   };
 
@@ -96,6 +109,7 @@ export function KpiManagementContent() {
       formula: tpl.formula ?? "",
       displayFormat: tpl.displayFormat ?? "",
     });
+    setSelectedDepts(tpl.appliesTo?.departments ?? []);
     setModalOpen(true);
   };
 
@@ -106,6 +120,8 @@ export function KpiManagementContent() {
       formula: form.formula || undefined,
       displayFormat: form.displayFormat || undefined,
       description: form.description || undefined,
+      // Preserve any role scoping; empty departments list = applies to all
+      appliesTo: { ...(editing?.appliesTo ?? {}), departments: selectedDepts },
     };
     if (editing) {
       updateMutation.mutate({ id: editing.id, payload: { ...payload, version: editing.version } });
@@ -149,6 +165,7 @@ export function KpiManagementContent() {
                   <th className="py-3 px-3">Type</th>
                   <th className="py-3 px-3">Unit</th>
                   <th className="py-3 px-3">Period</th>
+                  <th className="py-3 px-3">Department</th>
                   <th className="py-3 px-3">Target</th>
                   <th className="py-3 px-3">Formula</th>
                   <th className="py-3 px-3 text-right">Actions</th>
@@ -171,6 +188,17 @@ export function KpiManagementContent() {
                     </td>
                     <td className="py-3 px-3 text-brand-muted">{tpl.unit || "—"}</td>
                     <td className="py-3 px-3 text-brand-muted">{tpl.period}</td>
+                    <td className="py-3 px-3">
+                      {tpl.appliesTo?.departments?.length ? (
+                        <div className="flex flex-wrap gap-1">
+                          {tpl.appliesTo.departments.map((id) => (
+                            <StatusBadge key={id} label={deptName(id)} tone="brand" />
+                          ))}
+                        </div>
+                      ) : (
+                        <span className="text-xs text-brand-muted">All departments</span>
+                      )}
+                    </td>
                     <td className="py-3 px-3 font-semibold text-brand-navy">{String(tpl.targetValue)}</td>
                     <td className="py-3 px-3 max-w-[220px] truncate text-xs text-brand-muted">{tpl.formula || "—"}</td>
                     <td className="py-3 px-3 text-right">
@@ -270,6 +298,32 @@ export function KpiManagementContent() {
                   onChange={(e) => setForm((f) => ({ ...f, targetValue: Number(e.target.value) }))}
                   className="h-10 w-full rounded-lg border border-[#c3c6d2] px-3 text-sm outline-none focus:border-brand"
                 />
+              </div>
+
+              <div>
+                <label className="mb-1 block text-xs font-bold text-brand-muted uppercase tracking-wide">
+                  Departments
+                </label>
+                <p className="mb-2 text-xs text-brand-muted">
+                  Select which departments this KPI applies to. Leave all unchecked to apply it to every department.
+                </p>
+                <div className="flex flex-col gap-2 rounded-lg border border-[#c3c6d2] p-3 max-h-40 overflow-y-auto">
+                  {departments.length === 0 ? (
+                    <span className="text-xs text-brand-muted">No departments found.</span>
+                  ) : (
+                    departments.map((d) => (
+                      <label key={d.id} className="flex cursor-pointer items-center gap-2 text-sm text-brand-navy">
+                        <input
+                          type="checkbox"
+                          checked={selectedDepts.includes(d.id)}
+                          onChange={() => toggleDept(d.id)}
+                          className="h-4 w-4 rounded border-[#c3c6d2] accent-[#2563eb]"
+                        />
+                        {d.name}
+                      </label>
+                    ))
+                  )}
+                </div>
               </div>
 
               {isCustom ? (
