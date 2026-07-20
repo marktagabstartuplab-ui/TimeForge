@@ -114,8 +114,16 @@ export interface ScrumEntryDetail {
   tasks: {
     id: string;
     title: string;
+    description: string | null;
     taskStatus: "PENDING" | "IN_PROGRESS" | "COMPLETED";
     priority: "LOW" | "MEDIUM" | "HIGH";
+    expectedOutput: string;
+    measurement: string;
+    kpi: string | null;
+    plannedTarget: string | null;
+    project?: {
+      name: string;
+    } | null;
   }[];
   blockerItems: {
     id: string;

@@ -196,20 +196,57 @@ export function TeamScrumSubmissionsContent() {
                   <div>
                     <h4 className="text-sm font-semibold text-brand-navy mb-1.5">Today&apos;s Planned Work</h4>
                     {item.tasks && item.tasks.length > 0 ? (
-                      <ul className="flex flex-col gap-2">
+                      <div className="flex flex-col gap-2.5">
                         {item.tasks.map((task) => (
-                          <li
+                          <div
                             key={task.id}
-                            className="flex items-center justify-between gap-3 bg-[#f5f6fa] p-2.5 rounded-lg border border-[#c3c6d2]/20 text-sm"
+                            className="flex flex-col gap-2 bg-[#f5f6fa] p-3.5 rounded-lg border border-[#c3c6d2]/20 text-sm"
                           >
-                            <span className="text-brand-ink">{task.title}</span>
-                            <StatusBadge
-                              label={task.taskStatus}
-                              tone={task.taskStatus === "COMPLETED" ? "success" : task.taskStatus === "IN_PROGRESS" ? "info" : "neutral"}
-                            />
-                          </li>
+                            <div className="flex items-center justify-between gap-3">
+                              <span className="font-semibold text-brand-navy">{task.title}</span>
+                              <StatusBadge
+                                label={task.taskStatus}
+                                tone={task.taskStatus === "COMPLETED" ? "success" : task.taskStatus === "IN_PROGRESS" ? "info" : "neutral"}
+                              />
+                            </div>
+                            {task.description && (
+                              <p className="text-xs text-brand-muted mt-0.5 leading-relaxed">{task.description}</p>
+                            )}
+                            <div className="grid grid-cols-2 gap-2.5 mt-2 border-t border-[#c3c6d2]/15 pt-2.5 text-xs text-brand-ink">
+                              {task.project && (
+                                <div className="col-span-2">
+                                  <span className="font-semibold text-brand-muted mr-1">Project:</span>
+                                  <span>{task.project.name}</span>
+                                </div>
+                              )}
+                              <div>
+                                <span className="font-semibold text-brand-muted block mb-0.5">Expected Output:</span>
+                                <span className="text-[11px]">{task.expectedOutput || "—"}</span>
+                              </div>
+                              <div>
+                                <span className="font-semibold text-brand-muted block mb-0.5">Measurement:</span>
+                                <span className="text-[11px]">{task.measurement || "—"}</span>
+                              </div>
+                              {(task.kpi || task.plannedTarget) && (
+                                <div className="col-span-2 grid grid-cols-2 gap-2.5 mt-1 pt-1 border-t border-[#c3c6d2]/10">
+                                  {task.kpi && (
+                                    <div>
+                                      <span className="font-semibold text-brand-muted block mb-0.5">KPI:</span>
+                                      <span className="text-[11px]">{task.kpi}</span>
+                                    </div>
+                                  )}
+                                  {task.plannedTarget && (
+                                    <div>
+                                      <span className="font-semibold text-brand-muted block mb-0.5">Planned Target:</span>
+                                      <span className="text-[11px]">{task.plannedTarget}</span>
+                                    </div>
+                                  )}
+                                </div>
+                              )}
+                            </div>
+                          </div>
                         ))}
-                      </ul>
+                      </div>
                     ) : (
                       <p className="text-sm text-brand-ink bg-[#f5f6fa] p-3 rounded-lg border border-[#c3c6d2]/20 whitespace-pre-wrap">
                         {item.today || "No active tasks logged."}

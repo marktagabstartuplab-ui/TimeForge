@@ -843,7 +843,10 @@ export class ScrumService {
       take: limit,
       include: {
         user: { select: { id: true, firstName: true, lastName: true, avatarKey: true, department: { select: { name: true } } } },
-        tasks: { where: { deletedAt: null } },
+        tasks: {
+          where: { deletedAt: null },
+          include: { project: { select: { name: true } } },
+        },
         blockerItems: true,
       },
     });

@@ -2,11 +2,12 @@
 
 import { useState, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Clock, TrendingUp, BookOpen, MessageSquare, Loader2, RefreshCw, AlertCircle, Ban } from "lucide-react";
+import { Clock, TrendingUp, BookOpen, MessageSquare, Loader2, RefreshCw, AlertCircle, Ban, ChevronDown, ChevronUp, Link2, Paperclip, Download } from "lucide-react";
 import { StatusBadge, timesheetStatusTone } from "@/components/shared/StatusBadge";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/client";
 import { approveTimesheet, rejectTimesheet, requestRevisionTimesheet, type TimesheetDetail } from "../api/timesheet-oversight.service";
+import { getAttachmentSignedUrl } from "../../time-tracking/api/time-entries.service";
 
 interface ReviewDetailPanelProps {
   detail: TimesheetDetail | null;
@@ -26,6 +27,20 @@ function formatTime(iso: string): string {
 export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: ReviewDetailPanelProps) {
   const queryClient = useQueryClient();
   const [remark, setRemark] = useState("");
+  const [expandedEntries, setExpandedEntries] = useState<Record<string, boolean>>({});
+
+  const toggleExpand = (id: string) => {
+    setExpandedEntries((prev) => ({ ...prev, [id]: !prev[id] }));
+  };
+
+  const handleDownloadAttachment = async (entryId: string, key: string) => {
+    try {
+      const { url } = await getAttachmentSignedUrl(entryId, key);
+      window.open(url, "_blank");
+    } catch {
+      onToast({ message: "Download failed.", tone: "error" });
+    }
+  };
 
   const approve = useMutation({
     mutationFn: () => approveTimesheet(detail!.id, { expectedVersion: detail!.version, remark: remark.trim() || undefined }),
@@ -155,30 +170,113 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
       <div>
         <h3 className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider text-brand-muted mb-2">
           <BookOpen className="h-4 w-4" />
-          Logged Tasks & Outputs
+          Logged Tasks & Outputs (Click to Expand Details)
         </h3>
-        <div className="max-h-60 overflow-y-auto border border-[#c3c6d2]/40 rounded-[12px] divide-y divide-[#c3c6d2]/25">
+        <div className="max-h-80 overflow-y-auto border border-[#c3c6d2]/40 rounded-[12px] divide-y divide-[#c3c6d2]/25">
           {detail.entries.length === 0 ? (
             <div className="p-4 text-center text-xs text-brand-muted">No time entries recorded for this period.</div>
           ) : (
-            detail.entries.map((entry) => (
-              <div key={entry.id} className="p-3 hover:bg-slate-50/50 flex items-start gap-3 justify-between">
-                <div className="min-w-0 flex-1">
-                  <p className="font-semibold text-sm text-brand-ink truncate">{entry.description || "General Work Output"}</p>
-                  {entry.deliverables ? (
-                    <p className="text-xs text-brand-muted truncate">
-                      <span className="font-semibold">Deliverables:</span> {entry.deliverables}
-                    </p>
-                  ) : null}
-                  <p className="text-[10px] text-brand-muted mt-0.5">
-                    {new Date(entry.startTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })} @ {formatTime(entry.startTime)}
-                  </p>
+            detail.entries.map((entry) => {
+              const isExpanded = expandedEntries[entry.id];
+              return (
+                <div key={entry.id} className="flex flex-col hover:bg-slate-50/30 transition-colors">
+                  {/* Clickable Header */}
+                  <button
+                    type="button"
+                    onClick={() => toggleExpand(entry.id)}
+                    className="w-full text-left p-3 flex items-start gap-3 justify-between hover:bg-slate-50/80 transition-colors"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-1.5">
+                        {isExpanded ? (
+                          <ChevronUp className="h-4 w-4 text-brand-muted shrink-0" />
+                        ) : (
+                          <ChevronDown className="h-4 w-4 text-brand-muted shrink-0" />
+                        )}
+                        <p className="font-semibold text-sm text-brand-ink truncate">
+                          {entry.task || entry.description || "General Work Output"}
+                        </p>
+                      </div>
+                      {entry.deliverables && !isExpanded ? (
+                        <p className="text-xs text-brand-muted truncate pl-5 mt-0.5">
+                          <span className="font-semibold">Deliverables:</span> {entry.deliverables}
+                        </p>
+                      ) : null}
+                      <p className="text-[10px] text-brand-muted pl-5 mt-0.5">
+                        {new Date(entry.startTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })} @ {formatTime(entry.startTime)}
+                      </p>
+                    </div>
+                    <div className="text-xs font-bold text-brand bg-slate-100 px-2 py-0.5 rounded shrink-0">
+                      {formatHours(entry.durationMinutes ?? 0)}h
+                    </div>
+                  </button>
+
+                  {/* Expanded Details Panel */}
+                  {isExpanded && (
+                    <div className="px-8 pb-4 pt-1 flex flex-col gap-3 border-t border-[#c3c6d2]/10 bg-slate-50/20 text-xs text-brand-ink">
+                      {entry.task && (
+                        <div>
+                          <span className="font-semibold text-brand-muted block mb-0.5">Task Title:</span>
+                          <p className="text-sm font-medium text-brand-navy">{entry.task}</p>
+                        </div>
+                      )}
+                      {entry.description && (
+                        <div>
+                          <span className="font-semibold text-brand-muted block mb-0.5">Work Description:</span>
+                          <p className="bg-white p-2.5 rounded-lg border border-[#c3c6d2]/20 whitespace-pre-wrap">{entry.description}</p>
+                        </div>
+                      )}
+                      {entry.deliverables && (
+                        <div>
+                          <span className="font-semibold text-brand-muted block mb-0.5">Deliverables:</span>
+                          <p className="bg-white p-2.5 rounded-lg border border-[#c3c6d2]/20 whitespace-pre-wrap">{entry.deliverables}</p>
+                        </div>
+                      )}
+                      {entry.referenceLinks && entry.referenceLinks.length > 0 && (
+                        <div>
+                          <span className="font-semibold text-brand-muted block mb-1">Reference Links:</span>
+                          <ul className="flex flex-col gap-1">
+                            {entry.referenceLinks.map((link) => (
+                              <li key={link} className="flex items-center gap-1.5">
+                                <Link2 className="h-3.5 w-3.5 text-brand shrink-0" />
+                                <a href={link} target="_blank" rel="noreferrer" className="text-brand hover:underline truncate">
+                                  {link}
+                                </a>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {entry.attachments && entry.attachments.length > 0 && (
+                        <div>
+                          <span className="font-semibold text-brand-muted block mb-1">Attachments:</span>
+                          <ul className="flex flex-col gap-1.5">
+                            {entry.attachments.map((att) => (
+                              <li key={att.key} className="flex items-center gap-2 bg-white border border-[#c3c6d2]/20 px-2.5 py-1.5 rounded-lg">
+                                <Paperclip className="h-3.5 w-3.5 text-brand shrink-0" />
+                                <span className="truncate flex-1 font-medium">{att.filename}</span>
+                                <span className="text-[10px] text-brand-muted shrink-0">
+                                  {att.size > 1024 * 1024
+                                    ? `${(att.size / (1024 * 1024)).toFixed(1)} MB`
+                                    : `${Math.round(att.size / 1024)} KB`}
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleDownloadAttachment(entry.id, att.key)}
+                                  className="text-brand hover:text-[#1467d6] font-semibold flex items-center gap-1 ml-2"
+                                >
+                                  <Download className="h-3.5 w-3.5" />
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
-                <div className="text-xs font-bold text-brand bg-slate-100 px-2 py-0.5 rounded">
-                  {formatHours(entry.durationMinutes ?? 0)}h
-                </div>
-              </div>
-            ))
+              );
+            })
           )}
         </div>
       </div>
