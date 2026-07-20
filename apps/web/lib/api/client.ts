@@ -33,19 +33,27 @@ export const apiClient = axios.create({
 let accessToken: string | null = null;
 
 // Body-based refresh token fallback — when the browser doesn't send the
-// cross-site httpOnly cookie (e.g. Safari ITP, or a frontend/backend domain
-// split like Vercel + Railway), the cookie-based refresh fails. We keep the
-// rotated refresh token and send it in the request body instead. Backed by
-// sessionStorage (not localStorage) so it survives a hard reload of the same
-// tab — otherwise refreshing the page logs the user out whenever the cookie
-// path is unavailable — while still dying with the tab. The httpOnly cookie
-// remains the primary mechanism; tokens rotate on every refresh and reuse is
-// detected server-side.
+// cross-site httpOnly cookie (Safari ITP and Chrome's third-party-cookie
+// phase-out both block it outright, not just in edge cases, on a
+// frontend/backend domain split like Vercel + Railway), the cookie-based
+// refresh fails. We keep the rotated refresh token and send it in the
+// request body instead.
+//
+// Backed by localStorage, not sessionStorage: sessionStorage is scoped to a
+// single tab, so a token saved in Tab A was invisible to a brand-new Tab B
+// (opened from a bookmark, a Slack/email link, etc.) — with the cookie also
+// blocked, that tab had no way to restore the session and always bounced to
+// /login even though the user was legitimately signed in elsewhere.
+// localStorage is shared across every tab of the same origin. This doesn't
+// meaningfully change XSS exposure: the token was already readable from JS
+// via getRefreshTokenMemory() regardless of which storage backs it, and it
+// still rotates on every refresh (server-side reuse detection unchanged) and
+// is cleared on logout below.
 const REFRESH_FALLBACK_KEY = "tf.refresh-fallback";
 
 function readStoredRefreshToken(): string | null {
   try {
-    return typeof window !== "undefined" ? window.sessionStorage.getItem(REFRESH_FALLBACK_KEY) : null;
+    return typeof window !== "undefined" ? window.localStorage.getItem(REFRESH_FALLBACK_KEY) : null;
   } catch {
     return null; // storage disabled — memory-only fallback still applies
   }
@@ -61,8 +69,8 @@ export function setRefreshTokenMemory(token: string | null): void {
   refreshTokenMemory = token;
   try {
     if (typeof window === "undefined") return;
-    if (token) window.sessionStorage.setItem(REFRESH_FALLBACK_KEY, token);
-    else window.sessionStorage.removeItem(REFRESH_FALLBACK_KEY);
+    if (token) window.localStorage.setItem(REFRESH_FALLBACK_KEY, token);
+    else window.localStorage.removeItem(REFRESH_FALLBACK_KEY);
   } catch {
     // Storage unavailable — in-memory fallback still works for this page life.
   }
