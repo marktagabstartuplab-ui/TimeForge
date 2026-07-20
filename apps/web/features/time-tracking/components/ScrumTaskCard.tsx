@@ -19,6 +19,7 @@ import {
   MessageSquareText,
   Plus,
   Save,
+  Sparkles,
   Trash2,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
@@ -46,6 +47,7 @@ import {
   type ScrumTaskStatus,
 } from "@/features/scrum/api/scrum.service";
 import { listProjects } from "../api/catalog.service";
+import { runAndPollAiJob } from "@/features/scrum-management/api/ai-insight.service";
 import { dailyScrumSchema, type DailyScrumValues } from "../schemas/time-entry.schema";
 import { formatClockTime, toIsoDate } from "@/lib/time";
 import { ApiError } from "@/lib/api/client";
@@ -108,6 +110,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
   const [taskTarget, setTaskTarget] = useState("");
   const [taskProj, setTaskProj] = useState("");
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
+  const [aiSuggesting, setAiSuggesting] = useState(false);
 
   // New Blocker Form States
   const [blockerDesc, setBlockerDesc] = useState("");
@@ -274,6 +277,27 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
     },
     onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Could not remove task", tone: "error" }),
   });
+
+  // Generates the two required planning fields from the task description —
+  // summary maps to Expected Output, recommendation to Measurement Criteria
+  // (see the task-plan mode of the IMPROVE_DESCRIPTION worker handler).
+  const handleSuggestWithAi = async () => {
+    if (!taskDesc.trim() || !user?.id) return;
+    setAiSuggesting(true);
+    try {
+      const result = await runAndPollAiJob("IMPROVE_DESCRIPTION", "user", user.id, {
+        text: taskDesc,
+        mode: "task-plan",
+      });
+      if (result?.summary) setTaskOutput(result.summary);
+      if (result?.recommendation) setTaskCriteria(result.recommendation);
+      onToast({ message: "AI suggestions applied — review and adjust before saving." });
+    } catch (err) {
+      onToast({ message: err instanceof Error ? err.message : "AI suggestion failed.", tone: "error" });
+    } finally {
+      setAiSuggesting(false);
+    }
+  };
 
   const resetTaskForm = () => {
     setTaskDesc("");
@@ -621,9 +645,26 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
       {/* Plan New Task Form (Section 3) */}
       {!locked && (
         <div className="p-4 rounded-[12px] border border-[#c3c6d2]/40 bg-[#f6f3f4]/10 space-y-4">
-          <h4 className="text-sm font-bold text-brand-navy uppercase tracking-[0.5px]">
-            {editingTaskId ? "Edit Commitment Task" : "Plan New Task"}
-          </h4>
+          <div className="flex flex-wrap items-center justify-between gap-2">
+            <h4 className="text-sm font-bold text-brand-navy uppercase tracking-[0.5px]">
+              {editingTaskId ? "Edit Commitment Task" : "Plan New Task"}
+            </h4>
+            <button
+              type="button"
+              onClick={handleSuggestWithAi}
+              disabled={!taskDesc.trim() || aiSuggesting}
+              title={!taskDesc.trim() ? "Write a task description first" : "Generate Expected Output and Measurement Criteria from the description"}
+              className={cn(
+                "inline-flex items-center gap-1.5 rounded-lg border px-2.5 py-1 text-xs font-semibold shadow-sm transition-all",
+                !taskDesc.trim() || aiSuggesting
+                  ? "cursor-not-allowed border-[#c3c6d2] bg-gray-50 text-brand-muted opacity-60"
+                  : "border-[#c3c6d2] bg-gradient-to-r from-brand/5 to-brand-cyan/5 text-brand hover:border-brand hover:from-brand/10 hover:to-brand-cyan/10",
+              )}
+            >
+              {aiSuggesting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+              {aiSuggesting ? "Suggesting..." : "Suggest Output & Criteria with AI"}
+            </button>
+          </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             <div>

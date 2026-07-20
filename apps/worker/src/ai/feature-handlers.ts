@@ -397,6 +397,19 @@ const internAdvisory: FeatureHandler = async (prisma, ctx) => {
 const improveDescription: FeatureHandler = async (prisma, ctx) => {
   const originalText = (ctx.options?.text as string) || '';
 
+  // mode: 'task-plan' — instead of rewriting the text, derive the two required
+  // Daily Scrum planning fields from it. Reuses this feature (same permission,
+  // same admin toggle) because AiFeature is a DB enum — a new value would need
+  // a prod migration for what is just a different prompt over the same input.
+  // Field mapping on the client: summary -> Expected Output,
+  // recommendation -> Measurement Criteria.
+  if (ctx.options?.mode === 'task-plan') {
+    return {
+      systemPrompt: `You are an agile planning assistant. Given a task description, produce the two planning fields a Daily Scrum commitment needs. Respond with JSON: { "summary": "...", "recommendation": "...", "confidence": 0.0-1.0 }. In "summary", write the Expected Output — the concrete deliverable(s) this task should produce (1-2 sentences). In "recommendation", write the Measurement Criteria — how completion and quality will be objectively verified (1-2 sentences).`,
+      userPrompt: `Task description:\n"${originalText}"`,
+    };
+  }
+
   return {
     systemPrompt: `You are a professional documentation assistant. Rewrite the task description to be clear, descriptive, professional, and outcome-oriented. Respond with JSON: { "summary": "...", "recommendation": "...", "confidence": 0.0-1.0 }. Place the improved, detailed description inside the "recommendation" field, and a brief description of the improvement in the "summary" field.`,
     userPrompt: `Rewrite this vague task description to be professional and detailed:\n"${originalText}"`,
