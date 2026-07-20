@@ -70,9 +70,14 @@ export async function runAndPollAiJob(
   options?: Record<string, unknown>
 ): Promise<AiResult> {
   const { jobId } = await triggerAiJob(feature, subjectType, subjectId, options);
-  
-  for (let i = 0; i < 20; i++) {
-    await new Promise((resolve) => setTimeout(resolve, 1500));
+
+  // The worker's model call alone can take up to 60s (AbortSignal.timeout in
+  // openai.provider.ts), plus queue wait and one BullMQ retry — the old 30s
+  // window (20 × 1.5s) made every non-trivial feature "time out" while its
+  // job was still legitimately running. 60 × 2s = 120s covers a full call
+  // plus a retry; FAILED still short-circuits immediately.
+  for (let i = 0; i < 60; i++) {
+    await new Promise((resolve) => setTimeout(resolve, 2000));
     const job = await getAiJob(jobId);
     if (job.status === "SUCCEEDED") {
       const res = await getAiResult(jobId);
