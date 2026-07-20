@@ -6,13 +6,27 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
+import { IsIn, IsOptional, IsUUID } from 'class-validator';
 import { PerformanceService, PerformanceQuery } from './performance.service';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
+// Undecorated fields are silently stripped by the global ValidationPipe's
+// whitelist (main.ts), which made every export request 422 with "property
+// format should not exist" regardless of what the client sent.
 export class PerformanceExportDto {
+  @IsIn(['CSV', 'XLSX', 'PDF'])
   format!: 'CSV' | 'XLSX' | 'PDF';
+
+  @IsOptional()
+  @IsUUID()
   userId?: string;
+
+  @IsOptional()
+  @IsUUID()
   departmentId?: string;
+
+  @IsOptional()
+  @IsUUID()
   teamId?: string;
 }
 
@@ -83,9 +97,14 @@ export class PerformanceController {
     return this.svc.getCoachAdvice(u, query);
   }
 
+  // getVisibleUserIds() in the service already enforces scoping per role
+  // (Admin: org/dept, HR: dept, Supervisor: team, Employee: self only), so
+  // dashboard:read_self is sufficient here — matching every GET above it.
+  // The previous dashboard:read_org requirement 403'd a regular employee
+  // exporting their own performance data.
   @Post('export')
   @HttpCode(202)
-  @RequirePermissions('dashboard:read_org')
+  @RequirePermissions('dashboard:read_self')
   async queueExport(
     @CurrentUser() u: AuthPrincipal,
     @Body() dto: PerformanceExportDto,

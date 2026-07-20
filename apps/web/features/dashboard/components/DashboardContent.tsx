@@ -4,11 +4,11 @@ import { useMemo } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Clock, FileClock, PalmtreeIcon, Target } from "lucide-react";
 import { getDashboardSummary } from "../api/dashboard.service";
-import { getMe } from "@/features/account/api/account.service";
+import { getMe, getTeamPresence } from "@/features/account/api/account.service";
+import { TeamStatusList } from "@/features/account/components/TeamStatusList";
 import { getLeaveBalances } from "@/features/leave/api/leave.service";
 import { StatCard } from "@/components/shared/StatCard";
 import { SectionCard } from "@/components/shared/SectionCard";
-import { EmptyState } from "@/components/shared/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DashboardHero } from "./DashboardHero";
 import { WeeklyHoursChart, type DayHours } from "@/components/shared/WeeklyHoursChart";
@@ -32,6 +32,7 @@ export function DashboardContent() {
     queryKey: ["leave", "balances"],
     queryFn: getLeaveBalances,
   });
+  const presenceQuery = useQuery({ queryKey: ["account", "team-presence"], queryFn: getTeamPresence });
 
   // Tracked hours for the weekly chart
   const week = useMemo(() => weekWindow(new Date()), []);
@@ -100,10 +101,7 @@ export function DashboardContent() {
         </SectionCard>
 
         <SectionCard title="Team Status">
-          <EmptyState
-            variant="restricted"
-            message="Team status is available for supervisors and above."
-          />
+          <TeamStatusList isLoading={presenceQuery.isLoading} members={presenceQuery.data} />
         </SectionCard>
       </div>
 

@@ -34,6 +34,7 @@ import {
   queuePerformanceExport
 } from "../api/performance.service";
 import { getMyKpiSummary } from "../api/kpi.service";
+import { useAuth } from "@/providers/auth-provider";
 
 function kpiStatusColor(status: "MET" | "ON_TRACK" | "BELOW"): string {
   if (status === "MET") return "text-emerald-600";
@@ -56,6 +57,11 @@ function metricLabel(type: string, unit: string | null): string {
 }
 
 export function PerformanceOversightContent() {
+  const { user } = useAuth();
+  // Only roles that can see other employees' performance (Admin/HR/Supervisor)
+  // benefit from a search box — a regular employee only ever sees their own
+  // data, so the field would be dead clutter with nothing to search for.
+  const canSearchOthers = user?.roles.some((r) => r === "ADMIN" || r === "HR" || r === "SUPERVISOR") ?? false;
   const [toast, setToast] = useState<ToastState | null>(null);
   const [search, setSearch] = useState("");
   const [timeRange, setTimeRange] = useState("Last 7 Days");
@@ -150,15 +156,17 @@ export function PerformanceOversightContent() {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="relative w-60">
-            <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-brand-muted" />
-            <Input
-              placeholder="Search Employee ID..."
-              value={search}
-              onChange={(e) => setSearch(e.target.value)}
-              className="pl-8 h-8.5 text-xs"
-            />
-          </div>
+          {canSearchOthers ? (
+            <div className="relative w-60">
+              <Search className="absolute left-2.5 top-2 h-3.5 w-3.5 text-brand-muted" />
+              <Input
+                placeholder="Search Employee ID..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 h-8.5 text-xs"
+              />
+            </div>
+          ) : null}
           <Button
             variant="outline"
             size="sm"

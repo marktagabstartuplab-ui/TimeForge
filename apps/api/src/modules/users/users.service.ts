@@ -209,17 +209,22 @@ export class UsersService {
       },
       select: {
         userId: true,
+        currentBreakStartedAt: true,
       },
     });
 
-    const activeUserIds = new Set(openSessions.map((s) => s.userId));
+    const liveByUser = new Map<string, 'ACTIVE' | 'ON_BREAK'>();
+    for (const s of openSessions) {
+      liveByUser.set(s.userId, s.currentBreakStartedAt ? 'ON_BREAK' : 'ACTIVE');
+    }
 
     return members.map((m) => ({
       id: m.id,
       firstName: m.firstName,
       lastName: m.lastName,
       jobTitle: m.jobTitle,
-      isOnline: activeUserIds.has(m.id),
+      isOnline: liveByUser.has(m.id),
+      liveStatus: liveByUser.get(m.id) ?? 'OFFLINE',
     }));
   }
 

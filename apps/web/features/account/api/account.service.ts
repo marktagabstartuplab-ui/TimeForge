@@ -81,6 +81,7 @@ export interface TeamMemberPresence {
   lastName: string;
   jobTitle: string | null;
   isOnline: boolean;
+  liveStatus: "ACTIVE" | "ON_BREAK" | "OFFLINE";
 }
 
 export async function getTeamPresence(): Promise<TeamMemberPresence[]> {
