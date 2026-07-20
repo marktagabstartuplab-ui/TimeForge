@@ -9,6 +9,10 @@ import { formatStopwatch } from "@/lib/time";
 import { useAuth } from "@/providers/auth-provider";
 import { hasPermission } from "@/features/auth/rbac";
 
+// Matches CurrentSessionCard's threshold and the timesheet's period-summary
+// 8h/day split, so "overtime" means the same thing everywhere in the app.
+const REGULAR_DAY_SECONDS = 8 * 3600;
+
 /**
  * Persistent running-session indicator for the top bar: ticking elapsed time
  * wherever the user navigates, linking back to the tracker.
@@ -60,19 +64,32 @@ export function RunningTimerChip() {
 
   const breakMinutes = session.breakMinutes ?? 0;
   const elapsed = Math.max(0, (now - new Date(session.clockIn).getTime()) / 1000 - breakMinutes * 60);
+  const inOvertime = elapsed > REGULAR_DAY_SECONDS;
+  const overtimeElapsed = Math.max(0, elapsed - REGULAR_DAY_SECONDS);
 
   return (
     <Link
       href="/time-tracking"
-      aria-label={`Timer running, ${formatStopwatch(elapsed)} elapsed today — open Daily Scrum`}
-      className="flex h-9 items-center gap-2 rounded-full bg-brand-navy px-3.5 text-xs font-bold text-white transition-colors hover:bg-[#00394e]"
+      aria-label={
+        inOvertime
+          ? `Timer running, ${formatStopwatch(elapsed)} elapsed today, ${formatStopwatch(overtimeElapsed)} of that is overtime — open Daily Scrum`
+          : `Timer running, ${formatStopwatch(elapsed)} elapsed today — open Daily Scrum`
+      }
+      className={`flex h-9 items-center gap-2 rounded-full px-3.5 text-xs font-bold text-white transition-colors ${
+        inOvertime ? "bg-amber-600 hover:bg-amber-700" : "bg-brand-navy hover:bg-[#00394e]"
+      }`}
     >
       <span className="relative flex h-2 w-2">
-        <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-red-400 opacity-75" />
-        <span className="relative inline-flex h-2 w-2 rounded-full bg-red-500" />
+        <span
+          className={`absolute inline-flex h-full w-full animate-ping rounded-full opacity-75 ${
+            inOvertime ? "bg-amber-300" : "bg-red-400"
+          }`}
+        />
+        <span className={`relative inline-flex h-2 w-2 rounded-full ${inOvertime ? "bg-amber-200" : "bg-red-500"}`} />
       </span>
       <Timer className="h-3.5 w-3.5" aria-hidden="true" />
       <span className="font-mono tabular-nums">{formatStopwatch(elapsed)}</span>
+      {inOvertime ? <span className="rounded-full bg-white/20 px-1.5 py-0.5">OT {formatStopwatch(overtimeElapsed)}</span> : null}
     </Link>
   );
 }

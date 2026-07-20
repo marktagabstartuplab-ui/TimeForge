@@ -12,6 +12,12 @@ import {
 import { listClients, listProjects } from "../api/catalog.service";
 import { type WorkTask } from "../lib/task-select";
 import { formatStopwatch, formatClockTime, formatMinutes } from "@/lib/time";
+
+/** Matches the 8h/day split the timesheet's period summary already uses
+ *  (features/timesheets/lib/period-summary.ts) — kept in sync so a session
+ *  that goes into overtime here shows the same threshold once it lands on
+ *  the timesheet. */
+const REGULAR_DAY_SECONDS = 8 * 3600;
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
@@ -128,6 +134,9 @@ export function CurrentSessionCard({
     : 0;
   const breakStopwatch = formatStopwatch(breakSeconds);
 
+  const inOvertime = elapsedSeconds > REGULAR_DAY_SECONDS;
+  const overtimeSeconds = Math.max(0, elapsedSeconds - REGULAR_DAY_SECONDS);
+
   const pending = clockIn.isPending || takeBreak.isPending || resume.isPending;
 
   const nameOf = (list: { id: string; name: string }[] | undefined, id: string | null | undefined) =>
@@ -194,6 +203,16 @@ export function CurrentSessionCard({
           />
           {running ? "Recording session" : onBreak ? `On break (${breakStopwatch})` : "Timer idle"}
         </span>
+
+        {(running || onBreak) && inOvertime ? (
+          <span
+            role="status"
+            className="flex items-center gap-2 rounded-full bg-amber-50 px-3 py-1 text-xs font-bold text-amber-700"
+          >
+            <span aria-hidden="true" className="h-1.5 w-1.5 rounded-full bg-amber-500" />
+            Overtime — {formatStopwatch(overtimeSeconds)} past 8h
+          </span>
+        ) : null}
 
         {error ? (
           <p role="alert" className="w-full rounded-[8px] bg-red-50 px-3 py-2 text-xs text-red-600">
