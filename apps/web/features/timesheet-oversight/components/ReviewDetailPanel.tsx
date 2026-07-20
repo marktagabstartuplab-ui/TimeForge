@@ -123,7 +123,7 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
   const name = `${detail.user.firstName} ${detail.user.lastName}`;
 
   return (
-    <div className="flex flex-col gap-5 rounded-[16px] border border-[#c3c6d2]/50 bg-white p-6 shadow-[0px_1px_1px_rgba(0,0,0,0.05)]">
+    <div className="flex flex-col gap-5 rounded-[16px] border border-[#c3c6d2]/50 bg-white p-6 shadow-[0px_1px_1px_rgba(0,0,0,0.05)] max-h-[calc(100vh-185px)] overflow-y-auto">
       {/* Title / Status */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#c3c6d2]/20 pb-4">
         <div>

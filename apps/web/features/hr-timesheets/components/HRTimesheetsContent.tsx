@@ -304,7 +304,7 @@ export function HRTimesheetsContent() {
                 <thead>
                   <tr className="border-b border-[#c3c6d2]/40 text-xs font-semibold text-brand-muted uppercase tracking-wider">
                     <th className="py-3 px-5">Employee</th>
-                    <th className="py-3 px-5">Date</th>
+                    <th className="py-3 px-5">Period</th>
                     <th className="py-3 px-5">Total Hours</th>
                     <th className="py-3 px-5">Status</th>
                     <th className="py-3 px-5">Remarks</th>
@@ -337,7 +337,7 @@ export function HRTimesheetsContent() {
                           </div>
                         </td>
                         <td className="py-3.5 px-5 text-brand-ink whitespace-nowrap">
-                          {formatDate(r.periodEnd)}
+                          {formatDate(r.periodStart)} – {formatDate(r.periodEnd)}
                         </td>
                         <td className="py-3.5 px-5 text-brand-ink">
                           {r.totalHours.toFixed(2)} h
