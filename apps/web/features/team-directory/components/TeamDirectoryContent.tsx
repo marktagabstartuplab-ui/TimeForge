@@ -106,6 +106,7 @@ export function TeamDirectoryContent() {
                   <th className="py-3 pr-4">Employment</th>
                   <th className="py-3 pr-4">Department</th>
                   <th className="py-3 pr-4">Status</th>
+                  <th className="py-3">Activity</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-[#c3c6d2]/30">
@@ -142,6 +143,22 @@ export function TeamDirectoryContent() {
                       <td className="py-3 pr-4 text-brand-muted">{e.department?.name ?? "—"}</td>
                       <td className="py-3 pr-4">
                         <StatusBadge label={label} tone={tone} />
+                      </td>
+                      <td className="py-3">
+                        <span className="inline-flex items-center gap-1.5">
+                          <span
+                            className={`h-2 w-2 rounded-full ${
+                              e.liveStatus === "ACTIVE"
+                                ? "bg-emerald-500"
+                                : e.liveStatus === "ON_BREAK"
+                                  ? "bg-amber-400"
+                                  : "bg-slate-300"
+                            }`}
+                          />
+                          <span className="text-xs text-brand-muted">
+                            {e.liveStatus === "ACTIVE" ? "Active" : e.liveStatus === "ON_BREAK" ? "On Break" : "Offline"}
+                          </span>
+                        </span>
                       </td>
                     </tr>
                   );
