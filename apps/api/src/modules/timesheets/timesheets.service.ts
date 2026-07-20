@@ -89,7 +89,14 @@ export class TimesheetsService {
       take: limit + 1,
       include: { user: { select: { firstName: true, lastName: true, department: { select: { name: true } } } } },
     });
-    return buildPage(items, limit);
+
+    const overtimeByTimesheet = await this.computeOvertimeMinutesByTimesheet(items.map((t) => t.id));
+    const itemsWithOvertime = items.map((t) => ({
+      ...t,
+      overtimeMinutes: overtimeByTimesheet.get(t.id) ?? 0,
+    }));
+
+    return buildPage(itemsWithOvertime, limit);
   }
 
   /** Stat cards: Total Timesheets, Completion Rate, Pending Approval, Flagged Entries. */
@@ -352,7 +359,44 @@ export class TimesheetsService {
       take: limit + 1,
       include: { user: { select: { firstName: true, lastName: true, department: { select: { name: true } } } } },
     });
-    return buildPage(items, limit);
+
+    // Per-timesheet daily overtime (>8h/day), the same threshold the
+    // employee's own timesheet summary and the payroll OT rate use — lets the
+    // supervisor spot who has overtime right in the queue, not just after
+    // opening each submission individually.
+    const overtimeByTimesheet = await this.computeOvertimeMinutesByTimesheet(items.map((t) => t.id));
+    const itemsWithOvertime = items.map((t) => ({
+      ...t,
+      overtimeMinutes: overtimeByTimesheet.get(t.id) ?? 0,
+    }));
+
+    return buildPage(itemsWithOvertime, limit);
+  }
+
+  /** Sums, per timesheet, the portion of each day's entries beyond 8h. */
+  private async computeOvertimeMinutesByTimesheet(timesheetIds: string[]): Promise<Map<string, number>> {
+    const result = new Map<string, number>();
+    if (timesheetIds.length === 0) return result;
+
+    const entries = await this.prisma.timeEntry.findMany({
+      where: { timesheetId: { in: timesheetIds }, deletedAt: null },
+      select: { timesheetId: true, startTime: true, durationMinutes: true },
+    });
+
+    const dailyMinutes = new Map<string, number>(); // `${timesheetId}:${YYYY-MM-DD}` -> minutes
+    for (const e of entries) {
+      if (!e.timesheetId) continue;
+      const key = `${e.timesheetId}:${e.startTime.toISOString().slice(0, 10)}`;
+      dailyMinutes.set(key, (dailyMinutes.get(key) ?? 0) + (e.durationMinutes ?? 0));
+    }
+
+    const REGULAR_DAY_MINUTES = 8 * 60;
+    for (const [key, minutes] of dailyMinutes) {
+      if (minutes <= REGULAR_DAY_MINUTES) continue;
+      const timesheetId = key.slice(0, key.lastIndexOf(':'));
+      result.set(timesheetId, (result.get(timesheetId) ?? 0) + (minutes - REGULAR_DAY_MINUTES));
+    }
+    return result;
   }
 
   /**

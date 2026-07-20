@@ -143,11 +143,14 @@ export class NavigationService {
       }),
       this.prisma.user.findFirst({
         where: { id: user.userId, tenantId: user.tenantId, deletedAt: null },
-        select: { id: true, firstName: true, lastName: true },
+        select: { id: true, firstName: true, lastName: true, employmentType: true },
       }),
     ]);
 
-    const menu: SidebarMenuItem[] = visibleItems.map((item) => {
+    const isIntern = profile?.employmentType === 'INTERN';
+    const menu: SidebarMenuItem[] = visibleItems
+      .filter((item) => !(item.id === 'payroll' && isIntern))
+      .map((item) => {
       let route = item.route;
       let label = item.label;
       if (item.id === 'payroll' && (isAdmin || permissions.includes('payroll:read'))) {

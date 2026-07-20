@@ -111,7 +111,7 @@ export function TeamDirectoryContent() {
               </thead>
               <tbody className="divide-y divide-[#c3c6d2]/30">
                 {rows.map((e) => {
-                  const roleName = e.roles[0]?.role.name ?? "—";
+                  const roleName = e.employmentType === "INTERN" ? "INTERN" : (e.roles[0]?.role.name ?? "—");
                   const isIntern = e.employmentType === "INTERN";
                   const { label, tone } = statusTone(e.status);
                   return (

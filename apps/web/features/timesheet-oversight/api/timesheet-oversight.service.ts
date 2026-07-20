@@ -4,6 +4,9 @@ import type { Timesheet, TimesheetKpiProgress } from "@/features/timesheets/api/
 
 export interface TimesheetRow extends Timesheet {
   user: { firstName: string; lastName: string; department: { name: string } | null };
+  /** Minutes worked beyond 8h/day, summed across the period. Only populated
+   *  by getPendingTimesheets() — the supervisor review queue. */
+  overtimeMinutes?: number;
 }
 
 export interface TimesheetOversightQuery {

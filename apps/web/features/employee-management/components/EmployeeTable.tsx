@@ -282,7 +282,7 @@ export function EmployeeTable({ isAdmin, onToast }: { isAdmin: boolean; onToast:
               <tbody className="divide-y divide-[#c3c6d2]/30">
                 {rows.map((r) => {
                   const { label, tone } = statusTone(r.status);
-                  const roleName = r.roles[0]?.role.name ?? "—";
+                  const roleName = r.employmentType === "INTERN" ? "INTERN" : (r.roles[0]?.role.name ?? "—");
                   return (
                     <tr key={r.id} className="cursor-pointer hover:bg-[#f6f3f4]/60" onClick={() => onRowClick(r)}>
                       {isAdmin ? (
