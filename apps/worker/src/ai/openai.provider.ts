@@ -65,6 +65,15 @@ export class OpenAiProvider {
       messages,
       temperature: 0.3,
       max_tokens: 1024,
+      // Reasoning/"thinking" models (e.g. the default qwen3.6-plus) burn most
+      // of their latency — and token budget — on a hidden reasoning phase
+      // these short structured completions don't need; with it enabled, calls
+      // regularly blew the request timeout and every AI feature failed with
+      // "The operation was aborted due to timeout". OpenRouter's unified
+      // `reasoning` param turns that phase off (ignored by non-reasoning
+      // models). Only sent to OpenRouter: other OpenAI-compatible hosts may
+      // reject the unknown field.
+      ...(this.baseUrl.includes('openrouter') ? { reasoning: { enabled: false } } : {}),
     });
 
     const promptHash = this.hash(body);
@@ -78,7 +87,10 @@ export class OpenAiProvider {
           Authorization: `Bearer ${this.apiKey}`,
         },
         body,
-        signal: AbortSignal.timeout(60_000),
+        // 100s, not 60s: the frontend polls the job for up to 120s
+        // (runAndPollAiJob), so a slow-but-successful completion inside that
+        // window should be persisted rather than aborted at the old 60s mark.
+        signal: AbortSignal.timeout(100_000),
       });
 
       if (!resp.ok) {
