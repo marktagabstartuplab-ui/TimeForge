@@ -1,12 +1,12 @@
 "use client";
 
-import { ClipboardCheck, TrendingUp, Clock, AlertTriangle } from "lucide-react";
+import { ClipboardCheck, TrendingUp, Clock, AlertTriangle, Timer } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import type { TimesheetStats } from "../api/timesheet-oversight.service";
 
 export function OversightStatsCards({ data, isLoading }: { data: TimesheetStats | undefined; isLoading: boolean }) {
   return (
-    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+    <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-5">
       <div className="flex-1 rounded-[16px] border border-[#c3c6d2]/50 bg-white p-[21px] shadow-[0px_1px_1px_rgba(0,0,0,0.05)]">
         <ClipboardCheck className="h-[26px] w-[26px] text-brand" aria-hidden="true" />
         <p className="mt-2 text-base text-brand-muted">Total Active Timesheets</p>
@@ -26,6 +26,15 @@ export function OversightStatsCards({ data, isLoading }: { data: TimesheetStats 
         <Clock className="h-[26px] w-[26px] text-brand" aria-hidden="true" />
         <p className="mt-2 text-base text-brand-muted">Pending Approval</p>
         <p className="text-2xl font-bold text-brand-ink">{isLoading ? "…" : data?.pendingApproval ?? 0}</p>
+      </div>
+
+      <div className="flex-1 rounded-[16px] border border-amber-200 bg-amber-50 p-[21px]">
+        <div className="flex items-center justify-between">
+          <Timer className="h-[26px] w-[26px] text-amber-600" aria-hidden="true" />
+          {!isLoading && (data?.overtimeCount ?? 0) > 0 ? <StatusBadge label="Review Pay Impact" tone="warning" /> : null}
+        </div>
+        <p className="mt-2 text-base font-semibold text-amber-700">Timesheets with Overtime</p>
+        <p className="text-2xl font-bold text-amber-700">{isLoading ? "…" : data?.overtimeCount ?? 0}</p>
       </div>
 
       <div className="flex-1 rounded-[16px] border border-red-200 bg-red-50 p-[21px]">

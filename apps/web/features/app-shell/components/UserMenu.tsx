@@ -105,7 +105,7 @@ export function UserMenu() {
       : "offline";
   const statusLabel =
     status === "break" ? "On break" : status === "active" ? (session?.isActive ? "Active now" : "Online") : "Not clocked in";
-  const roleName = me?.roles[0]?.role.name;
+  const roleName = me?.employmentType === "INTERN" ? "INTERN" : me?.roles[0]?.role.name;
 
   return (
     <>

@@ -228,6 +228,7 @@ export function OversightTable({ onToast }: { onToast: (t: ToastState) => void }
                   <th className="pb-2 pr-4">Department</th>
                   <th className="pb-2 pr-4">Pay Period</th>
                   <th className="pb-2 pr-4">Total Hours</th>
+                  <th className="pb-2 pr-4">Overtime Hours</th>
                   <th className="pb-2">Status</th>
                 </tr>
               </thead>
@@ -263,6 +264,15 @@ export function OversightTable({ onToast }: { onToast: (t: ToastState) => void }
                         {formatDate(r.periodStart)} – {formatDate(r.periodEnd)}
                       </td>
                       <td className="py-2.5 pr-4 text-brand-ink">{formatHours(r.totalMinutes)}</td>
+                      <td className="py-2.5 pr-4">
+                        {r.overtimeMinutes && r.overtimeMinutes > 0 ? (
+                          <span className="inline-flex items-center rounded-full bg-amber-50 px-2 py-0.5 text-xs font-bold text-amber-700">
+                            {formatHours(r.overtimeMinutes)}h
+                          </span>
+                        ) : (
+                          <span className="text-brand-muted">—</span>
+                        )}
+                      </td>
                       <td className="py-2.5"><StatusBadge label={label} tone={tone} /></td>
                     </tr>
                   );

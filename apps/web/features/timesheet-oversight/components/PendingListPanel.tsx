@@ -71,8 +71,18 @@ export function PendingListPanel({ items, selectedId, onSelect, loading }: Pendi
               <div className="text-xs text-brand-muted">
                 <span className="font-medium text-brand-ink">{periodStartStr}</span> – <span className="font-medium text-brand-ink">{periodEndStr}</span>
               </div>
-              <div className="text-xs font-bold text-brand bg-brand-cyan/15 px-2 py-0.5 rounded-full">
-                {formatHours(item.totalMinutes)} hrs
+              <div className="flex items-center gap-1.5">
+                {item.overtimeMinutes && item.overtimeMinutes > 0 ? (
+                  <span
+                    className="text-xs font-bold text-amber-700 bg-amber-50 px-2 py-0.5 rounded-full"
+                    title="Overtime — hours worked beyond 8h/day, this period"
+                  >
+                    OT {formatHours(item.overtimeMinutes)}h
+                  </span>
+                ) : null}
+                <div className="text-xs font-bold text-brand bg-brand-cyan/15 px-2 py-0.5 rounded-full">
+                  {formatHours(item.totalMinutes)} hrs
+                </div>
               </div>
             </div>
           </button>

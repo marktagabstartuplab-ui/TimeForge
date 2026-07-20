@@ -197,7 +197,7 @@ export class PayrollService {
         periodStart: { gte: period.startDate },
         periodEnd: { lte: period.endDate },
       },
-      select: { userId: true, totalMinutes: true },
+      select: { id: true, userId: true, totalMinutes: true },
     });
 
     // Aggregate approved minutes per user
@@ -261,10 +261,37 @@ export class PayrollService {
       select: { id: true, hourlyRate: true },
     });
 
-    // Create the payroll report + line items in a transaction
-    const overtimeThresholdMinutes =
-      OVERTIME_DAILY_THRESHOLD_HOURS * HALF_PERIOD_WORK_DAYS * 60;
+    // Fetch all approved time entries to compute daily overtime (>8h/day)
+    const timesheetIds = timesheets.map((t) => t.id);
+    const approvedEntries = timesheetIds.length > 0
+      ? await this.prisma.timeEntry.findMany({
+          where: {
+            tenantId: p.tenantId,
+            timesheetId: { in: timesheetIds },
+            deletedAt: null,
+          },
+          select: {
+            userId: true,
+            startTime: true,
+            durationMinutes: true,
+          },
+        })
+      : [];
 
+    // Group approved entries by userId and UTC calendar day string
+    const userDailyMinutes = new Map<string, Map<string, number>>();
+    for (const entry of approvedEntries) {
+      if (!entry.durationMinutes) continue;
+      const dateStr = entry.startTime.toISOString().slice(0, 10);
+      let userDays = userDailyMinutes.get(entry.userId);
+      if (!userDays) {
+        userDays = new Map<string, number>();
+        userDailyMinutes.set(entry.userId, userDays);
+      }
+      userDays.set(dateStr, (userDays.get(dateStr) ?? 0) + entry.durationMinutes);
+    }
+
+    // Create the payroll report + line items in a transaction
     const report = await this.prisma.$transaction(async (tx) => {
       // Delete any existing report for this period (re-generation). PayrollLineItem
       // has no cascade delete on payrollReportId, so the child rows must be removed
@@ -301,16 +328,26 @@ export class PayrollService {
         const pendingMins = pendingMinutes.get(user.id) ?? 0;
         const rejectedMins = rejectedMinutes.get(user.id) ?? 0;
 
-        const approvedHours = new Decimal(approvedMins).div(60);
-        const pendingHours = new Decimal(pendingMins).div(60);
-        const rejectedHours = new Decimal(rejectedMins).div(60);
-
-        // Overtime = approved minutes beyond the half-period threshold
-        const overtimeMins = Math.max(0, approvedMins - overtimeThresholdMinutes);
-        const regularMins = approvedMins - overtimeMins;
+        const userDays = userDailyMinutes.get(user.id);
+        let overtimeMins = 0;
+        let regularMins = 0;
+        if (userDays) {
+          const REGULAR_DAY_MINUTES = 8 * 60;
+          for (const [_, dayMinutes] of userDays) {
+            if (dayMinutes > REGULAR_DAY_MINUTES) {
+              overtimeMins += dayMinutes - REGULAR_DAY_MINUTES;
+              regularMins += REGULAR_DAY_MINUTES;
+            } else {
+              regularMins += dayMinutes;
+            }
+          }
+        }
 
         const overtimeHours = new Decimal(overtimeMins).div(60);
         const regularHours = new Decimal(regularMins).div(60);
+        const approvedHours = regularHours.add(overtimeHours);
+        const pendingHours = new Decimal(pendingMins).div(60);
+        const rejectedHours = new Decimal(rejectedMins).div(60);
 
         // Estimated pay: regular x rate + overtime x rate x 1.25
         const estimatedPay = regularHours.mul(rate).add(overtimeHours.mul(rate).mul(1.25));

@@ -162,6 +162,19 @@ export function PayslipsContent() {
     },
   ];
 
+  if (meQuery.data?.employmentType === "INTERN") {
+    return (
+      <div className="flex flex-col gap-6">
+        <PageHeader title="Payslips" subtitle="Your approved hours and payroll history." />
+        <div className="flex h-[400px] flex-col items-center justify-center rounded-[16px] border border-[#c3c6d2]/40 bg-white p-6 text-center">
+          <Lock className="h-10 w-10 text-brand-muted/80" />
+          <p className="mt-2 text-sm font-semibold text-brand-muted">Access Restricted</p>
+          <p className="mt-1 text-xs text-brand-muted/70">Intern accounts are not eligible for payroll benefits or payslip tracking.</p>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col gap-6">
       <Toast toast={toast} onDismiss={() => setToast(null)} />
