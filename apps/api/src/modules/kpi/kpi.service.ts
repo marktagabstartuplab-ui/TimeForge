@@ -182,7 +182,11 @@ export class KpiService {
 
   /**
    * System-internal: upsert KPI progress for a user when a timesheet is approved.
-   * Adds approved hours to HOURS-metric KPIs applicable to the user.
+   * - HOURS templates: add approved hours
+   * - COUNT / CUSTOM templates: increment by 1 (one approved timesheet = one unit)
+   * - PERCENT / CURRENCY: auto-skip (require manual entry)
+   * Respects `appliesTo` scoping: skips templates where the employee's role or dept
+   * is not in the allowed set.
    * Called from ApprovalsService after successful APPROVE decision.
    */
   async upsertProgressFromApproval(
@@ -190,21 +194,37 @@ export class KpiService {
     organizationId: string,
     userId: string,
     approvedMinutes: number,
+    userRoles: string[] = [],
+    userDepartmentId: string | null = null,
   ): Promise<void> {
     const approvedHours = approvedMinutes / 60;
 
-    // Find all HOURS metric templates for this org
+    // Fetch all auto-trackable templates (HOURS + COUNT + CUSTOM)
     const templates = await this.prisma.kpiTemplate.findMany({
       where: {
         tenantId,
         organizationId,
-        metricType: 'HOURS',
+        metricType: { in: ['HOURS', 'COUNT', 'CUSTOM'] },
         deletedAt: null,
       },
     });
 
     for (const tpl of templates) {
-      // periodKey: use YYYY-MM for MONTHLY, YYYY-WNN for WEEKLY etc.
+      // ── appliesTo scope check ──────────────────────────────────────────────
+      const appliesTo = tpl.appliesTo as { roles?: string[]; departments?: string[] } | null;
+      if (appliesTo) {
+        if (appliesTo.roles && appliesTo.roles.length > 0) {
+          const overlap = userRoles.some((r) => appliesTo.roles!.includes(r));
+          if (!overlap) continue; // user's role not in allowed roles for this KPI
+        }
+        if (appliesTo.departments && appliesTo.departments.length > 0) {
+          if (!userDepartmentId || !appliesTo.departments.includes(userDepartmentId)) continue;
+        }
+      }
+
+      // ── increment value ──────────────────────────────────────────────────
+      const increment = tpl.metricType === 'HOURS' ? approvedHours : 1;
+
       const now = new Date();
       const periodKey = this.buildPeriodKey(tpl.period, now);
 
@@ -218,7 +238,7 @@ export class KpiService {
         await this.prisma.kpiProgress.update({
           where: { id: existing.id },
           data: {
-            currentValue: { increment: approvedHours },
+            currentValue: { increment },
             updatedBy: userId,
             version: { increment: 1 },
           },
@@ -231,7 +251,7 @@ export class KpiService {
             kpiTemplateId: tpl.id,
             userId,
             periodKey,
-            currentValue: approvedHours,
+            currentValue: increment,
             targetValue: tpl.targetValue,
             createdBy: userId,
             updatedBy: userId,
@@ -239,6 +259,94 @@ export class KpiService {
         });
       }
     }
+  }
+
+  /**
+   * GET /kpi/my-summary — returns the current user's KPI progress entries
+   * enriched with target and percentage for the current period.
+   */
+  async getMyProgressSummary(p: AuthPrincipal) {
+    const now = new Date();
+
+    // Fetch all org templates that apply to this user
+    const templates = await this.prisma.kpiTemplate.findMany({
+      where: { tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+    });
+
+    const results = await Promise.all(
+      templates.map(async (tpl) => {
+        const periodKey = this.buildPeriodKey(tpl.period, now);
+        const progress = await this.prisma.kpiProgress.findFirst({
+          where: { tenantId: p.tenantId, kpiTemplateId: tpl.id, userId: p.userId, periodKey, deletedAt: null },
+        });
+        const current = progress ? Number(progress.currentValue) : 0;
+        const target = Number(tpl.targetValue);
+        const pct = target > 0 ? Math.min(100, Math.round((current / target) * 100)) : 0;
+        return {
+          kpiTemplateId: tpl.id,
+          name: tpl.name,
+          description: tpl.description,
+          metricType: tpl.metricType,
+          period: tpl.period,
+          unit: tpl.unit,
+          periodKey,
+          current,
+          target,
+          pct,
+          status: pct >= 100 ? 'MET' : pct >= 60 ? 'ON_TRACK' : 'BELOW',
+        };
+      }),
+    );
+
+    return results;
+  }
+
+  /**
+   * POST /kpi/progress/manual — supervisor or admin sets currentValue manually
+   * for PERCENT / CURRENCY / CUSTOM KPIs that cannot be auto-tracked.
+   */
+  async recordManualProgress(
+    p: AuthPrincipal,
+    dto: { kpiTemplateId: string; userId: string; currentValue: number; periodKey?: string },
+  ) {
+    const tpl = await this.findOneTemplate(p, dto.kpiTemplateId);
+    const now = new Date();
+    const periodKey = dto.periodKey ?? this.buildPeriodKey(tpl.period, now);
+    const targetUserId = dto.userId;
+
+    const existing = await this.prisma.kpiProgress.findFirst({
+      where: { tenantId: p.tenantId, kpiTemplateId: tpl.id, userId: targetUserId, periodKey, deletedAt: null },
+    });
+
+    let result;
+    if (existing) {
+      result = await this.prisma.kpiProgress.update({
+        where: { id: existing.id },
+        data: { currentValue: dto.currentValue, updatedBy: p.userId, version: { increment: 1 } },
+      });
+    } else {
+      result = await this.prisma.kpiProgress.create({
+        data: {
+          tenantId: p.tenantId,
+          organizationId: p.organizationId,
+          kpiTemplateId: tpl.id,
+          userId: targetUserId,
+          periodKey,
+          currentValue: dto.currentValue,
+          targetValue: tpl.targetValue,
+          createdBy: p.userId,
+          updatedBy: p.userId,
+        },
+      });
+    }
+
+    await this.audit(p.tenantId, p.userId, 'kpi_progress_manual', result.id, {
+      kpiTemplateId: tpl.id,
+      targetUserId,
+      currentValue: dto.currentValue,
+    });
+
+    return result;
   }
 
   // ── Team KPI Dashboard Services ─────────────────────────────────────────────

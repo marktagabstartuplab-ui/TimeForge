@@ -85,6 +85,22 @@ export class KpiController {
     return this.svc.findProgress(u, query);
   }
 
+  @Get('my-summary')
+  @RequirePermissions('kpi_progress:read')
+  getMyProgressSummary(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.getMyProgressSummary(u);
+  }
+
+  @Post('progress/manual')
+  @HttpCode(200)
+  @RequirePermissions('kpi_progress:update')
+  recordManualProgress(
+    @CurrentUser() u: AuthPrincipal,
+    @Body() dto: { kpiTemplateId: string; userId: string; currentValue: number; periodKey?: string },
+  ) {
+    return this.svc.recordManualProgress(u, dto);
+  }
+
   // ── Team KPI Dashboard (Supervisor) ─────────────────────────────────────────
 
   @Get('team/summary')

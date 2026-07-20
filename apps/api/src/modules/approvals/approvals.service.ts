@@ -177,11 +177,21 @@ export class ApprovalsService {
 
     // BR-KPI-01: on APPROVE, update KPI progress from the approved hours
     if (dto.action === 'APPROVE' && sheet.totalMinutes > 0) {
+      // Fetch the approved employee's role and department for KPI scoping
+      const employee = await this.prisma.user.findFirst({
+        where: { id: sheet.userId },
+        select: {
+          departmentId: true,
+          roles: { select: { role: { select: { name: true } } } },
+        },
+      });
       await this.kpiService.upsertProgressFromApproval(
         p.tenantId,
         p.organizationId,
         sheet.userId,
         sheet.totalMinutes,
+        employee?.roles.map((r) => r.role.name) ?? [],
+        employee?.departmentId ?? null,
       );
     }
 

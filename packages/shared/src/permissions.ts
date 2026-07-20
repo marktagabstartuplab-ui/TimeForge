@@ -80,6 +80,7 @@ export const PERMISSIONS = {
   KPI_PROGRESS_READ: 'kpi_progress:read',
   KPI_PROGRESS_READ_TEAM: 'kpi_progress:read_team',
   KPI_PROGRESS_READ_ORG: 'kpi_progress:read_org',
+  KPI_PROGRESS_UPDATE: 'kpi_progress:update', // supervisor/admin manual progress entry
   KPI_READ_ORG: 'kpi:read_org', // org-level KPI dashboards/reports
   // approvals
   APPROVAL_READ_TEAM: 'approval:read_team',
