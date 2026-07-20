@@ -270,6 +270,48 @@ export function SubmitApprovalCard({
           </div>
         );
       })()}
+      {/* Approval & History Log */}
+      {(() => {
+        const approvals = (timesheet as TimesheetDetail)?.approvals;
+        if (!approvals || approvals.length === 0) return null;
+        return (
+          <div className="mt-6 border-t border-[#c3c6d2]/30 pt-5">
+            <h4 className="text-sm font-bold uppercase tracking-wider text-brand-navy mb-3">
+              Submission & Approval History
+            </h4>
+            <div className="flex flex-col gap-3">
+              {approvals.map((app) => {
+                const dateLabel = new Date(app.actedAt).toLocaleString("en-US", {
+                  month: "short",
+                  day: "numeric",
+                  year: "numeric",
+                  hour: "2-digit",
+                  minute: "2-digit",
+                });
+                return (
+                  <div key={app.id} className="rounded-[12px] border border-[#c3c6d2]/30 bg-white p-3.5 shadow-sm">
+                    <div className="flex flex-wrap items-center justify-between gap-2">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-semibold text-brand-navy">
+                          {app.supervisor ? `${app.supervisor.firstName} ${app.supervisor.lastName}` : "Supervisor"}
+                        </span>
+                        <span className="text-xs text-brand-muted">transitioned to</span>
+                        <StatusBadge {...timesheetStatusTone(app.resultingState)} />
+                      </div>
+                      <span className="text-xs text-brand-muted">{dateLabel}</span>
+                    </div>
+                    {app.remark && (
+                      <p className="mt-2 text-sm text-[#0f172a] bg-slate-50 p-2.5 rounded-lg border border-[#c3c6d2]/15 italic">
+                        &ldquo;{app.remark}&rdquo;
+                      </p>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })()}
     </div>
   );
 }
