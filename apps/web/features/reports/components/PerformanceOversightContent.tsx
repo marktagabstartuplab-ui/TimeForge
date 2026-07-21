@@ -35,6 +35,7 @@ import {
 } from "../api/performance.service";
 import { getMyKpiSummary } from "../api/kpi.service";
 import { useAuth } from "@/providers/auth-provider";
+import { useCan } from "@/features/auth/rbac";
 import { AiRecapCard } from "./AiRecapCard";
 
 function kpiStatusColor(status: "MET" | "ON_TRACK" | "BELOW"): string {
@@ -63,6 +64,10 @@ export function PerformanceOversightContent() {
   // benefit from a search box — a regular employee only ever sees their own
   // data, so the field would be dead clutter with nothing to search for.
   const canSearchOthers = user?.roles.some((r) => r === "ADMIN" || r === "HR" || r === "SUPERVISOR") ?? false;
+  // AI Work Recap triggers OWN-scope features (ai:trigger_self). HR/Finance can
+  // reach this page (dashboard:read_self) but lack that permission, so gate the
+  // card to avoid showing a button that would 403 on click.
+  const canTriggerOwnAi = useCan("ai:trigger_self");
   const [toast, setToast] = useState<ToastState | null>(null);
   const [search, setSearch] = useState("");
   const [timeRange, setTimeRange] = useState("Last 7 Days");
@@ -329,7 +334,7 @@ export function PerformanceOversightContent() {
       </div>
 
       {/* AI Work Recap — wires DAILY_SUMMARY / WEEKLY_SUMMARY (own data only) */}
-      {!search && user?.id ? <AiRecapCard userId={user.id} /> : null}
+      {!search && user?.id && canTriggerOwnAi ? <AiRecapCard userId={user.id} /> : null}
 
       {/* My KPIs — Target vs Actual (KPI-05, KPI-06) */}
       {!search && (
