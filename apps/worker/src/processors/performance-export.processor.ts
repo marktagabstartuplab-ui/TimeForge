@@ -5,6 +5,7 @@ import ExcelJS from 'exceljs';
 import PDFDocument from 'pdfkit';
 import { PrismaService } from '../../../api/src/common/prisma/prisma.service';
 import { StorageService } from '../../../api/src/modules/storage/storage.service';
+import { NotificationsService } from '../../../api/src/modules/notifications/notifications.service';
 
 export interface PerformanceExportJobData {
   tenantId: string;
@@ -21,12 +22,13 @@ export class PerformanceExportProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly notifications: NotificationsService,
   ) {
     super();
   }
 
   async process(job: Job<PerformanceExportJobData>): Promise<{ url?: string; key?: string }> {
-    const { tenantId, organizationId, userIds, format } = job.data;
+    const { tenantId, organizationId, userIds, format, actorId } = job.data;
     this.logger.log(`[PerformanceExportProcessor] Starting job ${job.id} for format ${format}`);
 
     const users = await this.prisma.user.findMany({
@@ -122,7 +124,19 @@ export class PerformanceExportProcessor extends WorkerHost {
 
     const signedUrl = await this.storage.signedUrl(key, 3600);
     this.logger.log(`[PerformanceExportProcessor] Successfully finished export job ${job.id}`);
-    
+
+    await this.notifications.create({
+      tenantId,
+      organizationId,
+      userId: actorId,
+      type: 'ANNOUNCEMENT',
+      category: 'PERFORMANCE',
+      title: 'Performance export ready',
+      message: `Your ${format} performance export has finished generating.`,
+      actionUrl: signedUrl,
+      actionLabel: 'Download',
+    });
+
     return { url: signedUrl, key };
   }
 }
