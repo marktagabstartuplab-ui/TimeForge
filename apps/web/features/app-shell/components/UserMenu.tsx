@@ -11,7 +11,7 @@ import {
   Keyboard,
   Moon,
   LogOut,
-  PlayCircle,
+  Timer,
   FileText,
   CalendarPlus,
 } from "lucide-react";
@@ -162,7 +162,7 @@ export function UserMenu() {
               <DropdownMenuGroup>
                 <DropdownMenuLabel>Quick Actions</DropdownMenuLabel>
                 <DropdownMenuItem render={<a href="/time-tracking" />}>
-                  <PlayCircle aria-hidden="true" />
+                  <Timer aria-hidden="true" />
                   {session?.isActive ? "Resume Session" : "Start Daily Scrum"}
                 </DropdownMenuItem>
                 <DropdownMenuItem render={<a href="/timesheets" />}>
