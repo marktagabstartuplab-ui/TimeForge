@@ -1092,7 +1092,7 @@ export class PayrollService {
               select: {
                 id: true, firstName: true, lastName: true, email: true,
                 jobTitle: true, employmentType: true, hourlyRate: true,
-                payrollEligible: true, status: true,
+                payrollEligible: true, status: true, version: true,
                 department: { select: { name: true } },
               },
             },
@@ -1136,6 +1136,12 @@ export class PayrollService {
         employmentType: li.user.employmentType,
         department: li.user.department,
         hourlyRate: baseRate,
+        // The user's current base rate + version, so Finance can edit it inline
+        // (PATCH /payroll/rates/:userId uses optimistic concurrency). Distinct
+        // from `hourlyRate` above, which is this period's snapshotted line-item
+        // rate — they diverge after an edit until the report is regenerated.
+        userHourlyRate: li.user.hourlyRate != null ? Number(li.user.hourlyRate) : null,
+        userVersion: li.user.version,
         payrollEligible: li.user.payrollEligible,
         status: li.user.status,
         estimatedPay,
