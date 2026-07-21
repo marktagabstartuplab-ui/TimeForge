@@ -28,9 +28,23 @@ const featureIcons: Record<string, React.FC<{ className?: string }>> = {
   GENERAL: FileText,
 };
 
+/** The type-specific summaries mix currency, percentages, and plain counts —
+ *  formatting every number as ₱ (the old behavior) turned counts like
+ *  "overBudgetDepartments: 2" into "₱0.0K". Key name decides the format. */
+function formatSummaryValue(key: string, value: unknown): string {
+  if (typeof value !== "number") return String(value);
+  const k = key.toLowerCase();
+  if (k.includes("score") || k.includes("health") || k.includes("efficiency") || k.includes("utilization")) {
+    return `${value}%`;
+  }
+  if (k.includes("payroll") || k.includes("budget") || k.includes("spent") || k.includes("remaining") || k.includes("liability") || k.includes("cost") || k.includes("pay") || k.includes("projected")) {
+    return `₱${(value / 1000).toFixed(1)}K`;
+  }
+  return String(value);
+}
+
 export function AiReportModal({ open, onClose, report, isLoading }: AiReportModalProps) {
   const FeatureIcon = report ? (featureIcons[report.feature] ?? FileText) : FileText;
-  const featureLabel = report ? (featureLabels[report.feature] ?? "AI Report") : "AI Report";
 
   let parsedSummary: Record<string, unknown> | null = null;
   let parsedRecommendation = "";
@@ -43,6 +57,14 @@ export function AiReportModal({ open, onClose, report, isLoading }: AiReportModa
     parsedRecommendation = report.result.recommendation;
   }
 
+  // __focusLabel identifies which "AI Recommendations" card triggered this
+  // report (e.g. "Cost Optimization") — shown as the title instead of the
+  // generic feature name, and stripped out of the metrics grid below.
+  const focusLabel = (parsedSummary?.__focusLabel as string | undefined) ?? (report ? (featureLabels[report.feature] ?? "AI Report") : "AI Report");
+  const summaryEntries = parsedSummary
+    ? Object.entries(parsedSummary).filter(([key]) => key !== "__focusLabel")
+    : [];
+
   return (
     <Dialog open={open} onOpenChange={(open) => { if (!open) onClose(); }}>
       <DialogContent className="w-[min(800px,calc(100vw-2rem))]">
@@ -52,7 +74,7 @@ export function AiReportModal({ open, onClose, report, isLoading }: AiReportModa
               <FeatureIcon className="h-5 w-5 text-brand" />
             </div>
             <div>
-              <DialogTitle className="text-lg">{featureLabel}</DialogTitle>
+              <DialogTitle className="text-lg">{focusLabel}</DialogTitle>
               <DialogDescription className="text-xs">
                 {report ? `Generated ${new Date(report.createdAt).toLocaleString()}` : "Generating..."}
               </DialogDescription>
@@ -90,17 +112,17 @@ export function AiReportModal({ open, onClose, report, isLoading }: AiReportModa
               </div>
 
               {/* Summary Cards */}
-              {parsedSummary && (
+              {summaryEntries.length > 0 && (
                 <div>
                   <h4 className="text-sm font-bold text-brand-navy mb-3">Executive Summary</h4>
                   <div className="grid grid-cols-2 sm:grid-cols-4 gap-3">
-                    {Object.entries(parsedSummary).map(([key, value]) => (
+                    {summaryEntries.map(([key, value]) => (
                       <div key={key} className="rounded-[10px] border border-[#c3c6d2]/30 bg-[#f6f3f4] p-3">
                         <p className="text-[10px] font-semibold uppercase tracking-wider text-brand-muted mb-1">
                           {key.replace(/([A-Z])/g, " $1").trim()}
                         </p>
                         <p className="text-lg font-bold text-brand-navy">
-                          {typeof value === "number" ? `₱${(value / 1000).toFixed(1)}K` : String(value)}
+                          {formatSummaryValue(key, value)}
                         </p>
                       </div>
                     ))}

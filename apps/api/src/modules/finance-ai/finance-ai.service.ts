@@ -656,6 +656,136 @@ export class FinanceAiService {
     };
   }
 
+  /**
+   * Builds report content genuinely specific to which "AI Recommendations"
+   * card triggered generation — previously `type` was threaded all the way
+   * from the frontend button down to here and then silently dropped, so
+   * every card (Cost Optimization, Payroll Risk, Compliance, Forecast,
+   * Staffing, Budget) produced the exact same generic totals + "N alerts
+   * found" line.
+   */
+  private async buildFocusedReport(
+    p: AuthPrincipal,
+    type: string,
+    financeDash: { totalPayroll: { value: number } } | null,
+    payrollDash: { cards: { activePayruns: { value: number }; pendingHRApprovals: { value: number }; payEfficiency: { value: number } } } | null,
+    alerts: { data: FinanceAiAlert[] },
+  ): Promise<{ focusLabel: string; summary: Record<string, unknown>; recommendation: string; focusAlerts: FinanceAiAlert[] }> {
+    const byType = (t: string) => alerts.data.filter((a) => a.type === t);
+
+    switch (type) {
+      case 'cost_optimization': {
+        const budget = await this.getBudget(p, {});
+        const overBudget = budget.data.filter((d) => d.status !== 'ON_TRACK');
+        return {
+          focusLabel: 'Cost Optimization',
+          summary: {
+            payrollLiability: financeDash?.totalPayroll.value ?? 0,
+            totalBudget: budget.totals.totalBudget,
+            totalSpent: budget.totals.totalSpent,
+            overBudgetDepartments: overBudget.length,
+          },
+          recommendation: overBudget.length > 0
+            ? `${overBudget.length} department(s) are over or near budget: ${overBudget.slice(0, 3).map((d) => d.department).join(', ')}. Review their allocations first — they represent the largest optimization opportunity.`
+            : 'All departments are within budget. No immediate cost-optimization action required.',
+          focusAlerts: byType('BUDGET_THRESHOLD'),
+        };
+      }
+      case 'payroll_risk': {
+        const overtime = byType('OVERTIME_ANOMALY');
+        const errors = byType('PAYROLL_ERROR');
+        return {
+          focusLabel: 'Payroll Risk Assessment',
+          summary: {
+            pendingApprovals: payrollDash?.cards.pendingHRApprovals.value ?? 0,
+            overtimeAnomalies: overtime.length,
+            payrollErrors: errors.length,
+          },
+          recommendation: overtime.length > 0 || errors.length > 0
+            ? `${overtime.length} overtime anomal${overtime.length === 1 ? "y" : "ies"} and ${errors.length} payroll error(s) detected. Review flagged employees before the next payroll run to avoid overpayment risk.`
+            : 'No overtime anomalies or payroll errors detected. Risk is low.',
+          focusAlerts: [...overtime, ...errors],
+        };
+      }
+      case 'compliance': {
+        const dash = await this.getDashboard(p, {});
+        const complianceAlerts = byType('COMPLIANCE_RISK');
+        return {
+          focusLabel: 'Compliance Suggestion',
+          summary: {
+            complianceScore: dash.payrollOversight.complianceStatus,
+            complianceAlerts: complianceAlerts.length,
+          },
+          recommendation: dash.payrollOversight.complianceStatus < 80
+            ? `Compliance score is ${dash.payrollOversight.complianceStatus}%. Review rejected/revision-requested timesheets — they're the most common driver of compliance risk.`
+            : `Compliance score is ${dash.payrollOversight.complianceStatus}%. Practices are healthy; no action needed.`,
+          focusAlerts: complianceAlerts,
+        };
+      }
+      case 'forecast': {
+        const forecast = await this.getForecast(p, {});
+        const first = forecast.payrollForecast[0];
+        const last = forecast.payrollForecast[forecast.payrollForecast.length - 1];
+        const trend = first && last ? (last.value >= first.value ? 'increasing' : 'decreasing') : 'stable';
+        return {
+          focusLabel: 'Financial Forecast',
+          summary: {
+            projectedNextPeriod: last?.value ?? 0,
+            periodsProjected: forecast.payrollForecast.length,
+          },
+          recommendation: `Payroll trend is ${trend} over the projected periods, reaching an estimated ${last ? `₱${last.value.toLocaleString()}` : "an unknown amount"} by ${last?.label ?? "the final period"}. Plan budget allocation accordingly.`,
+          focusAlerts: [],
+        };
+      }
+      case 'staffing': {
+        const dash = await this.getDashboard(p, {});
+        return {
+          focusLabel: 'Staffing Recommendation',
+          summary: {
+            activePayrollCycles: dash.payrollOversight.activeCycles,
+            processingHealth: dash.payrollOversight.processingHealth,
+          },
+          recommendation: dash.payrollOversight.activeCycles > 3
+            ? `${dash.payrollOversight.activeCycles} active payroll cycles indicate high processing volume. Consider automation improvements to reduce manual processing load.`
+            : 'Current staffing levels align with payroll processing demands.',
+          focusAlerts: [],
+        };
+      }
+      case 'budget': {
+        const budget = await this.getBudget(p, {});
+        const overBudget = budget.data.filter((d) => d.status === 'OVER_BUDGET');
+        return {
+          focusLabel: 'Budget Alert',
+          summary: {
+            totalBudget: budget.totals.totalBudget,
+            totalSpent: budget.totals.totalSpent,
+            totalRemaining: budget.totals.totalRemaining,
+            overBudgetDepartments: overBudget.length,
+          },
+          recommendation: overBudget.length > 0
+            ? `${overBudget.length} department(s) are over budget: ${overBudget.slice(0, 3).map((d) => d.department).join(', ')}. Review their allocations.`
+            : 'Budget is within expected variance range across all departments.',
+          focusAlerts: byType('BUDGET_THRESHOLD'),
+        };
+      }
+      default: {
+        const alertCount = alerts.data.length;
+        const criticalAlerts = alerts.data.filter((a) => a.severity === 'HIGH').length;
+        return {
+          focusLabel: 'Finance AI Report',
+          summary: {
+            totalPayroll: financeDash?.totalPayroll.value ?? 0,
+            activeRuns: payrollDash?.cards.activePayruns.value ?? 0,
+            pendingApprovals: payrollDash?.cards.pendingHRApprovals.value ?? 0,
+            efficiency: payrollDash?.cards.payEfficiency.value ?? 0,
+          },
+          recommendation: `${alertCount} alerts found (${criticalAlerts} critical).`,
+          focusAlerts: alerts.data,
+        };
+      }
+    }
+  }
+
   async report(p: AuthPrincipal, type?: string, idempotencyKey?: string) {
     this.requireFinanceOrAdmin(p);
 
@@ -666,20 +796,17 @@ export class FinanceAiService {
       this.getAlerts(p, {}),
     ]);
 
-    // Compute summary
-    const totalPayroll = financeDash?.totalPayroll.value ?? 0;
-    const alertCount = alerts.data.length;
-    const criticalAlerts = alerts.data.filter((a) => a.severity === 'HIGH').length;
+    const reportType = type ?? 'GENERAL';
+    const focused = await this.buildFocusedReport(p, reportType, financeDash, payrollDash, alerts);
+    const alertCount = focused.focusAlerts.length;
+    const criticalAlerts = focused.focusAlerts.filter((a) => a.severity === 'HIGH').length;
 
     const reportData = {
       generatedAt: new Date().toISOString(),
-      summary: {
-        totalPayroll,
-        activeRuns: payrollDash?.cards.activePayruns.value ?? 0,
-        pendingApprovals: payrollDash?.cards.pendingHRApprovals.value ?? 0,
-        efficiency: payrollDash?.cards.payEfficiency.value ?? 0,
-      },
-      alerts: alerts.data.slice(0, 10),
+      focusLabel: focused.focusLabel,
+      summary: focused.summary,
+      recommendation: focused.recommendation,
+      alerts: focused.focusAlerts.slice(0, 10),
       alertSummary: { total: alertCount, critical: criticalAlerts },
     };
 

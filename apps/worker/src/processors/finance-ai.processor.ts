@@ -12,7 +12,13 @@ export interface FinanceAiJobData {
   actorId: string;
   reportData: {
     generatedAt: string;
+    /** Which "AI Recommendations" card triggered this — e.g. "Cost Optimization",
+     *  "Payroll Risk Assessment" — vs. the generic "Finance AI Report". */
+    focusLabel?: string;
     summary: Record<string, unknown>;
+    /** Precomputed by FinanceAiService.report() — tailored per report type
+     *  rather than the old one-size-fits-all "N alerts found" line. */
+    recommendation?: string;
     alerts: unknown[];
     alertSummary: { total: number; critical: number };
   };
@@ -70,11 +76,17 @@ export class FinanceAiProcessor extends WorkerHost {
       });
 
       // ── 4. Prepare results ──────────────────────────────────────────────
-      const summaryText = JSON.stringify(reportData.summary);
+      // Persist focusLabel alongside the metrics so the modal can show a
+      // title specific to which card triggered this (e.g. "Cost
+      // Optimization") instead of always "Finance AI Report". Reserved key,
+      // filtered out of the metrics grid by the frontend.
+      const summaryPayload = { ...reportData.summary, __focusLabel: reportData.focusLabel ?? 'Finance AI Report' };
+      const summaryText = JSON.stringify(summaryPayload);
       const alertsText = JSON.stringify(reportData.alerts);
       const promptHash = createHash('sha256').update(`finance-ai-report-${jobId}`).digest('hex');
       const responseHash = createHash('sha256').update(summaryText + alertsText).digest('hex');
-      const recommendation = `${reportData.alertSummary.total} alerts found (${reportData.alertSummary.critical} critical).`;
+      const recommendation = reportData.recommendation
+        ?? `${reportData.alertSummary.total} alerts found (${reportData.alertSummary.critical} critical).`;
 
       // ── 5. Persist result + audit + status atomically ─────────────────────
       await (this.prisma as any).$transaction(async (tx: any) => {
