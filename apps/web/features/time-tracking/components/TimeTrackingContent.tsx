@@ -133,8 +133,6 @@ export function TimeTrackingContent() {
         .sort((a, b) => b.entryDate.localeCompare(a.entryDate))[0] ?? null
     );
   }, [historyQuery.data]);
-  const feedbackBannerEntry =
-    latestFeedbackEntry && latestFeedbackEntry.id !== scrumEntry?.id ? latestFeedbackEntry : null;
 
   // Today's plan lives in ScrumTask rows (task-driven flow) — the legacy
   // free-text `today` field is created empty, so it can't be the gate. Same
@@ -273,14 +271,6 @@ export function TimeTrackingContent() {
         <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
           {/* Main column */}
           <div className="flex min-w-0 flex-col gap-4">
-            {feedbackBannerEntry ? (
-              <SupervisorCommentBanner
-                note={feedbackBannerEntry.supervisorNote!}
-                entryDate={feedbackBannerEntry.entryDate}
-                viewHref={`/time-tracking?scrum=${feedbackBannerEntry.id}`}
-              />
-            ) : null}
-
             <CurrentSessionCard
               selectedTask={selectedTask}
               runningTask={summary.running?.task ?? null}
@@ -325,6 +315,13 @@ export function TimeTrackingContent() {
               weekEntries={weekEntries}
               weekLoading={weekQuery.isLoading}
             />
+            {latestFeedbackEntry ? (
+              <SupervisorCommentBanner
+                note={latestFeedbackEntry.supervisorNote!}
+                entryDate={latestFeedbackEntry.entryDate}
+                viewHref={`/time-tracking?scrum=${latestFeedbackEntry.id}`}
+              />
+            ) : null}
           </div>
         </div>
       )}

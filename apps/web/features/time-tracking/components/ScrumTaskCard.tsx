@@ -49,7 +49,6 @@ import {
 import { listProjects } from "../api/catalog.service";
 import { runAndPollAiJob } from "@/features/scrum-management/api/ai-insight.service";
 import { dailyScrumSchema, type DailyScrumValues } from "../schemas/time-entry.schema";
-import { SupervisorCommentBanner } from "./SupervisorCommentBanner";
 import { formatClockTime, toIsoDate } from "@/lib/time";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
@@ -484,11 +483,6 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
           )}
         </div>
       </div>
-
-      {/* Supervisor feedback for the entry shown in this card. Read-only for the
-          employee. The Daily Scrum page also renders this banner standalone for
-          feedback on recent entries (see SupervisorCommentBanner). */}
-      {entry?.supervisorNote ? <SupervisorCommentBanner note={entry.supervisorNote} /> : null}
 
       {/* Dynamic Performance Score Card (Section 6) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-[12px] bg-[#f6f3f4]/40 border border-[#c3c6d2]/20">
