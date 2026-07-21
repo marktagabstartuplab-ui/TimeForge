@@ -16,10 +16,10 @@ export function PesoIcon({ className }: { className?: string }) {
       className={className}
       aria-hidden="true"
     >
-      <path d="M6 3v18" />
-      <path d="M6 3h9a5 5 0 0 1 0 10H6" />
-      <path d="M3 9h13" />
-      <path d="M3 13h10" />
+      <path d="M7 4v16" />
+      <path d="M7 4h6a4 4 0 0 1 0 8H7" />
+      <path d="M4 9h13" />
+      <path d="M4 13h6" />
     </svg>
   );
 }
