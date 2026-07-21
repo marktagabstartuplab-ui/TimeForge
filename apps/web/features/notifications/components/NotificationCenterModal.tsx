@@ -146,16 +146,16 @@ export function NotificationCenterModal() {
               }}
               aria-label="Search notifications"
             />
-            <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
               <Tabs
                 value={tab}
                 onValueChange={(v) => {
                   setTab(v as TabValue);
                   setPage(1);
                 }}
-                className="min-w-0 flex-1"
+                className="min-w-0 flex-1 overflow-hidden"
               >
-                <TabsList>
+                <TabsList className="min-w-0 w-full overscroll-x-contain [scrollbar-width:thin] [&::-webkit-scrollbar]:!block [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#c3c6d2]/80">
                   {TABS.map((t) => (
                     <TabsTab key={t.value} value={t.value}>
                       {t.label}
@@ -163,19 +163,21 @@ export function NotificationCenterModal() {
                   ))}
                 </TabsList>
               </Tabs>
-              <Select value={sortBy} onValueChange={(v) => setSortBy(v as NotificationSort)}>
-                <SelectTrigger size="sm" aria-label="Sort by">
-                  <span className="text-xs font-bold uppercase tracking-wide text-brand-muted">Sort:</span>
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  {SORT_OPTIONS.map((o) => (
-                    <SelectItem key={o.value} value={o.value}>
-                      {o.label}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
+              <div className="shrink-0">
+                <Select value={sortBy} onValueChange={(v) => setSortBy(v as NotificationSort)}>
+                  <SelectTrigger size="sm" aria-label="Sort by">
+                    <span className="text-xs font-bold uppercase tracking-wide text-brand-muted">Sort:</span>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {SORT_OPTIONS.map((o) => (
+                      <SelectItem key={o.value} value={o.value}>
+                        {o.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
             </div>
           </div>
 
