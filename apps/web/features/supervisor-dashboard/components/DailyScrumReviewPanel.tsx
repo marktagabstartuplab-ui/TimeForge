@@ -29,6 +29,7 @@ function FeedbackRow({ row, onToast }: { row: ScrumReviewRow; onToast: (t: Toast
     mutationFn: () => commentOnScrumEntry(row.id, comment.trim(), row.version),
     onSuccess: () => {
       onToast({ message: "Feedback sent.", tone: "success" });
+      setComment("");
       queryClient.invalidateQueries({ queryKey: ["supervisor"] });
     },
     onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Could not send feedback.", tone: "error" }),

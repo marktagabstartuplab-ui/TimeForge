@@ -133,13 +133,7 @@ export function TeamDirectoryContent() {
                         </div>
                       </td>
                       <td className="py-3 pr-4 text-brand-ink">{roleName}</td>
-                      <td className="py-3 pr-4">
-                        {isIntern ? (
-                          <StatusBadge label="Intern" tone="info" />
-                        ) : (
-                          <span className="text-brand-ink">Employee</span>
-                        )}
-                      </td>
+                      <td className="py-3 pr-4 text-brand-ink">{isIntern ? "Intern" : "Employee"}</td>
                       <td className="py-3 pr-4 text-brand-muted">{e.department?.name ?? "—"}</td>
                       <td className="py-3 pr-4">
                         <StatusBadge label={label} tone={tone} />

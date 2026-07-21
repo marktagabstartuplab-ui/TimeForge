@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight, Plus } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -49,6 +49,15 @@ export function SchedulesContent() {
   const isSupervisorOnly = canManage && user?.roles.some((r) => r === "SUPERVISOR") && !user?.roles.some((r) => ["HR", "ADMIN"].includes(r));
   const departments = isSupervisorOnly ? (allDepartments ?? []).filter((d) => d.manager?.id === user?.id) : (allDepartments ?? []);
   const managedDeptIds = isSupervisorOnly ? departments.map((d) => d.id) : undefined;
+
+  // Supervisors are scoped to the department(s) they head — no "All Departments"
+  // rollup across other teams they don't manage. Default to their own department
+  // once it loads instead of the global "ALL" placeholder.
+  useEffect(() => {
+    if (isSupervisorOnly && departmentId === "ALL" && departments.length > 0) {
+      setDepartmentId(departments[0].id);
+    }
+  }, [isSupervisorOnly, departments, departmentId]);
   const { data: calendar, isLoading } = useQuery({
     queryKey: ["schedules", "calendar", weekStart, departmentId],
     queryFn: () => getCalendar({ weekStart, departmentId: departmentId !== "ALL" ? departmentId : undefined }),
@@ -131,21 +140,42 @@ export function SchedulesContent() {
           ) : null}
 
           <div className="ml-auto">
-            <Select value={departmentId} onValueChange={(v) => setDepartmentId(v ?? "ALL")}>
-              <SelectTrigger aria-label="Filter by department" className="h-9 w-48 rounded-[8px] border-[#c3c6d2]/60 bg-white px-3 text-sm">
-                <span className="flex flex-1 text-left truncate">
-                  {departmentId === "ALL"
-                    ? "All Departments"
-                    : departments?.find((d) => d.id === departmentId)?.name ?? departmentId}
+            {isSupervisorOnly ? (
+              departments.length > 1 ? (
+                <Select value={departmentId} onValueChange={(v) => setDepartmentId(v ?? departments[0]?.id ?? "ALL")}>
+                  <SelectTrigger aria-label="Filter by department" className="h-9 w-48 rounded-[8px] border-[#c3c6d2]/60 bg-white px-3 text-sm">
+                    <span className="flex flex-1 text-left truncate">
+                      {departments.find((d) => d.id === departmentId)?.name ?? departments[0]?.name}
+                    </span>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {departments.map((d) => (
+                      <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <span className="flex h-9 w-48 items-center rounded-[8px] border border-[#c3c6d2]/60 bg-[#f6f3f4] px-3 text-sm font-bold text-brand-ink truncate">
+                  {departments[0]?.name ?? "No department"}
                 </span>
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="ALL">All Departments</SelectItem>
-                {(departments ?? []).map((d) => (
-                  <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+              )
+            ) : (
+              <Select value={departmentId} onValueChange={(v) => setDepartmentId(v ?? "ALL")}>
+                <SelectTrigger aria-label="Filter by department" className="h-9 w-48 rounded-[8px] border-[#c3c6d2]/60 bg-white px-3 text-sm">
+                  <span className="flex flex-1 text-left truncate">
+                    {departmentId === "ALL"
+                      ? "All Departments"
+                      : departments?.find((d) => d.id === departmentId)?.name ?? departmentId}
+                  </span>
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="ALL">All Departments</SelectItem>
+                  {(departments ?? []).map((d) => (
+                    <SelectItem key={d.id} value={d.id}>{d.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
           </div>
         </div>
       ) : null}
