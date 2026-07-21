@@ -22,6 +22,7 @@ import { QuickSelectRail } from "./QuickSelectRail";
 import { TodayProgressCard } from "./TodayProgressCard";
 import { TodayEntriesList } from "./TodayEntriesList";
 import { ScrumHistoryCard } from "./ScrumHistoryCard";
+import { SupervisorCommentBanner } from "./SupervisorCommentBanner";
 import { EodReviewModal } from "./EodReviewModal";
 import { startOfDay, endOfDay, toIsoDate, weekWindow } from "@/lib/time";
 
@@ -98,6 +99,28 @@ export function TimeTrackingContent() {
   const scrumEntry = deepLinkQuery.data ?? scrumQuery.data?.data[0] ?? null;
   const onBreak = workSessionQuery.data?.onBreak ?? false;
 
+  // Supervisor feedback often lands on a *past* day's entry (a supervisor
+  // reviews yesterday's scrum today). Normal navigation only loads today's
+  // entry, so that feedback was previously visible only by clicking the
+  // notification deep link (?scrum=<id>). Reuse the history query (shared cache
+  // key with ScrumHistoryCard) to find the most recent commented entry and
+  // surface it as a standalone banner — unless it's the entry the card already
+  // shows (today's, or the deep-linked one), which renders its own banner.
+  const historyQuery = useQuery({
+    queryKey: ["scrum-entries", "history"],
+    queryFn: () => listScrumEntries({ limit: 30 }),
+  });
+  const latestFeedbackEntry = useMemo(() => {
+    const all = historyQuery.data?.data ?? [];
+    return (
+      [...all]
+        .filter((e) => e.supervisorNote && e.supervisorNote.trim().length > 0)
+        .sort((a, b) => b.entryDate.localeCompare(a.entryDate))[0] ?? null
+    );
+  }, [historyQuery.data]);
+  const feedbackBannerEntry =
+    latestFeedbackEntry && latestFeedbackEntry.id !== scrumEntry?.id ? latestFeedbackEntry : null;
+
   // Today's plan lives in ScrumTask rows (task-driven flow) — the legacy
   // free-text `today` field is created empty, so it can't be the gate. Same
   // query key as ScrumTaskCard, so this is served from the shared cache.
@@ -117,6 +140,19 @@ export function TimeTrackingContent() {
       (a, b) => new Date(b.startTime).getTime() - new Date(a.startTime).getTime(),
     )[0] ?? null;
   }, [summary.running, onBreak, entries]);
+
+  const queryClient = useQueryClient();
+
+  // If a notification deep link is clicked, it fetches fresh data for that specific
+  // entry. When the user later navigates back to the normal view (sidebar), the
+  // regular queries ("today" and "history") would be stale. We invalidate them
+  // here so they refetch and pick up the new supervisor comments.
+  useEffect(() => {
+    if (deepLinkQuery.data) {
+      queryClient.invalidateQueries({ queryKey: ["scrum-entries", "history"] });
+      queryClient.invalidateQueries({ queryKey: ["scrum-entries", "today"] });
+    }
+  }, [deepLinkQuery.data, queryClient]);
 
   // EOD Review ("End of Day Review" header button and "Time Out & Review" in
   // CurrentSessionCard — the same action, two entry points) is only meaningful
@@ -200,7 +236,7 @@ export function TimeTrackingContent() {
           message="Could not load your time entries."
           onRetry={() => entriesQuery.refetch()}
         />
-      ) : entriesQuery.isLoading ? (
+      ) : entriesQuery.isLoading || scrumQuery.isLoading || historyQuery.isLoading ? (
         <div className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
           <div className="flex flex-col gap-4">
             <Skeleton className="h-64" />
@@ -216,6 +252,14 @@ export function TimeTrackingContent() {
         <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
           {/* Main column */}
           <div className="flex min-w-0 flex-col gap-4">
+            {feedbackBannerEntry ? (
+              <SupervisorCommentBanner
+                note={feedbackBannerEntry.supervisorNote!}
+                entryDate={feedbackBannerEntry.entryDate}
+                viewHref={`/time-tracking?scrum=${feedbackBannerEntry.id}`}
+              />
+            ) : null}
+
             <CurrentSessionCard
               selectedTask={selectedTask}
               runningTask={summary.running?.task ?? null}

@@ -49,6 +49,7 @@ import {
 import { listProjects } from "../api/catalog.service";
 import { runAndPollAiJob } from "@/features/scrum-management/api/ai-insight.service";
 import { dailyScrumSchema, type DailyScrumValues } from "../schemas/time-entry.schema";
+import { SupervisorCommentBanner } from "./SupervisorCommentBanner";
 import { formatClockTime, toIsoDate } from "@/lib/time";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
@@ -484,19 +485,10 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
         </div>
       </div>
 
-      {/* Supervisor feedback — visible here (not just via notification) once a
-          supervisor comments on this entry. Read-only for the employee. */}
-      {entry?.supervisorNote ? (
-        <div className="rounded-[12px] border border-brand/30 bg-brand/5 p-4">
-          <div className="flex items-start gap-2.5">
-            <MessageSquareText className="mt-0.5 h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
-            <div className="min-w-0">
-              <p className="text-xs font-bold uppercase tracking-[0.5px] text-brand">Supervisor Comment</p>
-              <p className="mt-1 whitespace-pre-wrap text-sm text-brand-ink">{entry.supervisorNote}</p>
-            </div>
-          </div>
-        </div>
-      ) : null}
+      {/* Supervisor feedback for the entry shown in this card. Read-only for the
+          employee. The Daily Scrum page also renders this banner standalone for
+          feedback on recent entries (see SupervisorCommentBanner). */}
+      {entry?.supervisorNote ? <SupervisorCommentBanner note={entry.supervisorNote} /> : null}
 
       {/* Dynamic Performance Score Card (Section 6) */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4 p-4 rounded-[12px] bg-[#f6f3f4]/40 border border-[#c3c6d2]/20">
