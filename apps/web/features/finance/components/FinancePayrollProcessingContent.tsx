@@ -20,6 +20,7 @@ import {
   Users,
   Receipt,
   ShieldCheck,
+  Pencil,
 } from "lucide-react";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { StatusBadge, type BadgeTone } from "@/components/shared/StatusBadge";
@@ -43,12 +44,14 @@ import {
   approvePayroll,
   rejectPayroll,
   sendPayrollToBank,
+  updateUserRate,
   type PayrollProcessingStatus,
   type PayrollEmployee,
 } from "../api/finance-payroll-processing.service";
 import { listTimesheets, type Timesheet } from "@/features/timesheets/api/timesheets.service";
 import { TimesheetWorkDetails } from "@/features/timesheets/components/TimesheetWorkDetails";
 import { timesheetStatusTone } from "@/components/shared/StatusBadge";
+import { useCan } from "@/features/auth/rbac";
 
 const PROCESSING_FLOW: { status: PayrollProcessingStatus; label: string }[] = [
   { status: "DRAFT", label: "Draft" },
@@ -193,6 +196,12 @@ export function FinancePayrollProcessingContent() {
   const activePeriod = periods.find((p) => p.id === activePeriodId) ?? null;
   const [workDetailsEmp, setWorkDetailsEmp] = useState<PayrollEmployee | null>(null);
 
+  // Inline base-rate editing (Finance/Admin only). `rateEdit` holds the row
+  // being edited: the user id, the version for optimistic concurrency, and the
+  // draft input value.
+  const canEditRate = useCan("payroll_rate:update");
+  const [rateEdit, setRateEdit] = useState<{ userId: string; version: number; value: string } | null>(null);
+
   const { data: dashboard, isLoading: isDashLoading, isError: isDashError } = useQuery({
     queryKey: ["finance-payroll-processing", "dashboard", activePeriodId],
     queryFn: () => getProcessingDashboard(activePeriodId as string),
@@ -266,6 +275,31 @@ export function FinancePayrollProcessingContent() {
     onSuccess: () => setToast({ message: "Export queued — you'll get a notification with the download link.", tone: "success" }),
     onError: (err: any) => setToast({ message: err?.message || "Export failed.", tone: "error" }),
   });
+
+  const rateMutation = useMutation({
+    mutationFn: ({ userId, rate, version }: { userId: string; rate: number; version: number }) =>
+      updateUserRate(userId, rate, version),
+    onSuccess: () => {
+      setRateEdit(null);
+      setToast({
+        message: "Base rate updated. Regenerate the report to apply it to this period's payout.",
+        tone: "success",
+      });
+      invalidateAll();
+    },
+    onError: (err: any) =>
+      setToast({ message: err?.message || "Could not update the rate. Refresh and try again.", tone: "error" }),
+  });
+
+  const submitRate = () => {
+    if (!rateEdit) return;
+    const parsed = Number(rateEdit.value);
+    if (!Number.isFinite(parsed) || parsed < 0) {
+      setToast({ message: "Enter a valid rate of ₱0 or more.", tone: "error" });
+      return;
+    }
+    rateMutation.mutate({ userId: rateEdit.userId, rate: parsed, version: rateEdit.version });
+  };
 
   const employees = dashboard?.employees ?? [];
   const auditLog = dashboard?.auditLog ?? [];
@@ -502,7 +536,61 @@ export function FinancePayrollProcessingContent() {
                           <div className="text-xs text-brand-muted">{emp.jobTitle ?? emp.employmentType}</div>
                         </td>
                         <td className="py-3 px-4 text-brand-ink">{emp.department?.name ?? "—"}</td>
-                        <td className="py-3 px-4 text-brand-ink">{formatCurrency(emp.hourlyRate)}/hr</td>
+                        <td className="py-3 px-4 text-brand-ink">
+                          {rateEdit?.userId === emp.id ? (
+                            <div className="flex items-center gap-1.5">
+                              <span className="text-brand-muted">₱</span>
+                              <Input
+                                type="number"
+                                min={0}
+                                step="0.01"
+                                autoFocus
+                                value={rateEdit.value}
+                                onChange={(e) => setRateEdit({ ...rateEdit, value: e.target.value })}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") submitRate();
+                                  if (e.key === "Escape") setRateEdit(null);
+                                }}
+                                className="h-8 w-24"
+                                aria-label={`Hourly rate for ${emp.firstName} ${emp.lastName}`}
+                              />
+                              <Button type="button" size="xs" onClick={submitRate} disabled={rateMutation.isPending}>
+                                {rateMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : "Save"}
+                              </Button>
+                              <Button
+                                type="button"
+                                size="xs"
+                                variant="outline"
+                                onClick={() => setRateEdit(null)}
+                                disabled={rateMutation.isPending}
+                              >
+                                Cancel
+                              </Button>
+                            </div>
+                          ) : (
+                            <div className="flex items-center gap-2">
+                              <span>
+                                {emp.userHourlyRate != null ? `${formatCurrency(emp.userHourlyRate)}/hr` : "Not set"}
+                              </span>
+                              {canEditRate ? (
+                                <button
+                                  type="button"
+                                  onClick={() =>
+                                    setRateEdit({
+                                      userId: emp.id,
+                                      version: emp.userVersion,
+                                      value: emp.userHourlyRate != null ? String(emp.userHourlyRate) : "",
+                                    })
+                                  }
+                                  className="text-brand-muted hover:text-brand"
+                                  aria-label={`Edit rate for ${emp.firstName} ${emp.lastName}`}
+                                >
+                                  <Pencil className="h-3.5 w-3.5" />
+                                </button>
+                              ) : null}
+                            </div>
+                          )}
+                        </td>
                         <td className="py-3 px-4 font-semibold text-brand-ink">{formatCurrency(emp.estimatedPay)}</td>
                         <td className="py-3 px-4 text-brand-ink">{emp.payMultiplier.toFixed(2)}x</td>
                         <td className="py-3 px-4">

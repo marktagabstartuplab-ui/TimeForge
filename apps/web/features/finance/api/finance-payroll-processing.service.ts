@@ -44,6 +44,11 @@ export interface PayrollEmployee {
   rowStatus: string;
   rejectedHours: number;
   lineItemId: string;
+  /** The user's current base rate (null if unset) + version — for inline rate
+   *  editing. Distinct from `hourlyRate`, which is this period's snapshotted
+   *  line-item rate (they diverge after an edit until the report regenerates). */
+  userHourlyRate: number | null;
+  userVersion: number;
 }
 
 export interface PayrollAuditEntry {
@@ -74,6 +79,25 @@ export async function getProcessingDashboard(periodId: string): Promise<Processi
 
 export async function getPayrollEmployees(): Promise<PayrollEmployee[]> {
   const { data } = await apiClient.get<PayrollEmployee[]>("/payroll/employees");
+  return data;
+}
+
+/**
+ * Sets an employee's base hourly rate (Finance/Admin only — `payroll_rate:update`).
+ * Reuses the existing PATCH /payroll/rates/:userId endpoint with optimistic
+ * concurrency; `version` comes from the employee's `userVersion`. Returns the
+ * new version so the caller can PATCH again without a refetch.
+ */
+export async function updateUserRate(
+  userId: string,
+  rate: number,
+  version: number,
+): Promise<{ id: string; hourlyRate: number | null; version: number }> {
+  const { data } = await apiClient.patch<{ id: string; hourlyRate: number | null; version: number }>(
+    `/payroll/rates/${userId}`,
+    null,
+    { params: { rate, version } },
+  );
   return data;
 }
 

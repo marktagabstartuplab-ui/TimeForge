@@ -372,7 +372,7 @@ export function PayrollProcessingContent() {
                       <span className="font-medium text-brand-ink">
                         {li.user.firstName} {li.user.lastName}
                       </span>
-                      <span className="text-brand-muted">${Number(li.hourlyRate).toFixed(2)}/hr</span>
+                      <span className="text-brand-muted">₱{Number(li.hourlyRate).toFixed(2)}/hr</span>
                     </li>
                   ))}
                 </ul>
@@ -482,7 +482,7 @@ export function PayrollProcessingContent() {
                           </td>
                           <td className="py-3 px-4 text-brand-ink">{Number(li.approvedHours).toFixed(2)}</td>
                           <td className="py-3 px-4 text-brand-ink">{Number(li.overtimeHours).toFixed(1)}</td>
-                          <td className="py-3 px-4 text-brand-ink">${Number(li.hourlyRate).toFixed(2)}/hr</td>
+                          <td className="py-3 px-4 text-brand-ink">₱{Number(li.hourlyRate).toFixed(2)}/hr</td>
                           <td className="py-3 px-4 font-semibold text-brand-ink">{formatCurrency(Number(li.estimatedPay))}</td>
                           <td className="py-3 px-4">
                             <StatusBadge label={status} tone={ROW_STATUS_TONE[status]} />
