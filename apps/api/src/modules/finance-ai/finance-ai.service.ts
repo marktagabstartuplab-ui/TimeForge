@@ -769,25 +769,54 @@ export class FinanceAiService {
         };
       }
       default: {
+        // The un-typed "Generate AI Report" button (as opposed to the six
+        // focused "AI Recommendations" cards) is the org's one general-purpose
+        // report — so it pulls the same building blocks the focused reports
+        // each use individually (budget, forecast, compliance) and synthesizes
+        // them into one multi-section analysis instead of a single alert count.
+        const [dash, budget, forecast] = await Promise.all([
+          this.getDashboard(p, {}),
+          this.getBudget(p, {}),
+          this.getForecast(p, {}),
+        ]);
+
         const alertCount = alerts.data.length;
         const criticalAlerts = alerts.data.filter((a) => a.severity === 'HIGH').length;
         const pendingApprovals = payrollDash?.cards.pendingHRApprovals.value ?? 0;
         const efficiency = payrollDash?.cards.payEfficiency.value ?? 0;
         const totalPayroll = financeDash?.totalPayroll.value ?? 0;
+        const overBudget = budget.data.filter((d) => d.status !== 'ON_TRACK');
+        const forecastFirst = forecast.payrollForecast[0];
+        const forecastLast = forecast.payrollForecast[forecast.payrollForecast.length - 1];
+        const forecastTrend = forecastFirst && forecastLast
+          ? (forecastLast.value >= forecastFirst.value ? 'increasing' : 'decreasing')
+          : 'stable';
 
-        const clauses: string[] = [];
-        clauses.push(
-          alertCount > 0
+        const sections: string[] = [];
+        sections.push(
+          `Payroll & Alerts: ${alertCount > 0
             ? `${alertCount} alert${alertCount === 1 ? '' : 's'} flagged across payroll and compliance checks (${criticalAlerts} critical) — review the alerts feed before the next run.`
-            : 'No active alerts — payroll and compliance checks are clean.',
+            : 'No active alerts — payroll and compliance checks are clean.'}` +
+            (pendingApprovals > 0 ? ` ${pendingApprovals} approval${pendingApprovals === 1 ? '' : 's'} awaiting HR sign-off.` : '') +
+            ` Pay efficiency is ${efficiency >= 90 ? 'strong' : 'below the 90% target'} at ${efficiency}%.`,
         );
-        if (pendingApprovals > 0) {
-          clauses.push(`${pendingApprovals} approval${pendingApprovals === 1 ? '' : 's'} awaiting HR sign-off.`);
-        }
-        clauses.push(
-          efficiency >= 90
-            ? `Pay efficiency is strong at ${efficiency}%.`
-            : `Pay efficiency is ${efficiency}% — below the 90% target, worth investigating processing delays.`,
+        sections.push(
+          `Budget: Total spend is ₱${budget.totals.totalSpent.toLocaleString()} against a ₱${budget.totals.totalBudget.toLocaleString()} budget (₱${budget.totals.totalRemaining.toLocaleString()} remaining).` +
+            (overBudget.length > 0
+              ? ` ${overBudget.length} department(s) are over or near budget: ${overBudget.slice(0, 3).map((d) => d.department).join(', ')}.`
+              : ' All departments are within budget.'),
+        );
+        sections.push(
+          `Compliance: Score is ${dash.payrollOversight.complianceStatus}%${
+            dash.payrollOversight.complianceStatus < 80
+              ? ' — rejected/revision-requested timesheets are the most common driver of compliance risk; review them first.'
+              : ', practices are healthy.'
+          }`,
+        );
+        sections.push(
+          `Forecast: Payroll trend is ${forecastTrend} over the projected periods, reaching an estimated ${
+            forecastLast ? `₱${forecastLast.value.toLocaleString()}` : 'an unknown amount'
+          } by ${forecastLast?.label ?? 'the final period'}. Plan budget allocation accordingly.`,
         );
 
         return {
@@ -797,8 +826,12 @@ export class FinanceAiService {
             activeRuns: payrollDash?.cards.activePayruns.value ?? 0,
             pendingApprovals,
             efficiency,
+            totalBudget: budget.totals.totalBudget,
+            totalSpent: budget.totals.totalSpent,
+            complianceScore: dash.payrollOversight.complianceStatus,
+            projectedNextPeriod: forecastLast?.value ?? 0,
           },
-          recommendation: clauses.join(' '),
+          recommendation: sections.join('\n\n'),
           focusAlerts: alerts.data,
         };
       }

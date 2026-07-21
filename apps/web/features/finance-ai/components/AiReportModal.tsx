@@ -134,7 +134,7 @@ export function AiReportModal({ open, onClose, report, isLoading }: AiReportModa
               {parsedRecommendation && (
                 <div>
                   <h4 className="text-sm font-bold text-brand-navy mb-2">AI Recommendation</h4>
-                  <div className="rounded-[10px] border border-amber-200 bg-amber-50 p-3 text-sm text-brand-navy leading-relaxed">
+                  <div className="rounded-[10px] border border-amber-200 bg-amber-50 p-3 text-sm text-brand-navy leading-relaxed whitespace-pre-line">
                     {parsedRecommendation}
                   </div>
                 </div>
