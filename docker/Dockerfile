@@ -41,5 +41,7 @@ COPY --from=build /app/prisma ./prisma
 COPY --from=build /app/scripts ./scripts
 COPY --from=build /app/package.json ./package.json
 COPY --from=build /app/tsconfig*.json ./
+COPY docker/start.sh ./docker/start.sh
+RUN chmod +x ./docker/start.sh
 EXPOSE 3000
-CMD ["node", "dist/apps/api/src/main.js"]
+CMD ["bash", "./docker/start.sh"]
