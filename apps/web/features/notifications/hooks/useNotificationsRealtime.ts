@@ -23,6 +23,11 @@ export function useNotificationsRealtime(userId: string | undefined, onHighPrior
     channel
       .on("broadcast", { event: "new_notification" }, (payload) => {
         queryClient.invalidateQueries({ queryKey: ["notifications"] });
+        // Aggressively invalidate scrum-entries so supervisor comments 
+        // instantly appear on the dashboard if the user is already on it
+        // or navigates to it without clicking the specific deep link.
+        queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
+        
         const notification = (payload.payload as { notification?: AppNotification })?.notification;
         if (notification?.priority === "HIGH") {
           onHighPriority({ message: notification.title, tone: "success" });
