@@ -7,7 +7,6 @@ import {
   TrendingDown,
   Minus,
   RefreshCw,
-  Download,
   Sparkles,
   Users,
   Target,
@@ -246,12 +245,6 @@ export function SupervisorAiInsightsContent() {
             <span className="hidden sm:inline ml-1">Refresh</span>
           </Button>
           <div className="flex items-center gap-1 border border-[#c3c6d2] rounded-lg p-0.5 bg-white">
-            <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("CSV")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
-              <FileText className="h-3 w-3 mr-1" /> CSV
-            </Button>
-            <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("XLSX")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
-              <Download className="h-3 w-3 mr-1" /> Excel
-            </Button>
             <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("PDF")} className="h-7 text-[10px] font-bold" disabled={exportMutation.isPending}>
               <FileText className="h-3 w-3 mr-1" /> PDF
             </Button>
