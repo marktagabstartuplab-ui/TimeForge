@@ -1038,12 +1038,12 @@ export class TimesheetsService {
       x += colW[i];
     });
     doc.y = headerY;
-    doc.moveDown(0.5);
+    doc.moveDown(1);
     doc.font('Helvetica');
 
     const currentY = doc.y;
     doc.moveTo(40, currentY).lineTo(doc.page.width - 40, currentY).stroke();
-    doc.moveDown(0.3);
+    doc.moveDown(0.4);
 
     for (const entry of sheet.entries) {
       const dateStr = entry.startTime.toISOString().slice(0, 10);
@@ -1078,10 +1078,10 @@ export class TimesheetsService {
           x += colW[i];
         });
         doc.y = pageHeaderY;
-        doc.moveDown(0.5);
+        doc.moveDown(1);
         doc.font('Helvetica');
         doc.moveTo(40, doc.y).lineTo(doc.page.width - 40, doc.y).stroke();
-        doc.moveDown(0.3);
+        doc.moveDown(0.4);
       }
     }
 

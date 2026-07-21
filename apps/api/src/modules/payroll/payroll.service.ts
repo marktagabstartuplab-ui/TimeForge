@@ -753,12 +753,12 @@ export class PayrollService {
       x += colW[i];
     });
     doc.y = earningsHeaderY;
-    doc.moveDown(0.5);
+    doc.moveDown(1);
     doc.font('Helvetica');
-    
+
     const tableLineY = doc.y;
     doc.moveTo(40, tableLineY).lineTo(doc.page.width - 40, tableLineY).stroke();
-    doc.moveDown(0.5);
+    doc.moveDown(0.4);
 
     const { rate, regular, overtime, regPay, otPay, gross } = this.resolvePayslipEarnings(
       item,
