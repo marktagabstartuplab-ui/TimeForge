@@ -18,6 +18,7 @@ export function TeamScrumSubmissionsContent() {
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
   const [hasBlockers, setHasBlockers] = useState(false);
+  const [needsReview, setNeedsReview] = useState(true);
   const [page, setPage] = useState(1);
 
   // Comments local state map: entryId -> text
@@ -45,13 +46,14 @@ export function TeamScrumSubmissionsContent() {
   const [unlockReason, setUnlockReason] = useState("");
 
   const { data, isLoading } = useQuery({
-    queryKey: ["scrum-team-submissions", { search, date, hasBlockers, page }],
+    queryKey: ["scrum-team-submissions", { search, date, hasBlockers, needsReview, page }],
     queryFn: () =>
       getTeamScrums({
         search: search || undefined,
         from: date ? `${date}T00:00:00.000Z` : undefined,
         to: date ? `${date}T23:59:59.999Z` : undefined,
         hasBlockers: hasBlockers ? "true" : undefined,
+        needsReview: needsReview ? "true" : undefined,
         limit: 10,
       }),
   });
@@ -145,6 +147,19 @@ export function TeamScrumSubmissionsContent() {
               className="h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand"
             />
             Show open blockers only
+          </label>
+
+          <label className="flex items-center gap-2 text-sm text-brand-navy cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={needsReview}
+              onChange={(e) => {
+                setNeedsReview(e.target.checked);
+                setPage(1);
+              }}
+              className="h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand"
+            />
+            Needs review
           </label>
         </div>
       </div>
@@ -340,7 +355,7 @@ export function TeamScrumSubmissionsContent() {
                     <h4 className="text-sm font-semibold text-brand-navy">Supervisor Comment</h4>
                     <textarea
                       placeholder="Add supervisor notes or feedback..."
-                      value={commentDrafts[item.id] ?? item.supervisorNote ?? ""}
+                      value={commentDrafts[item.id] !== undefined ? commentDrafts[item.id] : item.supervisorNote ?? ""}
                       onChange={(e) => setCommentDrafts((prev) => ({ ...prev, [item.id]: e.target.value }))}
                       className="w-full rounded-lg border border-[#c3c6d2] p-2.5 text-sm outline-none focus:border-brand min-h-[80px]"
                     />

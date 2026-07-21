@@ -144,6 +144,7 @@ export async function getTeamScrums(params: {
   from?: string;
   to?: string;
   hasBlockers?: string;
+  needsReview?: string;
   limit?: number;
 }): Promise<TeamScrumsResponse> {
   const { data } = await apiClient.get<TeamScrumsResponse>("/scrum/team", { params });

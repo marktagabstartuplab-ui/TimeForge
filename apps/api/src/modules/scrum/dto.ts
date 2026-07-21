@@ -123,6 +123,7 @@ export interface ScrumQuery {
   from?: string;
   to?: string;
   hasBlockers?: string; // "true" | "false"
+  needsReview?: string; // "true" | "false"
 }
 
 // ─── Scrum Tasks ──────────────────────────────────────────────────────────────

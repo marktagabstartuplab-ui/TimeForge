@@ -815,6 +815,7 @@ export class ScrumService {
       deletedAt: null,
       userId: { in: userIds },
       ...(query.hasBlockers === 'true' ? { blockerItems: { some: { status: 'OPEN' } } } : {}),
+      ...(query.needsReview === 'true' ? { supervisorNote: null } : {}),
       ...(query.userId ? { userId: query.userId } : {}),
       ...(query.from || query.to
         ? {
