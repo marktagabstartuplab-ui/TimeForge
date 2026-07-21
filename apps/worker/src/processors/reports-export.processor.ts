@@ -6,6 +6,7 @@ import PDFDocument from 'pdfkit';
 import { PrismaService } from '../../../api/src/common/prisma/prisma.service';
 import { StorageService } from '../../../api/src/modules/storage/storage.service';
 import { registerPdfFonts } from '../../../api/src/common/pdf/pdf-fonts';
+import { NotificationsService } from '../../../api/src/modules/notifications/notifications.service';
 import { ReportCategory, ReportStatus, Prisma } from '@prisma/client';
 
 export interface ReportsExportJobData {
@@ -31,12 +32,13 @@ export class ReportsExportProcessor extends WorkerHost {
   constructor(
     private readonly prisma: PrismaService,
     private readonly storage: StorageService,
+    private readonly notifications: NotificationsService,
   ) {
     super();
   }
 
   async process(job: Job<ReportsExportJobData>): Promise<{ url?: string; key?: string }> {
-    const { tenantId, organizationId, reportId, category, format } = job.data;
+    const { tenantId, organizationId, reportId, category, format, actorId } = job.data;
     this.logger.log(`[ReportsExportProcessor] Starting report generation job ${job.id} for report ${reportId}`);
 
     try {
@@ -94,6 +96,21 @@ export class ReportsExportProcessor extends WorkerHost {
       });
 
       this.logger.log(`[ReportsExportProcessor] Successfully finished report generation for report ${reportId}`);
+
+      await this.notifications.create({
+        tenantId,
+        organizationId,
+        userId: actorId,
+        type: 'ANNOUNCEMENT',
+        category: 'SYSTEM',
+        title: 'Report export ready',
+        message: `Your ${category.replace('_', ' ')} ${format} report has finished generating.`,
+        actionUrl: signedUrl,
+        actionLabel: 'Download',
+      }).catch((err: unknown) =>
+        this.logger.error(`Notification failed for report ${reportId}`, err instanceof Error ? err.stack : String(err)),
+      );
+
       return { url: signedUrl, key };
     } catch (err: unknown) {
       this.logger.error(`[ReportsExportProcessor] Failed to generate report ${reportId}`, err instanceof Error ? err.stack : String(err));

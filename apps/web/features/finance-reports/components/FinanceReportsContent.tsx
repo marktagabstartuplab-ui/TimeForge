@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   TrendingUp,
@@ -24,6 +24,7 @@ import {
   ArrowUpDown,
   ChevronLeft,
   ChevronRight,
+  Loader2,
 } from "lucide-react";
 import {
   AreaChart,
@@ -124,10 +125,41 @@ export function FinanceReportsContent() {
     queryFn: () => getOvertimeAnalysis({}),
   });
 
+  // Quick Export Actions results land in "Report History", not inline — poll
+  // while anything is pending so pendingExportIds (below) can auto-download
+  // the moment a tracked job finishes, without the user having to switch tabs.
   const { data: historyData, isLoading: isHistoryLoading, refetch: refetchHistory } = useQuery({
     queryKey: ["reports", "history", queryParams],
     queryFn: () => getReportsHistory(queryParams),
+    refetchInterval: (query) => {
+      const data = query.state.data;
+      return (data?.data ?? []).some((r) => r.status === "PENDING") ? 3000 : false;
+    },
   });
+
+  // Reports queued from Quick Export Actions, tracked by id until they leave
+  // PENDING — lets the button itself show progress and auto-download on
+  // completion instead of requiring a trip to the Report History tab.
+  const [pendingExportIds, setPendingExportIds] = useState<Record<string, string>>({});
+
+  useEffect(() => {
+    if (Object.keys(pendingExportIds).length === 0) return;
+    const rows = historyData?.data ?? [];
+    for (const [category, id] of Object.entries(pendingExportIds)) {
+      const row = rows.find((r) => r.id === id);
+      if (!row || row.status === "PENDING") continue;
+      setPendingExportIds((prev) => {
+        const next = { ...prev };
+        delete next[category];
+        return next;
+      });
+      if (row.status === "COMPLETED" && row.filePath) {
+        downloadMutation.mutate(row.id);
+      } else if (row.status === "FAILED") {
+        setToast({ message: `"${row.name}" failed to generate.`, tone: "error" });
+      }
+    }
+  }, [historyData, pendingExportIds]);
 
   const { data: attendanceData, isLoading: isAttendanceLoading, refetch: refetchAttendance } = useQuery({
     queryKey: ["reports", "attendance-report", attendanceQuery],
@@ -138,8 +170,9 @@ export function FinanceReportsContent() {
 
   const generateMutation = useMutation({
     mutationFn: (category: string) => generateReport({ category, format: "PDF" }),
-    onSuccess: (data) => {
-      setToast({ message: `Report "${data.name}" generation queued.`, tone: "success" });
+    onSuccess: (data, category) => {
+      setToast({ message: `Generating "${data.name}"... it'll download automatically when ready.`, tone: "success" });
+      setPendingExportIds((prev) => ({ ...prev, [category]: data.id }));
       refetchHistory();
     },
     onError: (err: any) => {
@@ -449,42 +482,33 @@ export function FinanceReportsContent() {
             <div className="flex flex-col gap-6">
               <SectionCard title="Quick Export Actions">
                 <div className="flex flex-col gap-2">
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="justify-between w-full"
-                    onClick={() => generateMutation.mutate("PAYROLL")}
-                  >
-                    <span className="flex items-center gap-2"><PesoIcon className="h-4 w-4 text-brand" /> Payroll Summary</span>
-                    <Download className="h-3.5 w-3.5 text-brand-muted" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="justify-between w-full"
-                    onClick={() => generateMutation.mutate("ATTENDANCE")}
-                  >
-                    <span className="flex items-center gap-2"><UserCheck className="h-4 w-4 text-emerald-600" /> Attendance Export</span>
-                    <Download className="h-3.5 w-3.5 text-brand-muted" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="justify-between w-full"
-                    onClick={() => generateMutation.mutate("LABOR_COST")}
-                  >
-                    <span className="flex items-center gap-2"><BarChart3 className="h-4 w-4 text-[#f59e0b]" /> Labor Cost Report</span>
-                    <Download className="h-3.5 w-3.5 text-brand-muted" />
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    className="justify-between w-full"
-                    onClick={() => generateMutation.mutate("COMPLIANCE")}
-                  >
-                    <span className="flex items-center gap-2"><Shield className="h-4 w-4 text-[#be123c]" /> Compliance Report</span>
-                    <Download className="h-3.5 w-3.5 text-brand-muted" />
-                  </Button>
+                  {[
+                    { category: "PAYROLL", label: "Payroll Summary", icon: <PesoIcon className="h-4 w-4 text-brand" /> },
+                    { category: "ATTENDANCE", label: "Attendance Export", icon: <UserCheck className="h-4 w-4 text-emerald-600" /> },
+                    { category: "LABOR_COST", label: "Labor Cost Report", icon: <BarChart3 className="h-4 w-4 text-[#f59e0b]" /> },
+                    { category: "COMPLIANCE", label: "Compliance Report", icon: <Shield className="h-4 w-4 text-[#be123c]" /> },
+                  ].map(({ category, label, icon }) => {
+                    const isPending = category in pendingExportIds;
+                    return (
+                      <Button
+                        key={category}
+                        variant="outline"
+                        size="sm"
+                        className="justify-between w-full"
+                        disabled={isPending}
+                        onClick={() => generateMutation.mutate(category)}
+                      >
+                        <span className="flex items-center gap-2">{icon} {label}</span>
+                        {isPending ? (
+                          <span className="flex items-center gap-1 text-xs text-brand-muted">
+                            <Loader2 className="h-3.5 w-3.5 animate-spin" /> Generating…
+                          </span>
+                        ) : (
+                          <Download className="h-3.5 w-3.5 text-brand-muted" />
+                        )}
+                      </Button>
+                    );
+                  })}
                 </div>
               </SectionCard>
 
