@@ -142,6 +142,21 @@ export function FinanceReportsContent() {
   // completion instead of requiring a trip to the Report History tab.
   const [pendingExportIds, setPendingExportIds] = useState<Record<string, string>>({});
 
+  const downloadMutation = useMutation({
+    mutationFn: (id: string) => auditDownloadReport(id),
+    onSuccess: (data) => {
+      setToast({ message: "Report download logged.", tone: "success" });
+      refetchHistory();
+      if (data.filePath) {
+        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
+        window.open(`${baseUrl}/api/v1/storage/${data.filePath}`, "_blank");
+      }
+    },
+    onError: (err: any) => {
+      setToast({ message: err?.message || "Download failed.", tone: "error" });
+    },
+  });
+
   useEffect(() => {
     if (Object.keys(pendingExportIds).length === 0) return;
     const rows = historyData?.data ?? [];
@@ -166,8 +181,6 @@ export function FinanceReportsContent() {
     queryFn: () => getAttendanceReport(attendanceQuery),
   });
 
-  // ─── Mutations ─────────────────────────────────────────────────────────────────
-
   const generateMutation = useMutation({
     mutationFn: (category: string) => generateReport({ category, format: "PDF" }),
     onSuccess: (data, category) => {
@@ -177,21 +190,6 @@ export function FinanceReportsContent() {
     },
     onError: (err: any) => {
       setToast({ message: err?.message || "Generation failed.", tone: "error" });
-    },
-  });
-
-  const downloadMutation = useMutation({
-    mutationFn: (id: string) => auditDownloadReport(id),
-    onSuccess: (data) => {
-      setToast({ message: "Report download logged.", tone: "success" });
-      refetchHistory();
-      if (data.filePath) {
-        const baseUrl = process.env.NEXT_PUBLIC_API_URL || "";
-        window.open(`${baseUrl}/api/v1/storage/${data.filePath}`, "_blank");
-      }
-    },
-    onError: (err: any) => {
-      setToast({ message: err?.message || "Download failed.", tone: "error" });
     },
   });
 
