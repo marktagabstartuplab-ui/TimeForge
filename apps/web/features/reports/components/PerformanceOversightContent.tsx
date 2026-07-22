@@ -182,11 +182,20 @@ export function PerformanceOversightContent() {
             <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
           </Button>
 
-          <div className="flex items-center gap-1 border border-[#c3c6d2] rounded-lg p-0.5 bg-white">
-            <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("CSV")} className="h-7 text-[10px] font-bold">CSV</Button>
-            <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("XLSX")} className="h-7 text-[10px] font-bold">EXCEL</Button>
-            <Button variant="ghost" size="sm" onClick={() => exportMutation.mutate("PDF")} className="h-7 text-[10px] font-bold">PDF</Button>
-          </div>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => exportMutation.mutate("PDF")}
+            disabled={exportMutation.isPending}
+            className="h-8.5 text-xs font-semibold"
+          >
+            {exportMutation.isPending ? (
+              <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
+            ) : (
+              <Download className="h-3.5 w-3.5 mr-1.5" />
+            )}
+            Export PDF
+          </Button>
         </div>
       </div>
 

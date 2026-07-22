@@ -19,7 +19,7 @@ function formatDate(iso: string): string {
   return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
-export function BlockerFeed() {
+export function BlockerFeed({ onViewAll }: { onViewAll?: () => void }) {
   const { data, isLoading, isError, refetch } = useQuery({
     queryKey: ["scrum-mgmt", "blockers"],
     queryFn: () => getScrumBlockers({ status: "OPEN" }),
@@ -63,7 +63,15 @@ export function BlockerFeed() {
       )}
 
       {data && data.data.length > 0 ? (
-        <p className="text-center text-sm font-semibold text-brand">View All {data.data.length} Blockers</p>
+        <div className="mt-4 text-center">
+          <button
+            type="button"
+            onClick={onViewAll}
+            className="text-sm font-semibold text-brand hover:text-brand/80 hover:underline focus:outline-none"
+          >
+            View All {data.data.length} Blockers
+          </button>
+        </div>
       ) : null}
     </SectionCard>
   );

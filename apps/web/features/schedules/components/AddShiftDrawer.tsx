@@ -106,6 +106,10 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
   const [notes, setNotes] = useState("");
   const [error, setError] = useState<string | null>(null);
 
+  // Recurrence states
+  const [repeatWeekly, setRepeatWeekly] = useState(false);
+  const [repeatWeeks, setRepeatWeeks] = useState(4);
+
   const { data: employees } = useQuery({ queryKey: ["employees", "picker"], queryFn: () => listEmployees({ limit: 100 }), enabled: open });
   const { data: departments } = useQuery({ queryKey: ["departments", "picker"], queryFn: listDepartments, enabled: open });
 
@@ -126,6 +130,8 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
     setShiftType("MORNING");
     setNotes("");
     setError(null);
+    setRepeatWeekly(false);
+    setRepeatWeeks(4);
   };
 
   useEffect(() => {
@@ -139,6 +145,8 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
         setEndTime(draft.endTime ?? "");
         setShiftType(draft.shiftType ?? "MORNING");
         setNotes(draft.notes ?? "");
+        setRepeatWeekly(false);
+        setRepeatWeeks(4);
       } else {
         reset();
       }
@@ -152,20 +160,46 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
   const summary = computeShiftSummary(date, startTime, endTime);
 
   const save = useMutation({
-    mutationFn: (publish: boolean) => {
-      const payload = {
-        userId,
-        departmentId: departmentId || undefined,
-        shiftDate: date,
-        startTime: new Date(`${date}T${startTime}`).toISOString(),
-        endTime: new Date(`${date}T${endTime}`).toISOString(),
-        shiftType,
-        notes: notes || undefined,
-      };
-      return publish ? createShift({ ...payload, publish: "true" }) : createShiftDraft(payload);
+    mutationFn: async (publish: boolean) => {
+      const totalOccurrences = repeatWeekly ? repeatWeeks : 1;
+      const results = [];
+
+      for (let i = 0; i < totalOccurrences; i++) {
+        const parts = date.split("-");
+        const year = parseInt(parts[0], 10);
+        const month = parseInt(parts[1], 10) - 1;
+        const day = parseInt(parts[2], 10);
+
+        const currentDate = new Date(year, month, day + i * 7);
+        const yearStr = currentDate.getFullYear();
+        const monthStr = String(currentDate.getMonth() + 1).padStart(2, "0");
+        const dayStr = String(currentDate.getDate()).padStart(2, "0");
+        const dateStr = `${yearStr}-${monthStr}-${dayStr}`;
+
+        const payload = {
+          userId,
+          departmentId: departmentId || undefined,
+          shiftDate: dateStr,
+          startTime: new Date(`${dateStr}T${startTime}`).toISOString(),
+          endTime: new Date(`${dateStr}T${endTime}`).toISOString(),
+          shiftType,
+          notes: notes || undefined,
+        };
+
+        const res = publish
+          ? await createShift({ ...payload, publish: "true" })
+          : await createShiftDraft(payload);
+        results.push(res);
+      }
+      return results;
     },
     onSuccess: (_, publish) => {
-      onToast({ message: publish ? "Shift published." : "Draft saved.", tone: "success" });
+      onToast({
+        message: repeatWeekly
+          ? `${publish ? "Shifts published" : "Drafts saved"} for ${repeatWeeks} weeks.`
+          : (publish ? "Shift published." : "Draft saved."),
+        tone: "success"
+      });
       queryClient.invalidateQueries({ queryKey: ["schedules"] });
       if (publish) {
         clearLocalDraft();
@@ -183,7 +217,7 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
       }
       onOpenChange(false);
     },
-    onError: (err) => setError(err instanceof ApiError ? err.message : "Could not save the shift."),
+    onError: (err) => setError(err instanceof ApiError ? err.message : "Could not save the shift(s)."),
   });
 
   const canSubmit = Boolean(userId && date && startTime && endTime && summary && !("error" in summary));
@@ -288,6 +322,40 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
                 </span>
               </div>
             ) : null}
+
+            <div className="rounded-[10px] border border-[#c3c6d2]/50 bg-[#f8fafc] p-4 space-y-3">
+              <label className="flex items-center gap-2 text-sm font-semibold text-brand-navy cursor-pointer select-none">
+                <input
+                  type="checkbox"
+                  checked={repeatWeekly}
+                  onChange={(e) => setRepeatWeekly(e.target.checked)}
+                  className="h-4 w-4 rounded border-gray-300 text-brand focus:ring-brand"
+                />
+                Repeat shift weekly
+              </label>
+
+              {repeatWeekly && (
+                <div className="flex items-center gap-3">
+                  <span className="text-xs font-semibold text-[#5c5f6c] shrink-0">Duration:</span>
+                  <Select value={String(repeatWeeks)} onValueChange={(v) => setRepeatWeeks(Number(v))}>
+                    <SelectTrigger className="h-9 w-32 rounded-[8px] border-[#c3c6d2] bg-white text-xs px-3">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="2">2 Weeks</SelectItem>
+                      <SelectItem value="3">3 Weeks</SelectItem>
+                      <SelectItem value="4">4 Weeks</SelectItem>
+                      <SelectItem value="6">6 Weeks</SelectItem>
+                      <SelectItem value="8">8 Weeks</SelectItem>
+                      <SelectItem value="12">12 Weeks</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span className="text-[11px] text-[#5c5f6c]">
+                    Creates {repeatWeeks} consecutive weekly shifts.
+                  </span>
+                </div>
+              )}
+            </div>
 
             <div>
               <FieldLabel htmlFor="shift-notes">Notes</FieldLabel>

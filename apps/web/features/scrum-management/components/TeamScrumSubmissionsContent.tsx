@@ -12,13 +12,19 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Toast, type ToastState } from "@/components/shared/Toast";
 import { RecurringIssuesPanel } from "@/features/recurring-issues/components/RecurringIssuesPanel";
 
-export function TeamScrumSubmissionsContent() {
+export function TeamScrumSubmissionsContent({
+  initialHasBlockers = false,
+  initialNeedsReview = true,
+}: {
+  initialHasBlockers?: boolean;
+  initialNeedsReview?: boolean;
+}) {
   const queryClient = useQueryClient();
   const [toast, setToast] = useState<ToastState | null>(null);
   const [search, setSearch] = useState("");
   const [date, setDate] = useState("");
-  const [hasBlockers, setHasBlockers] = useState(false);
-  const [needsReview, setNeedsReview] = useState(true);
+  const [hasBlockers, setHasBlockers] = useState(initialHasBlockers);
+  const [needsReview, setNeedsReview] = useState(initialNeedsReview);
   const [page, setPage] = useState(1);
 
   // Comments local state map: entryId -> text

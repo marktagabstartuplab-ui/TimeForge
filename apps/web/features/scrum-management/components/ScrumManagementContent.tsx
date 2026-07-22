@@ -16,6 +16,7 @@ import { cn } from "@/lib/utils";
 export function ScrumManagementContent() {
   const { user } = useAuth();
   const [activeTab, setActiveTab] = useState<"overview" | "submissions">("overview");
+  const [submissionsFilter, setSubmissionsFilter] = useState({ hasBlockers: false, needsReview: true });
 
   const { data, isLoading } = useQuery({
     queryKey: ["scrum-mgmt", "dashboard"],
@@ -45,7 +46,10 @@ export function ScrumManagementContent() {
             Overview
           </button>
           <button
-            onClick={() => setActiveTab("submissions")}
+            onClick={() => {
+              setSubmissionsFilter({ hasBlockers: false, needsReview: true });
+              setActiveTab("submissions");
+            }}
             className={cn(
               "px-4 py-1.5 rounded-md text-sm font-semibold transition-all duration-200",
               activeTab === "submissions"
@@ -63,7 +67,12 @@ export function ScrumManagementContent() {
           <ScrumStatsCards data={data} isLoading={isLoading} />
 
           <div className="grid grid-cols-1 gap-4 lg:grid-cols-2">
-            <BlockerFeed />
+            <BlockerFeed
+              onViewAll={() => {
+                setSubmissionsFilter({ hasBlockers: true, needsReview: false });
+                setActiveTab("submissions");
+              }}
+            />
             <DepartmentHeatmap />
           </div>
 
@@ -76,7 +85,11 @@ export function ScrumManagementContent() {
           </div>
         </>
       ) : (
-        <TeamScrumSubmissionsContent />
+        <TeamScrumSubmissionsContent
+          key={`${submissionsFilter.hasBlockers}-${submissionsFilter.needsReview}`}
+          initialHasBlockers={submissionsFilter.hasBlockers}
+          initialNeedsReview={submissionsFilter.needsReview}
+        />
       )}
     </div>
   );
