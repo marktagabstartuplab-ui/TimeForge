@@ -1,0 +1,4 @@
+{
+  "buildCommand": "npm run build --prefix apps/web",
+  "outputDirectory": "apps/web/.next"
+}
