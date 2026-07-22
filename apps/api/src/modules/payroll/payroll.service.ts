@@ -507,6 +507,38 @@ export class PayrollService {
     return updated;
   }
 
+  async unlockPeriod(p: AuthPrincipal, periodId: string) {
+    const period = await this.findOnePeriod(p, periodId);
+    if (period.status !== 'LOCKED' && period.status !== 'GENERATED') {
+      throw new ConflictException(
+        `Cannot unlock a payroll period with status ${period.status}. Only LOCKED or GENERATED periods can be unlocked.`,
+      );
+    }
+    const updated = await this.prisma.payrollPeriod.update({
+      where: { id: periodId },
+      data: {
+        status: 'OPEN',
+        lockedAt: null,
+        updatedBy: p.userId,
+        version: { increment: 1 },
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: p.tenantId,
+        actorId: p.userId,
+        action: AuditAction.ADMIN_ACTION,
+        entityType: 'payroll_period',
+        entityId: periodId,
+        metadata: { action: 'unlockPeriod' },
+      },
+    }).catch(() => {});
+
+    await this.invalidateFinanceCache(p.organizationId);
+    return updated;
+  }
+
   /**
    * Export the payroll report (MVP: synchronous -- returns the report data directly).
    * In production, this would queue a BullMQ job and return a 202.

@@ -83,6 +83,17 @@ export class PayrollController {
     return this.svc.lockPeriod(u, id);
   }
 
+  /** Unlock the period back to OPEN status for testing / edits. */
+  @Post('periods/:id/unlock')
+  @HttpCode(200)
+  @RequirePermissions('payroll_period:update')
+  unlockPeriod(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.svc.unlockPeriod(u, id);
+  }
+
   /**
    * Export the payroll report (MVP: synchronous). Requires the period to be
    * LOCKED (H1) and an Idempotency-Key header (M2) for safe retries; each

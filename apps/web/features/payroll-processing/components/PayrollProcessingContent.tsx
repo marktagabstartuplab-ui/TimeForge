@@ -31,6 +31,7 @@ import {
   getReportByPeriod,
   generateReport,
   lockPeriod,
+  unlockPeriod,
   flagDiscrepancies,
   exportPayroll,
   mostRecentlyUpdatedPeriod,
@@ -135,6 +136,15 @@ export function PayrollProcessingContent() {
       invalidateAll();
     },
     onError: (err: any) => setToast({ message: err?.message || "Could not send to Finance.", tone: "error" }),
+  });
+
+  const unlockMutation = useMutation({
+    mutationFn: () => unlockPeriod(activePeriodId as string),
+    onSuccess: () => {
+      setToast({ message: "Payroll period unlocked to OPEN status for editing/testing.", tone: "success" });
+      invalidateAll();
+    },
+    onError: (err: any) => setToast({ message: err?.message || "Could not unlock period.", tone: "error" }),
   });
 
   const flagMutation = useMutation({
@@ -560,6 +570,18 @@ export function PayrollProcessingContent() {
               <Button variant="outline" size="sm" onClick={handleSaveDraft} disabled={!report} className="text-xs">
                 <Save className="h-3.5 w-3.5" /> Save Draft
               </Button>
+              {activePeriod?.status === "LOCKED" || activePeriod?.status === "GENERATED" ? (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => unlockMutation.mutate()}
+                  disabled={unlockMutation.isPending}
+                  className="border-amber-300 bg-amber-50 text-xs text-amber-700 hover:bg-amber-100"
+                >
+                  {unlockMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
+                  Unlock Period
+                </Button>
+              ) : null}
               <Button size="sm" onClick={() => lockMutation.mutate()} disabled={!canSendToFinance || isBusy} className="text-xs">
                 {lockMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Send className="h-3.5 w-3.5" />}
                 Send to Finance

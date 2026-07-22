@@ -86,6 +86,11 @@ export async function lockPeriod(periodId: string): Promise<PayrollPeriod> {
   return data;
 }
 
+export async function unlockPeriod(periodId: string): Promise<PayrollPeriod> {
+  const { data } = await apiClient.post<PayrollPeriod>(`/payroll/periods/${periodId}/unlock`);
+  return data;
+}
+
 export async function flagDiscrepancies(reportId: string): Promise<{ flaggedCount: number }> {
   const { data } = await apiClient.post<{ flaggedCount: number }>(`/payroll/reports/${reportId}/flag-discrepancies`);
   return data;
