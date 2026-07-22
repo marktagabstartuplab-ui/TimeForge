@@ -86,8 +86,8 @@ export async function lockPeriod(periodId: string): Promise<PayrollPeriod> {
   return data;
 }
 
-export async function unlockPeriod(periodId: string): Promise<PayrollPeriod> {
-  const { data } = await apiClient.post<PayrollPeriod>(`/payroll/periods/${periodId}/unlock`);
+export async function resetPeriod(periodId: string): Promise<PayrollPeriod> {
+  const { data } = await apiClient.post<PayrollPeriod>(`/payroll/periods/${periodId}/reset`);
   return data;
 }
 

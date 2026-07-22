@@ -31,8 +31,8 @@ import {
   createPeriod,
   getReportByPeriod,
   generateReport,
-  lockPeriod,
   unlockPeriod,
+  resetPeriod,
   flagDiscrepancies,
   exportPayroll,
   mostRecentlyUpdatedPeriod,
@@ -107,6 +107,8 @@ export function PayrollProcessingContent() {
 
   const invalidateAll = () => {
     queryClient.invalidateQueries({ queryKey: ["payroll-processing"] });
+    queryClient.invalidateQueries({ queryKey: ["timesheets"] });
+    queryClient.invalidateQueries({ queryKey: ["payroll"] });
   };
 
   const createPeriodMutation = useMutation({
@@ -139,13 +141,14 @@ export function PayrollProcessingContent() {
     onError: (err: any) => setToast({ message: err?.message || "Could not send to Finance.", tone: "error" }),
   });
 
-  const unlockMutation = useMutation({
-    mutationFn: () => unlockPeriod(activePeriodId as string),
+  const resetMutation = useMutation({
+    mutationFn: () => resetPeriod(activePeriodId as string),
     onSuccess: () => {
-      setToast({ message: "Payroll period unlocked to OPEN status for editing/testing.", tone: "success" });
+      setToast({ message: "Period reset to OPEN! All report data cleared and timesheets reverted to DRAFT so you can test payroll from scratch.", tone: "success" });
+      setStep(1);
       invalidateAll();
     },
-    onError: (err: any) => setToast({ message: err?.message || "Could not unlock period.", tone: "error" }),
+    onError: (err: any) => setToast({ message: err?.message || "Could not reset period.", tone: "error" }),
   });
 
   const flagMutation = useMutation({
@@ -571,16 +574,17 @@ export function PayrollProcessingContent() {
               <Button variant="outline" size="sm" onClick={handleSaveDraft} disabled={!report} className="text-xs">
                 <Save className="h-3.5 w-3.5" /> Save Draft
               </Button>
-              {activePeriod?.status === "LOCKED" || activePeriod?.status === "GENERATED" ? (
+              {activePeriodId ? (
                 <Button
                   variant="outline"
                   size="sm"
-                  onClick={() => unlockMutation.mutate()}
-                  disabled={unlockMutation.isPending}
-                  className="border-amber-300 bg-amber-50 text-xs text-amber-700 hover:bg-amber-100"
+                  onClick={() => resetMutation.mutate()}
+                  disabled={resetMutation.isPending}
+                  title="Revert timesheets to DRAFT and clear generated report so you can re-test payroll processing from scratch"
+                  className="border-amber-300 bg-amber-50 text-xs text-amber-800 hover:bg-amber-100"
                 >
-                  {unlockMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Lock className="h-3.5 w-3.5" />}
-                  Unlock Period
+                  {resetMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                  Reset Period Data
                 </Button>
               ) : null}
               <Button size="sm" onClick={() => lockMutation.mutate()} disabled={!canSendToFinance || isBusy} className="text-xs">

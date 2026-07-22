@@ -540,6 +540,62 @@ export class PayrollService {
   }
 
   /**
+   * Reset period data: deletes generated report line items, resets the period status to 'OPEN',
+   * and reverts any timesheets in this date range from APPROVED/PAYROLL_READY/SUBMITTED back to DRAFT
+   * so testing can be re-done completely.
+   */
+  async resetPeriodData(p: AuthPrincipal, periodId: string) {
+    const period = await this.findOnePeriod(p, periodId);
+
+    return this.prisma.$transaction(async (tx) => {
+      // 1. Delete generated reports and line items
+      const existingReports = await tx.payrollReport.findMany({
+        where: { payrollPeriodId: periodId, tenantId: p.tenantId },
+        select: { id: true },
+      });
+      if (existingReports.length > 0) {
+        await tx.payrollLineItem.deleteMany({
+          where: { payrollReportId: { in: existingReports.map((r) => r.id) } },
+        });
+        await tx.payrollReport.deleteMany({
+          where: { payrollPeriodId: periodId, tenantId: p.tenantId },
+        });
+      }
+
+      // 2. Revert timesheets spanning this period to DRAFT
+      await tx.timesheet.updateMany({
+        where: {
+          tenantId: p.tenantId,
+          organizationId: p.organizationId,
+          periodStart: { gte: period.startDate },
+          periodEnd: { lte: period.endDate },
+        },
+        data: {
+          status: 'DRAFT',
+          submittedAt: null,
+          decidedAt: null,
+          updatedBy: p.userId,
+          version: { increment: 1 },
+        },
+      });
+
+      // 3. Reset period status to OPEN
+      const updatedPeriod = await tx.payrollPeriod.update({
+        where: { id: periodId },
+        data: {
+          status: 'OPEN',
+          lockedAt: null,
+          exportedAt: null,
+          updatedBy: p.userId,
+          version: { increment: 1 },
+        },
+      });
+
+      return updatedPeriod;
+    });
+  }
+
+  /**
    * Export the payroll report (MVP: synchronous -- returns the report data directly).
    * In production, this would queue a BullMQ job and return a 202.
    *

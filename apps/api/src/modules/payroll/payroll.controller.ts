@@ -83,15 +83,15 @@ export class PayrollController {
     return this.svc.lockPeriod(u, id);
   }
 
-  /** Unlock the period back to OPEN status for testing / edits. */
-  @Post('periods/:id/unlock')
+  /** Reset all timesheets and report data for this period back to DRAFT / OPEN for testing. */
+  @Post('periods/:id/reset')
   @HttpCode(200)
   @RequirePermissions('payroll_period:update')
-  unlockPeriod(
+  resetPeriod(
     @CurrentUser() u: AuthPrincipal,
     @Param('id', ParseUUIDPipe) id: string,
   ) {
-    return this.svc.unlockPeriod(u, id);
+    return this.svc.resetPeriodData(u, id);
   }
 
   /**
