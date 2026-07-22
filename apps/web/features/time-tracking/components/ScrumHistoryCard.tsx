@@ -1,6 +1,7 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams } from "next/navigation";
 import { useQuery } from "@tanstack/react-query";
 import { History, Lock, MessageSquare } from "lucide-react";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -80,6 +81,17 @@ export function ScrumHistoryCard() {
   const entries = [...(data?.data ?? [])]
     .filter((e) => toIsoDate(new Date(e.entryDate)) !== today)
     .sort((a, b) => b.entryDate.localeCompare(a.entryDate));
+
+  // Deep-link support: if ?scrum=<id> is in the URL, auto-open that entry's
+  // detail modal so "View that scrum" takes the employee straight to the record.
+  const searchParams = useSearchParams();
+  const deepLinkId = searchParams.get("scrum");
+  useEffect(() => {
+    if (!deepLinkId || entries.length === 0) return;
+    const match = entries.find((e) => e.id === deepLinkId);
+    if (match) setSelected(match);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [deepLinkId, entries.length]);
 
   return (
     <SectionCard
