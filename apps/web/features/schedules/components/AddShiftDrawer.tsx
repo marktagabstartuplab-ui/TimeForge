@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Loader2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import {
   Dialog,
   DialogClose,
@@ -110,6 +111,17 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
   const [repeatWeekly, setRepeatWeekly] = useState(false);
   const [repeatWeeks, setRepeatWeeks] = useState(4);
 
+  // Weekday selection states
+  const [selectedWeekdays, setSelectedWeekdays] = useState<{ [key: string]: boolean }>({
+    Mon: false,
+    Tue: false,
+    Wed: false,
+    Thu: false,
+    Fri: false,
+    Sat: false,
+    Sun: false,
+  });
+
   const { data: employees } = useQuery({ queryKey: ["employees", "picker"], queryFn: () => listEmployees({ limit: 100 }), enabled: open });
   const { data: departments } = useQuery({ queryKey: ["departments", "picker"], queryFn: listDepartments, enabled: open });
 
@@ -132,6 +144,15 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
     setError(null);
     setRepeatWeekly(false);
     setRepeatWeeks(4);
+    setSelectedWeekdays({
+      Mon: false,
+      Tue: false,
+      Wed: false,
+      Thu: false,
+      Fri: false,
+      Sat: false,
+      Sun: false,
+    });
   };
 
   useEffect(() => {
@@ -153,50 +174,107 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
     }
   }, [open, singleDept]);
 
+  // Set the default checked weekday when the date input changes
+  useEffect(() => {
+    if (date) {
+      const parts = date.split("-");
+      const year = parseInt(parts[0], 10);
+      const month = parseInt(parts[1], 10) - 1;
+      const day = parseInt(parts[2], 10);
+      const parsedDate = new Date(year, month, day);
+      if (!Number.isNaN(parsedDate.getTime())) {
+        const dayOfWeekIndex = parsedDate.getDay(); // 0 = Sunday, 1 = Monday, ...
+        const weekdayKeys = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+        const selectedKey = weekdayKeys[dayOfWeekIndex];
+
+        setSelectedWeekdays((prev) => {
+          const next = { ...prev };
+          Object.keys(next).forEach((key) => {
+            next[key] = (key === selectedKey);
+          });
+          return next;
+        });
+      }
+    }
+  }, [date]);
+
   useEffect(() => {
     if (singleDept && open && !departmentId) setDepartmentId(singleDept);
   }, [singleDept, open, departmentId]);
 
   const summary = computeShiftSummary(date, startTime, endTime);
 
+  // Helper to resolve actual calendar date strings for each checked weekday in the week containing the baseDate
+  const getWeekdayDatesInWeek = (baseDateStr: string, checkedDays: { [key: string]: boolean }) => {
+    const parts = baseDateStr.split("-");
+    const year = parseInt(parts[0], 10);
+    const month = parseInt(parts[1], 10) - 1;
+    const day = parseInt(parts[2], 10);
+    const baseDate = new Date(year, month, day);
+
+    const dayOfWeek = baseDate.getDay(); // 0 = Sunday, 1 = Monday, ...
+    const diffToMonday = dayOfWeek === 0 ? -6 : 1 - dayOfWeek;
+    const monday = new Date(year, month, day + diffToMonday);
+
+    const weekdayKeys = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
+    const dates: string[] = [];
+
+    weekdayKeys.forEach((key, index) => {
+      if (checkedDays[key]) {
+        const d = new Date(monday.getFullYear(), monday.getMonth(), monday.getDate() + index);
+        const yearStr = d.getFullYear();
+        const monthStr = String(d.getMonth() + 1).padStart(2, "0");
+        const dayStr = String(d.getDate()).padStart(2, "0");
+        dates.push(`${yearStr}-${monthStr}-${dayStr}`);
+      }
+    });
+
+    return dates;
+  };
+
   const save = useMutation({
     mutationFn: async (publish: boolean) => {
-      const totalOccurrences = repeatWeekly ? repeatWeeks : 1;
+      const checkedDates = getWeekdayDatesInWeek(date, selectedWeekdays);
+      const totalWeeks = repeatWeekly ? repeatWeeks : 1;
       const results = [];
 
-      for (let i = 0; i < totalOccurrences; i++) {
-        const parts = date.split("-");
-        const year = parseInt(parts[0], 10);
-        const month = parseInt(parts[1], 10) - 1;
-        const day = parseInt(parts[2], 10);
+      for (const baseDateStr of checkedDates) {
+        for (let i = 0; i < totalWeeks; i++) {
+          const parts = baseDateStr.split("-");
+          const year = parseInt(parts[0], 10);
+          const month = parseInt(parts[1], 10) - 1;
+          const day = parseInt(parts[2], 10);
 
-        const currentDate = new Date(year, month, day + i * 7);
-        const yearStr = currentDate.getFullYear();
-        const monthStr = String(currentDate.getMonth() + 1).padStart(2, "0");
-        const dayStr = String(currentDate.getDate()).padStart(2, "0");
-        const dateStr = `${yearStr}-${monthStr}-${dayStr}`;
+          const currentDate = new Date(year, month, day + i * 7);
+          const yearStr = currentDate.getFullYear();
+          const monthStr = String(currentDate.getMonth() + 1).padStart(2, "0");
+          const dayStr = String(currentDate.getDate()).padStart(2, "0");
+          const dateStr = `${yearStr}-${monthStr}-${dayStr}`;
 
-        const payload = {
-          userId,
-          departmentId: departmentId || undefined,
-          shiftDate: dateStr,
-          startTime: new Date(`${dateStr}T${startTime}`).toISOString(),
-          endTime: new Date(`${dateStr}T${endTime}`).toISOString(),
-          shiftType,
-          notes: notes || undefined,
-        };
+          const payload = {
+            userId,
+            departmentId: departmentId || undefined,
+            shiftDate: dateStr,
+            startTime: new Date(`${dateStr}T${startTime}`).toISOString(),
+            endTime: new Date(`${dateStr}T${endTime}`).toISOString(),
+            shiftType,
+            notes: notes || undefined,
+          };
 
-        const res = publish
-          ? await createShift({ ...payload, publish: "true" })
-          : await createShiftDraft(payload);
-        results.push(res);
+          const res = publish
+            ? await createShift({ ...payload, publish: "true" })
+            : await createShiftDraft(payload);
+          results.push(res);
+        }
       }
       return results;
     },
     onSuccess: (_, publish) => {
+      const checkedDates = getWeekdayDatesInWeek(date, selectedWeekdays);
+      const totalShifts = checkedDates.length * (repeatWeekly ? repeatWeeks : 1);
       onToast({
-        message: repeatWeekly
-          ? `${publish ? "Shifts published" : "Drafts saved"} for ${repeatWeeks} weeks.`
+        message: totalShifts > 1
+          ? `${publish ? "Shifts published" : "Drafts saved"} (${totalShifts} shifts generated).`
           : (publish ? "Shift published." : "Draft saved."),
         tone: "success"
       });
@@ -220,7 +298,8 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
     onError: (err) => setError(err instanceof ApiError ? err.message : "Could not save the shift(s)."),
   });
 
-  const canSubmit = Boolean(userId && date && startTime && endTime && summary && !("error" in summary));
+  const hasSelectedDays = Object.values(selectedWeekdays).some((v) => v);
+  const canSubmit = Boolean(userId && date && startTime && endTime && summary && !("error" in summary) && hasSelectedDays);
 
   return (
     <Dialog open={open} onOpenChange={(next) => { onOpenChange(next); if (!next) reset(); }}>
@@ -262,6 +341,35 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
             <div>
               <FieldLabel htmlFor="shift-date">Date</FieldLabel>
               <IconInput id="shift-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            </div>
+
+            <div>
+              <FieldLabel htmlFor="shift-weekdays">Assign to Weekdays (Week of the selected date)</FieldLabel>
+              <div className="flex flex-wrap gap-2 mt-1.5" id="shift-weekdays">
+                {["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"].map((day) => {
+                  const isChecked = selectedWeekdays[day];
+                  return (
+                    <button
+                      key={day}
+                      type="button"
+                      onClick={() =>
+                        setSelectedWeekdays((prev) => ({
+                          ...prev,
+                          [day]: !prev[day],
+                        }))
+                      }
+                      className={cn(
+                        "h-9 px-3.5 rounded-[8px] border text-xs font-bold transition-colors select-none",
+                        isChecked
+                          ? "bg-brand text-white border-brand hover:bg-[#1467d6]"
+                          : "bg-white text-[#2a2c35] border-[#c3c6d2] hover:bg-[#f6f3f4]"
+                      )}
+                    >
+                      {day}
+                    </button>
+                  );
+                })}
+              </div>
             </div>
 
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
