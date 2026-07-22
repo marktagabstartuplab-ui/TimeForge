@@ -130,12 +130,16 @@ export function PayslipsContent() {
             </Tooltip>
           );
         }
-        if (rate == null) {
-          return <span className="text-brand-muted italic">Not Set</span>;
-        }
         const periodStatus = item.payrollReport.period.status;
         const isFinalized = periodStatus === "LOCKED" || periodStatus === "EXPORTED";
-        const grossAmount = `₱${(hoursOf(item) * rate).toFixed(2)}`;
+        // Use the line item's snapshotted hourly rate and estimated pay from the generated report
+        // to guarantee 100% parity with Finance & HR payroll tables.
+        const itemRate = item.hourlyRate != null ? Number(item.hourlyRate) : rate;
+        const calcPay = item.estimatedPay != null ? Number(item.estimatedPay) : (itemRate != null ? hoursOf(item) * itemRate : null);
+        if (calcPay == null) {
+          return <span className="text-brand-muted italic">Not Set</span>;
+        }
+        const grossAmount = `₱${calcPay.toFixed(2)}`;
         if (!isFinalized) {
           return (
             <Tooltip>
@@ -306,22 +310,29 @@ export function PayslipsContent() {
                 value="Restricted"
                 caption="Pay amounts are excluded from the employee self-view."
               />
-            ) : rate != null ? (
-              <MetricCard
-                icon={Landmark}
-                label="Est. Total Payout (Gross)"
-                value={`₱${(accumulatedHours * rate).toFixed(2)}`}
-                emphasis
-              />
-            ) : (
-              <MetricCard
-                icon={Landmark}
-                iconTone="bg-gray-100 text-brand-muted"
-                label="Est. Total Payout (Gross)"
-                value="Not Set"
-                caption="Cannot calculate without a base rate."
-              />
-            )}
+            ) : (() => {
+                const selectedRate = selected?.hourlyRate != null ? Number(selected.hourlyRate) : rate;
+                const selectedPay = selected?.estimatedPay != null ? Number(selected.estimatedPay) : (selectedRate != null ? accumulatedHours * selectedRate : null);
+                if (selectedPay != null) {
+                  return (
+                    <MetricCard
+                      icon={Landmark}
+                      label="Est. Total Payout (Gross)"
+                      value={`₱${selectedPay.toFixed(2)}`}
+                      emphasis
+                    />
+                  );
+                }
+                return (
+                  <MetricCard
+                    icon={Landmark}
+                    iconTone="bg-gray-100 text-brand-muted"
+                    label="Est. Total Payout (Gross)"
+                    value="Not Set"
+                    caption="Cannot calculate without a base rate."
+                  />
+                );
+              })()}
           </div>
         )}
       </div>
