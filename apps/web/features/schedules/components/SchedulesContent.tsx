@@ -67,7 +67,7 @@ export function SchedulesContent() {
   const { data: calendar, isLoading } = useQuery({
     queryKey: ["schedules", "calendar", weekStart, departmentId],
     queryFn: () => getCalendar({ weekStart, departmentId: departmentId !== "ALL" ? departmentId : undefined }),
-    refetchInterval: 60_000,
+    refetchInterval: 5_000,
   });
 
   const shiftWeek = (delta: number) => {

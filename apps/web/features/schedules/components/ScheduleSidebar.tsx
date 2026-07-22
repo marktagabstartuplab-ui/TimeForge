@@ -19,7 +19,7 @@ function ScheduleConflictPanel() {
   const { data, isLoading } = useQuery({
     queryKey: ["schedules", "conflicts"],
     queryFn: () => getConflicts(),
-    refetchInterval: 60_000,
+    refetchInterval: 5_000,
   });
   const conflicts = data ?? [];
 
@@ -52,7 +52,7 @@ function PendingRequestsPanel() {
   const { data, isLoading } = useQuery({
     queryKey: ["schedules", "requests"],
     queryFn: () => getRequests({ limit: 10 }),
-    refetchInterval: 60_000,
+    refetchInterval: 5_000,
   });
   const rows = data?.data ?? [];
 
