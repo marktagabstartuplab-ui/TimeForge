@@ -541,6 +541,33 @@ export class TimesheetsService {
     }
     if (sheet.version !== dto.version) throw new ConflictException('Version mismatch');
 
+    // Safety net: the frontend attaches completed, loose entries to the draft
+    // before calling submit, but that's client-side logic with no server-side
+    // guarantee — a direct API call, a missed step, or any other bypass leaves
+    // real logged time permanently unattached, and this timesheet (and its
+    // PDF export) would submit/approve showing 0 hours despite genuine work
+    // being logged. Only for DRAFT submissions — a REJECTED/REVISION_REQUESTED
+    // resubmit intentionally keeps only the entries already attached from its
+    // original submission (see attachLooseEntries in TimesheetsContent.tsx),
+    // so entries logged during the rejection review period aren't silently
+    // pulled in here.
+    if (sheet.status === 'DRAFT') {
+      // periodEnd is stored at midnight of the last day — entries logged later
+      // that day need the day boundary pushed forward, not a literal <= compare.
+      const periodEndExclusive = new Date(sheet.periodEnd.getTime() + 24 * 60 * 60 * 1000);
+      await this.prisma.timeEntry.updateMany({
+        where: {
+          tenantId: p.tenantId,
+          userId: p.userId,
+          timesheetId: null,
+          deletedAt: null,
+          endTime: { not: null },
+          startTime: { gte: sheet.periodStart, lt: periodEndExclusive },
+        },
+        data: { timesheetId: id },
+      });
+    }
+
     const agg = await this.prisma.timeEntry.aggregate({
       where: { timesheetId: id, deletedAt: null },
       _sum: { durationMinutes: true },
@@ -1069,6 +1096,11 @@ export class TimesheetsService {
       doc.text(outTime, x + colW[0] + colW[1] + colW[2] + colW[3], rowY, { width: colW[4] });
       doc.text(dur, x + colW[0] + colW[1] + colW[2] + colW[3] + colW[4], rowY, { width: colW[5] });
 
+      // Cells that wrap (usually Activity, the widest column) push doc.y down
+      // by more than one line — advancing by a fixed moveDown(0.5) regardless
+      // let a wrapped row's extra line overlap the row printed right after it.
+      const rowHeight = doc.heightOfString(desc, { width: colW[2] });
+      doc.y = rowY + Math.max(rowHeight, doc.currentLineHeight());
       doc.moveDown(0.5);
       
       if (doc.y > doc.page.height - 60) {
