@@ -122,7 +122,9 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
     Sun: false,
   });
 
-  const { data: employees } = useQuery({ queryKey: ["employees", "picker"], queryFn: () => listEmployees({ limit: 100 }), enabled: open });
+  // Only ACTIVE employees can be scheduled — a deactivated/suspended/pending
+  // account has no business getting a new shift assigned to it.
+  const { data: employees } = useQuery({ queryKey: ["employees", "picker", "ACTIVE"], queryFn: () => listEmployees({ limit: 100, status: "ACTIVE" }), enabled: open });
   const { data: departments } = useQuery({ queryKey: ["departments", "picker"], queryFn: listDepartments, enabled: open });
 
   const visibleDepartments = managedDeptIds

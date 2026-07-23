@@ -60,6 +60,21 @@ export class SchedulesService {
     }
   }
 
+  /** A deactivated/suspended/pending employee can't be scheduled for new work —
+   *  the frontend's employee picker already excludes them, this is the
+   *  server-side guarantee (the picker's list can be stale, or bypassed
+   *  entirely via a direct API call). */
+  private async assertUserSchedulable(p: AuthPrincipal, targetUserId: string): Promise<void> {
+    const user = await this.prisma.user.findFirst({
+      where: { id: targetUserId, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+      select: { status: true },
+    });
+    if (!user) throw new NotFoundException('Employee not found');
+    if (user.status !== 'ACTIVE') {
+      throw new UnprocessableEntityException(`Cannot schedule a shift for a ${user.status.toLowerCase()} employee`);
+    }
+  }
+
   private assertValidHours(startTime: Date, endTime: Date): void {
     if (endTime <= startTime) {
       throw new UnprocessableEntityException('endTime must be after startTime');
@@ -367,6 +382,7 @@ export class SchedulesService {
 
   async create(p: AuthPrincipal, dto: CreateShiftDto): Promise<Shift> {
     await this.assertInManagementScope(p, dto.userId);
+    await this.assertUserSchedulable(p, dto.userId);
 
     const startTime = new Date(dto.startTime);
     const endTime = new Date(dto.endTime);
