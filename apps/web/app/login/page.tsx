@@ -4,7 +4,7 @@ import { AuthSplitLayout } from "@/features/auth/components/AuthSplitLayout";
 import { AuthAside } from "@/features/auth/components/AuthAside";
 import { LoginForm } from "@/features/auth/components/LoginForm";
 
-export const metadata: Metadata = { title: "Sign In | TimeForge" };
+export const metadata: Metadata = { title: "Sign In | HeroTime" };
 
 // The landing page: brand aside on the left, sign-in card on the right.
 // There is no separate marketing page — "/" redirects here.

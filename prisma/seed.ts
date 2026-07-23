@@ -286,7 +286,7 @@ async function main() {
       data: {
         tenantId: tenant.id,
         organizationId: org.id,
-        name: 'TimeForge Platform',
+        name: 'HeroTime Platform',
         code: 'TF-2026',
         clientId: acmeClient.id,
         billable: true,

@@ -1,4 +1,4 @@
-# TimeForge — Project Status Snapshot
+# HeroTime — Project Status Snapshot
 
 Last updated: 2026-07-07
 

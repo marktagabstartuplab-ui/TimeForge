@@ -1,5 +1,6 @@
 import { CalendarDays, Clock, Users, type LucideIcon } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
+import { BRAND_NAME } from "@/lib/constants";
 
 interface Feature {
   icon: LucideIcon;
@@ -24,7 +25,7 @@ export function AuthAside() {
     <div className="hidden lg:block">
       <Logo size="lg" href="" />
       <p className="text-body-lg mt-5 max-w-md text-brand-muted">
-        TimeForge unifies time tracking, scheduling, analytics, daily work, finance into a single
+        {BRAND_NAME} unifies time tracking, scheduling, analytics, daily work, finance into a single
         platform.
       </p>
       <ul className="mt-8 space-y-4">

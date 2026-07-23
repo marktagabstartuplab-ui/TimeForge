@@ -3,7 +3,7 @@ import { Suspense } from "react";
 import { AuthCenteredLayout } from "@/features/auth/components/AuthCenteredLayout";
 import { VerifyEmailPageContent } from "./VerifyEmailPageContent";
 
-export const metadata: Metadata = { title: "Verify Email | TimeForge" };
+export const metadata: Metadata = { title: "Verify Email | HeroTime" };
 
 export default function VerifyEmailPage() {
   return (

@@ -7,6 +7,7 @@ import {
   DialogContent,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { BRAND_NAME } from "@/lib/constants";
 
 interface SupportModalProps {
   open: boolean;
@@ -30,7 +31,7 @@ export function SupportModal({ open, onOpenChange }: SupportModalProps) {
           id="support-desc"
           className="flex-1 space-y-6 overflow-y-auto px-6 py-6 text-sm text-brand-muted"
         >
-          <p>Get help with your TimeForge account.</p>
+          <p>Get help with your {BRAND_NAME} account.</p>
 
           <div className="rounded-modal border border-[#c3c6d2]/40 p-4">
             <div className="flex items-start gap-3">

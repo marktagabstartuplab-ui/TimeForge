@@ -6,6 +6,7 @@ import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { PrivacyPolicyModal } from "./PrivacyPolicyModal";
 import { TermsModal } from "./TermsModal";
 import { SupportModal } from "./SupportModal";
+import { BRAND_NAME } from "@/lib/constants";
 
 function LegalModals() {
   const searchParams = useSearchParams();
@@ -35,8 +36,8 @@ export function AuthFooter() {
     <footer className="w-full border-t border-[#c3c6d2]/40 bg-[#faf9f9]">
       <div className="mx-auto flex max-w-7xl flex-col justify-between gap-4 px-4 py-6 text-sm sm:flex-row sm:items-center sm:px-6 lg:px-8">
         <div>
-          <p className="font-bold text-brand-navy">TimeForge</p>
-          <p className="mt-1 text-brand-muted">© 2026 TimeForge. All rights reserved.</p>
+          <p className="font-bold text-brand-navy">{BRAND_NAME}</p>
+          <p className="mt-1 text-brand-muted">© 2026 {BRAND_NAME}. All rights reserved.</p>
         </div>
         <nav className="flex items-center gap-6">
           <Link href="?modal=privacy" className="text-brand-muted hover:text-brand-navy">

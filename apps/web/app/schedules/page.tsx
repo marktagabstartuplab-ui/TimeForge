@@ -2,7 +2,7 @@ import type { Metadata } from "next";
 import { AppShell } from "@/features/app-shell/components/AppShell";
 import { SchedulesContent } from "@/features/schedules/components/SchedulesContent";
 
-export const metadata: Metadata = { title: "Team Schedules | TimeForge" };
+export const metadata: Metadata = { title: "Team Schedules | HeroTime" };
 
 export default function SchedulesPage() {
   return (

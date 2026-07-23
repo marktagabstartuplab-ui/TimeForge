@@ -1,4 +1,4 @@
-# TimeForge — AI-Powered Workforce Performance, Timesheet & Daily Scrum Management System
+# HeroTime — AI-Powered Workforce Performance, Timesheet & Daily Scrum Management System
 
 Multi-tenant workforce platform: time tracking, smart timesheets, daily scrum, KPI tracking, supervisor
 approvals, payroll, dashboards/reports, and async AI insights — full stack (API + worker + web app).

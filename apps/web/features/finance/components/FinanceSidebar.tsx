@@ -8,6 +8,7 @@ import { SidebarNavSection } from "@/features/app-shell/components/SidebarNavSec
 import { SidebarBottomSection } from "@/features/app-shell/components/SidebarBottomSection";
 import { SidebarMobileDrawer } from "@/features/app-shell/components/SidebarMobileDrawer";
 import { getSidebarNavigation, type SidebarMenuItem, type SidebarOrganization } from "@/features/app-shell/api/navigation.service";
+import { BRAND_NAME } from "@/lib/constants";
 
 const FINANCE_NAV_ITEMS: SidebarMenuItem[] = [
   { id: "finance-dashboard", label: "Dashboard", icon: "layout-grid", route: "/finance/dashboard", section: "FINANCE", badgeCount: 0, permission: "payroll:read", visible: true },
@@ -57,7 +58,7 @@ export function FinanceSidebar() {
       </aside>
 
       <SidebarMobileDrawer
-        sidebarData={{ workspace: { name: "TimeForge" }, organization: orgData, user: { id: "", firstName: "", lastName: "", roles: [] }, menu: FINANCE_NAV_ITEMS }}
+        sidebarData={{ workspace: { name: BRAND_NAME }, organization: orgData, user: { id: "", firstName: "", lastName: "", roles: [] }, menu: FINANCE_NAV_ITEMS }}
         sections={sections}
         homeHref="/finance/dashboard"
       />

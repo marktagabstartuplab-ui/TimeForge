@@ -6,8 +6,9 @@ import { SupportBackButton } from "@/features/auth/components/SupportBackButton"
 import { PageHeader } from "@/components/shared/PageHeader";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { Button } from "@/components/ui/button";
+import { BRAND_NAME } from "@/lib/constants";
 
-export const metadata: Metadata = { title: "Support | TimeForge" };
+export const metadata: Metadata = { title: `Support | ${BRAND_NAME}` };
 
 /**
  * Public support page — reachable from the Login/Register pages before
@@ -22,7 +23,7 @@ export default function SupportPage() {
         <div className="flex flex-col gap-6">
           <div>
             <SupportBackButton />
-            <PageHeader title="Support" subtitle="Get help with your TimeForge account." />
+            <PageHeader title="Support" subtitle={`Get help with your ${BRAND_NAME} account.`} />
           </div>
 
           <SectionCard title="Contact Us">

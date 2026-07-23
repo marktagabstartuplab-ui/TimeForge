@@ -2,7 +2,7 @@ import Link from "next/link";
 import { cn } from "@/lib/utils";
 
 /**
- * TimeForge brand mark (official flask icon): dark test-tube flask with a
+ * HeroTime brand mark (official flask icon): dark test-tube flask with a
  * wide lip, cyan liquid with white bubbles, and three cyan bubbles rising
  * above. Colors come from the brand tokens (`--brand-ink`, `--brand-cyan`);
  * `app/icon.svg` mirrors this exact geometry with literal colors.
@@ -39,8 +39,8 @@ interface LogoProps {
   size?: "sm" | "lg";
 }
 
-// The single brand lockup used everywhere: flask mark + "TimeForge" wordmark
-// ("Time" in ink, "Forge" in cyan). One asset, token-driven colors — do not
+// The single brand lockup used everywhere: flask mark + "HeroTime" wordmark
+// ("Hero" in ink, "Time" in cyan). One asset, token-driven colors — do not
 // add per-surface variants beyond the two sanctioned sizes.
 export function Logo({ href = "/", className, size = "sm" }: LogoProps) {
   const inner =
@@ -48,23 +48,23 @@ export function Logo({ href = "/", className, size = "sm" }: LogoProps) {
       <span className="flex items-center gap-3">
         <LogoMark className="h-[88px] w-auto" />
         <span className="font-heading translate-y-[3px] text-[56px] font-bold leading-none tracking-[-1.5px]">
-          <span className="text-brand-ink">Time</span>
-          <span className="text-brand-cyan">Forge</span>
+          <span className="text-brand-ink">Hero</span>
+          <span className="text-brand-cyan">Time</span>
         </span>
       </span>
     ) : (
       <span className="flex items-center gap-2">
         <LogoMark className="h-8 w-auto" />
         <span className="font-heading translate-y-[1px] text-[22px] font-bold leading-none tracking-[-0.4px]">
-          <span className="text-brand-ink">Time</span>
-          <span className="text-brand-cyan">Forge</span>
+          <span className="text-brand-ink">Hero</span>
+          <span className="text-brand-cyan">Time</span>
         </span>
       </span>
     );
 
   if (href) {
     return (
-      <Link href={href} className={cn("inline-flex shrink-0 items-center", className)} aria-label="TimeForge home">
+      <Link href={href} className={cn("inline-flex shrink-0 items-center", className)} aria-label="HeroTime home">
         {inner}
       </Link>
     );

@@ -4,7 +4,7 @@ import { ArrowLeft } from "lucide-react";
 import { AuthCenteredLayout } from "@/features/auth/components/AuthCenteredLayout";
 import { AuthCard } from "@/features/auth/components/AuthCard";
 
-export const metadata: Metadata = { title: "Waiting for Admin Approval | TimeForge" };
+export const metadata: Metadata = { title: "Waiting for Admin Approval | HeroTime" };
 
 export default function RegistrationPendingPage() {
   return (

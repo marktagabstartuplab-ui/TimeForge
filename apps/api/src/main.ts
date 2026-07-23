@@ -45,7 +45,7 @@ async function bootstrap() {
   }
 
   const swaggerConfig = new DocumentBuilder()
-    .setTitle('TimeForge API')
+    .setTitle('HeroTime API')
     .setDescription('Workforce Performance, Timesheet and Daily Scrum Management System')
     .setVersion('1.0')
     .addBearerAuth({ type: 'http', scheme: 'bearer', bearerFormat: 'JWT' }, 'access-token')
@@ -57,7 +57,7 @@ async function bootstrap() {
   console.log(`[boot] about to listen on port ${port}`);
   await app.listen(port);
   console.log('[boot] app.listen resolved — server is up');
-  app.get(Logger).log(`TimeForge API listening on http://localhost:${port}/api/v1`);
+  app.get(Logger).log(`HeroTime API listening on http://localhost:${port}/api/v1`);
   app.get(Logger).log(`Swagger docs at http://localhost:${port}/api/docs`);
 }
 

@@ -7,6 +7,7 @@ import {
   DialogDescription,
   DialogCloseButton,
 } from "@/components/ui/dialog";
+import { BRAND_NAME } from "@/lib/constants";
 
 const SHORTCUTS: { keys: string; description: string }[] = [
   { keys: "?", description: "Open this shortcuts guide" },
@@ -29,7 +30,7 @@ export function KeyboardShortcutsDialog({
         <div className="flex items-start justify-between px-6 pt-6">
           <div>
             <DialogTitle>Keyboard Shortcuts</DialogTitle>
-            <DialogDescription>Navigate TimeForge without leaving the keyboard.</DialogDescription>
+            <DialogDescription>Navigate {BRAND_NAME} without leaving the keyboard.</DialogDescription>
           </div>
           <DialogCloseButton />
         </div>

@@ -18,7 +18,7 @@ const dmSans = DM_Sans({
 });
 
 export const metadata: Metadata = {
-  title: "TimeForge",
+  title: "HeroTime",
   description: "Workforce Performance Management",
 };
 
