@@ -2,6 +2,7 @@
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
+import { useQueryClient } from "@tanstack/react-query";
 import { setAccessToken, setSessionExpiredHandler } from "@/lib/api/client";
 import type { AuthUser } from "@/features/auth/api/auth.service";
 
@@ -21,6 +22,7 @@ const AuthContext = createContext<AuthContextValue | null>(null);
  */
 export function AuthProvider({ children }: { children: React.ReactNode }) {
   const router = useRouter();
+  const queryClient = useQueryClient();
   const [user, setUser] = useState<AuthUser | null>(null);
   const [accessToken, setToken] = useState<string | null>(null);
 
@@ -34,7 +36,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     setToken(null);
     setUser(null);
     setAccessToken(null);
-  }, []);
+    // Drop every cached query so a subsequent login (possibly as a different
+    // user/role) doesn't briefly render this session's stale data.
+    queryClient.clear();
+  }, [queryClient]);
 
   // Bridges the axios client (a plain module, outside React) back into app
   // state: when a mid-session refresh fails because the refresh token itself

@@ -91,6 +91,8 @@ export function UserMenu() {
     try {
       await logout();
     } finally {
+      // clearSession() also clears the React Query cache, so the next login
+      // doesn't briefly render the previous user's data.
       clearSession();
       router.push("/login");
     }
