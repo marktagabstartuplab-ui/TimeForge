@@ -1,6 +1,6 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useCallback, useMemo, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { Ban, Banknote, Clock3, Download } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -45,6 +45,12 @@ import { getCurrentWorkSession } from "@/features/time-tracking/api/work-session
 export function TimesheetsContent() {
   const queryClient = useQueryClient();
   const [actionError, setActionError] = useState<string | null>(null);
+  const [highlightDate, setHighlightDate] = useState<string | null>(null);
+
+  const selectAuditDay = useCallback((dateKey: string) => {
+    setHighlightDate(dateKey);
+    document.getElementById("timesheet-entry-audit")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  }, []);
 
   const now = useMemo(() => new Date(), []);
   const period = useMemo(() => currentPayPeriod(now), [now]);
@@ -304,7 +310,7 @@ export function TimesheetsContent() {
       )}
 
       {/* ── My Timesheet (per-day smart view: stats, range, search, CSV) ──── */}
-      <MyTimesheetCard />
+      <MyTimesheetCard onDaySelect={selectAuditDay} />
 
       {/* ── Entry Audit Table (period, read-only from the system) ─────────── */}
       <EntryAuditTable
@@ -312,6 +318,9 @@ export function TimesheetsContent() {
         overtimeDays={summary.overtimeDays}
         periodDayCount={periodDayCount}
         timesheetStatus={timesheet?.status}
+        highlightDate={highlightDate}
+        onClearHighlightDate={() => setHighlightDate(null)}
+        employeeDepartmentName={me?.department?.name ?? null}
         onRefresh={() => timesheetDetailQuery.refetch()}
       />
 

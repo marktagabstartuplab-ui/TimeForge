@@ -122,7 +122,7 @@ const PRESETS: { id: RangePreset; label: string }[] = [
  * from timer sessions (GET /time-entries); nothing here is manually entered.
  * Range presets, search, pagination and CSV export are all client-side.
  */
-export function MyTimesheetCard() {
+export function MyTimesheetCard({ onDaySelect }: { onDaySelect?: (dateKey: string) => void }) {
   const [preset, setPreset] = useState<RangePreset>("7d");
   const [customFrom, setCustomFrom] = useState(() => toIsoDate(daysAgo(6)));
   const [customTo, setCustomTo] = useState(() => toIsoDate(new Date()));
@@ -376,6 +376,7 @@ export function MyTimesheetCard() {
             columns={columns}
             rows={pageRows}
             rowKey={(r) => r.dateKey}
+            onRowClick={onDaySelect ? (r) => onDaySelect(r.dateKey) : undefined}
             emptyState={
               <EmptyState
                 message={

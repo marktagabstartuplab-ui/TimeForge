@@ -20,6 +20,11 @@ interface EntryAuditTableProps {
   periodDayCount: number;
   timesheetStatus?: string;
   onRefresh?: () => void;
+  /** When set (YYYY-MM-DD), the table only shows that day's entries, with a banner to clear it. */
+  highlightDate?: string | null;
+  onClearHighlightDate?: () => void;
+  /** The employee's own assigned department — shown locked in the edit form. */
+  employeeDepartmentName?: string | null;
 }
 
 function parseIsoToLocalDate(iso: string): string {
@@ -38,15 +43,28 @@ function parseIsoToLocalTime(iso: string | null): string {
   return `${h}:${m}`;
 }
 
-function combineDateAndTime(dateStr: string, timeStr: string): string {
-  const [y, m, d] = dateStr.split("-").map(Number);
-  const [h, min] = timeStr.split(":").map(Number);
-  const date = new Date(y, m - 1, d, h, min, 0, 0);
-  return date.toISOString();
+/** Formats a YYYY-MM-DD (local) key as e.g. "Thu, Jul 23, 2026". */
+function formatDayLabel(dateKey: string): string {
+  const [y, m, d] = dateKey.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString("en-US", {
+    weekday: "short",
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
 /** "Timesheet Entry Audit" table (Submit Timesheet, Figma 127:2792). */
-export function EntryAuditTable({ entries, overtimeDays, periodDayCount, timesheetStatus, onRefresh }: EntryAuditTableProps) {
+export function EntryAuditTable({
+  entries,
+  overtimeDays,
+  periodDayCount,
+  timesheetStatus,
+  onRefresh,
+  highlightDate,
+  onClearHighlightDate,
+  employeeDepartmentName,
+}: EntryAuditTableProps) {
   const [expanded, setExpanded] = useState(false);
   const queryClient = useQueryClient();
 
@@ -60,7 +78,6 @@ export function EntryAuditTable({ entries, overtimeDays, periodDayCount, timeshe
   const [editProjectId, setEditProjectId] = useState("");
   const [editClientId, setEditClientId] = useState("");
   const [editWorkCategoryId, setEditWorkCategoryId] = useState("");
-  const [editDepartmentId, setEditDepartmentId] = useState("");
   const [editTask, setEditTask] = useState("");
   const [editDescription, setEditDescription] = useState("");
   const [editDeliverables, setEditDeliverables] = useState("");
@@ -82,7 +99,6 @@ export function EntryAuditTable({ entries, overtimeDays, periodDayCount, timeshe
     setEditProjectId(e.projectId ?? "");
     setEditClientId(e.clientId ?? "");
     setEditWorkCategoryId(e.workCategoryId ?? "");
-    setEditDepartmentId(e.departmentId ?? "");
     setEditTask(e.task ?? "");
     setEditDescription(e.description ?? "");
     setEditDeliverables(e.deliverables ?? "");
@@ -93,41 +109,18 @@ export function EntryAuditTable({ entries, overtimeDays, periodDayCount, timeshe
     mutationFn: async () => {
       if (!editingEntry) return;
 
-      // In revision mode, start/end times are locked — only text fields may change.
-      if (!isRevisionMode) {
-        if (!editDate || !editStartTime) {
-          throw new Error("Date and Start Time are required");
-        }
-        const startTime = combineDateAndTime(editDate, editStartTime);
-        const endTime = editEndTime ? combineDateAndTime(editDate, editEndTime) : undefined;
-        if (endTime && new Date(endTime) <= new Date(startTime)) {
-          throw new Error("End Time must be after Start Time");
-        }
-        await updateTimeEntry(editingEntry.id, {
-          startTime,
-          endTime,
-          projectId: editProjectId || undefined,
-          clientId: editClientId || undefined,
-          workCategoryId: editWorkCategoryId || undefined,
-          departmentId: editDepartmentId || undefined,
-          task: editTask || undefined,
-          description: editDescription || undefined,
-          deliverables: editDeliverables || undefined,
-          version: editingEntry.version,
-        });
-      } else {
-        // Revision mode: only update editable text fields, preserve original times.
-        await updateTimeEntry(editingEntry.id, {
-          projectId: editProjectId || undefined,
-          clientId: editClientId || undefined,
-          workCategoryId: editWorkCategoryId || undefined,
-          departmentId: editDepartmentId || undefined,
-          task: editTask || undefined,
-          description: editDescription || undefined,
-          deliverables: editDeliverables || undefined,
-          version: editingEntry.version,
-        });
-      }
+      // Date, Start Time, End Time, and Department are permanently locked in
+      // this audit — only project/client/category/task/description/
+      // deliverables may change, regardless of timesheet status.
+      await updateTimeEntry(editingEntry.id, {
+        projectId: editProjectId || undefined,
+        clientId: editClientId || undefined,
+        workCategoryId: editWorkCategoryId || undefined,
+        task: editTask || undefined,
+        description: editDescription || undefined,
+        deliverables: editDeliverables || undefined,
+        version: editingEntry.version,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["timesheets"] });
@@ -156,7 +149,10 @@ export function EntryAuditTable({ entries, overtimeDays, periodDayCount, timeshe
     },
   });
 
-  const visible = expanded ? entries : entries.slice(0, COLLAPSED_ROWS);
+  const dayEntries = highlightDate
+    ? entries.filter((e) => toIsoDate(new Date(e.startTime)) === highlightDate)
+    : entries;
+  const visible = highlightDate || expanded ? dayEntries : dayEntries.slice(0, COLLAPSED_ROWS);
   const canEdit = timesheetStatus === "DRAFT" || timesheetStatus === "REJECTED" || timesheetStatus === "REVISION_REQUESTED";
   const isRevisionMode = timesheetStatus === "REVISION_REQUESTED";
 
@@ -275,10 +271,27 @@ export function EntryAuditTable({ entries, overtimeDays, periodDayCount, timeshe
   ];
 
   return (
-    <div className="flex flex-col rounded-[16px] border border-[#c3c6d2]/50 bg-white shadow-[0px_1px_1px_rgba(0,0,0,0.05)]">
+    <div id="timesheet-entry-audit" className="flex flex-col rounded-[16px] border border-[#c3c6d2]/50 bg-white shadow-[0px_1px_1px_rgba(0,0,0,0.05)]">
       <div className="flex items-center justify-between px-[25px] pt-[25px] pb-4">
         <h3 className="text-xl text-brand-navy">Timesheet Entry Audit</h3>
       </div>
+      {highlightDate ? (
+        <div className="mx-[25px] mb-4 flex items-center justify-between gap-3 rounded-[10px] bg-brand-cyan/10 px-4 py-2.5 text-sm">
+          <span className="text-brand-ink">
+            Showing entries for{" "}
+            <span className="font-semibold">{formatDayLabel(highlightDate)}</span>
+          </span>
+          {onClearHighlightDate && (
+            <button
+              type="button"
+              onClick={onClearHighlightDate}
+              className="font-bold text-brand hover:underline"
+            >
+              Show all period entries
+            </button>
+          )}
+        </div>
+      ) : null}
       <div className="px-[25px] pb-2">
         <DataTable
           aria-label="Timesheet entries for the current period"
@@ -286,11 +299,17 @@ export function EntryAuditTable({ entries, overtimeDays, periodDayCount, timeshe
           rows={visible}
           rowKey={(e) => e.id}
           emptyState={
-            <EmptyState message="No time entries in this pay period yet — log time from the Daily Scrum page." />
+            <EmptyState
+              message={
+                highlightDate
+                  ? "No time entries for this day in the current pay period's timesheet."
+                  : "No time entries in this pay period yet — log time from the Daily Scrum page."
+              }
+            />
           }
         />
       </div>
-      {entries.length > COLLAPSED_ROWS ? (
+      {!highlightDate && entries.length > COLLAPSED_ROWS ? (
         <button
           type="button"
           onClick={() => setExpanded((v) => !v)}
@@ -317,11 +336,10 @@ export function EntryAuditTable({ entries, overtimeDays, periodDayCount, timeshe
               </button>
             </div>
 
-            {isRevisionMode && (
-              <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800">
-                <span className="font-bold">Revision mode: </span>Start time, end time, and date are locked. You may update the description, deliverables, task, project, client, and department.
-              </div>
-            )}
+            <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800">
+              <span className="font-bold">Date, Start Time, End Time, and Department are locked. </span>
+              You may update the description, deliverables, task, project, and client.
+            </div>
 
             {formError && (
               <div className="mb-4 bg-red-50 border border-red-200 text-red-700 text-xs rounded-lg p-3">
@@ -332,49 +350,22 @@ export function EntryAuditTable({ entries, overtimeDays, periodDayCount, timeshe
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                 <div>
-                  <label className="text-xs font-semibold text-brand-muted block mb-1">Date {!isRevisionMode && "*"}</label>
-                  {isRevisionMode ? (
-                    <div className="h-10 rounded-lg border border-[#c3c6d2]/50 bg-[#f6f3f4] px-3 text-sm text-brand-muted flex items-center cursor-not-allowed">
-                      {editDate}
-                    </div>
-                  ) : (
-                    <input
-                      type="date"
-                      value={editDate}
-                      onChange={(e) => setEditDate(e.target.value)}
-                      className="w-full h-10 rounded-lg border border-[#c3c6d2] px-3 text-sm focus:border-brand outline-none"
-                    />
-                  )}
+                  <label className="text-xs font-semibold text-brand-muted block mb-1">Date</label>
+                  <div className="h-10 rounded-lg border border-[#c3c6d2]/50 bg-[#f6f3f4] px-3 text-sm text-brand-muted flex items-center cursor-not-allowed">
+                    {editDate}
+                  </div>
                 </div>
                 <div>
-                  <label className="text-xs font-semibold text-brand-muted block mb-1">Start Time {!isRevisionMode && "*"}</label>
-                  {isRevisionMode ? (
-                    <div className="h-10 rounded-lg border border-[#c3c6d2]/50 bg-[#f6f3f4] px-3 text-sm text-brand-muted flex items-center cursor-not-allowed">
-                      {editStartTime}
-                    </div>
-                  ) : (
-                    <input
-                      type="time"
-                      value={editStartTime}
-                      onChange={(e) => setEditStartTime(e.target.value)}
-                      className="w-full h-10 rounded-lg border border-[#c3c6d2] px-3 text-sm focus:border-brand outline-none"
-                    />
-                  )}
+                  <label className="text-xs font-semibold text-brand-muted block mb-1">Start Time</label>
+                  <div className="h-10 rounded-lg border border-[#c3c6d2]/50 bg-[#f6f3f4] px-3 text-sm text-brand-muted flex items-center cursor-not-allowed">
+                    {editStartTime}
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-brand-muted block mb-1">End Time</label>
-                  {isRevisionMode ? (
-                    <div className="h-10 rounded-lg border border-[#c3c6d2]/50 bg-[#f6f3f4] px-3 text-sm text-brand-muted flex items-center cursor-not-allowed">
-                      {editEndTime || "—"}
-                    </div>
-                  ) : (
-                    <input
-                      type="time"
-                      value={editEndTime}
-                      onChange={(e) => setEditEndTime(e.target.value)}
-                      className="w-full h-10 rounded-lg border border-[#c3c6d2] px-3 text-sm focus:border-brand outline-none"
-                    />
-                  )}
+                  <div className="h-10 rounded-lg border border-[#c3c6d2]/50 bg-[#f6f3f4] px-3 text-sm text-brand-muted flex items-center cursor-not-allowed">
+                    {editEndTime || "—"}
+                  </div>
                 </div>
               </div>
 
@@ -410,16 +401,9 @@ export function EntryAuditTable({ entries, overtimeDays, periodDayCount, timeshe
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="text-xs font-semibold text-brand-muted block mb-1">Department</label>
-                  <select
-                    value={editDepartmentId}
-                    onChange={(e) => setEditDepartmentId(e.target.value)}
-                    className="w-full h-10 rounded-lg border border-[#c3c6d2] px-2 text-sm focus:border-brand outline-none bg-white"
-                  >
-                    <option value="">Select Department...</option>
-                    {departments?.map((d) => (
-                      <option key={d.id} value={d.id}>{d.name}</option>
-                    ))}
-                  </select>
+                  <div className="h-10 rounded-lg border border-[#c3c6d2]/50 bg-[#f6f3f4] px-3 text-sm text-brand-muted flex items-center cursor-not-allowed">
+                    {employeeDepartmentName || "—"}
+                  </div>
                 </div>
                 <div>
                   <label className="text-xs font-semibold text-brand-muted block mb-1">Work Category</label>
