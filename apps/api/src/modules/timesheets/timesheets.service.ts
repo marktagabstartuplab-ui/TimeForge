@@ -14,6 +14,7 @@ import { DepartmentScopeService } from '../../common/scoping/department-scope.se
 import { PERMISSIONS } from '@timeforge/shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ApprovalsService } from '../approvals/approvals.service';
+import { StorageService, withAvatarUrl } from '../storage/storage.service';
 import {
   AttachEntriesDto,
   BulkApproveTimesheetsDto,
@@ -45,6 +46,7 @@ export class TimesheetsService {
     private readonly notifications: NotificationsService,
     private readonly approvals: ApprovalsService,
     private readonly deptScope: DepartmentScopeService,
+    private readonly storage: StorageService,
   ) {}
 
   // -- Reads --
@@ -88,12 +90,16 @@ export class TimesheetsService {
       where,
       orderBy: [{ [sortField]: sortDir }, { id: 'asc' }],
       take: limit + 1,
-      include: { user: { select: { firstName: true, lastName: true, department: { select: { name: true } } } } },
+      include: {
+        user: { select: { firstName: true, lastName: true, avatarKey: true, department: { select: { name: true } } } },
+      },
     });
 
     const overtimeByTimesheet = await this.computeOvertimeMinutesByTimesheet(items.map((t) => t.id));
+    const avatarUrls = await this.storage.signedUrlsByKey(items.map((t) => t.user.avatarKey));
     const itemsWithOvertime = items.map((t) => ({
       ...t,
+      user: withAvatarUrl(t.user, avatarUrls),
       overtimeMinutes: overtimeByTimesheet.get(t.id) ?? 0,
     }));
 
@@ -358,7 +364,9 @@ export class TimesheetsService {
       where,
       orderBy: [{ periodStart: 'desc' }, { id: 'asc' }],
       take: limit + 1,
-      include: { user: { select: { firstName: true, lastName: true, department: { select: { name: true } } } } },
+      include: {
+        user: { select: { firstName: true, lastName: true, avatarKey: true, department: { select: { name: true } } } },
+      },
     });
 
     // Per-timesheet daily overtime (>8h/day), the same threshold the
@@ -366,8 +374,10 @@ export class TimesheetsService {
     // supervisor spot who has overtime right in the queue, not just after
     // opening each submission individually.
     const overtimeByTimesheet = await this.computeOvertimeMinutesByTimesheet(items.map((t) => t.id));
+    const avatarUrls = await this.storage.signedUrlsByKey(items.map((t) => t.user.avatarKey));
     const itemsWithOvertime = items.map((t) => ({
       ...t,
+      user: withAvatarUrl(t.user, avatarUrls),
       overtimeMinutes: overtimeByTimesheet.get(t.id) ?? 0,
     }));
 

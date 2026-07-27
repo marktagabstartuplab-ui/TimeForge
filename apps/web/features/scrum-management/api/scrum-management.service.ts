@@ -108,7 +108,7 @@ export interface ScrumEntryDetail {
     id: string;
     firstName: string;
     lastName: string;
-    avatarKey: string | null;
+    avatarUrl: string | null;
     department: { name: string } | null;
   };
   tasks: {

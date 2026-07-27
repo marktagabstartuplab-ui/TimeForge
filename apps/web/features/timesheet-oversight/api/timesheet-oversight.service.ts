@@ -3,7 +3,12 @@ import type { Page } from "@/features/time-tracking/api/time-entries.service";
 import type { Timesheet, TimesheetKpiProgress } from "@/features/timesheets/api/timesheets.service";
 
 export interface TimesheetRow extends Timesheet {
-  user: { firstName: string; lastName: string; department: { name: string } | null };
+  user: {
+    firstName: string;
+    lastName: string;
+    avatarUrl: string | null;
+    department: { name: string } | null;
+  };
   /** Minutes worked beyond 8h/day, summed across the period. Only populated
    *  by getPendingTimesheets() — the supervisor review queue. */
   overtimeMinutes?: number;

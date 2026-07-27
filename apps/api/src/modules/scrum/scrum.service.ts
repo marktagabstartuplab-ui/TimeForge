@@ -12,6 +12,7 @@ import { AuthPrincipal } from '../../common/decorators';
 import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { PERMISSIONS } from '@timeforge/shared';
 import { NotificationsService } from '../notifications/notifications.service';
+import { StorageService, withAvatarUrl } from '../storage/storage.service';
 import {
   CommentScrumEntryDto,
   CreateScrumBlockerDto,
@@ -64,6 +65,7 @@ export class ScrumService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly deptScope: DepartmentScopeService,
+    private readonly storage: StorageService,
   ) {}
 
   // ── Reads ───────────────────────────────────────────────────────────────────
@@ -886,8 +888,12 @@ export class ScrumService {
     // Attach recurring blocker indicator
     await this.attachRecurringBlockerFlag(items as any);
 
+    // `avatarKey` was already selected here but never exchanged for a URL, so
+    // the submissions list could only ever render initials.
+    const avatarUrls = await this.storage.signedUrlsByKey(items.map((i) => i.user.avatarKey));
+
     return {
-      data: items,
+      data: items.map((i) => ({ ...i, user: withAvatarUrl(i.user, avatarUrls) })),
       total: count,
       limit,
     };
