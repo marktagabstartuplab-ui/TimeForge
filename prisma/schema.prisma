@@ -761,9 +761,13 @@ model ScrumTask {
   // set; plannedTarget is the employee's editable daily commitment, pre-filled
   // from the template's targetValue as a suggestion but changeable.
   // actualCompleted is the employee's EOD self-reported actual value.
+  // continueTomorrow / notCompletedReason are captured in the EOD review only
+  // when actualCompleted falls short of plannedTarget.
   kpi            String?
   plannedTarget   String?             @map("planned_target")
   actualCompleted String?             @map("actual_completed")
+  continueTomorrow   Boolean?         @map("continue_tomorrow")
+  notCompletedReason String?          @map("not_completed_reason")
   kpiTemplateId   String?             @map("kpi_template_id") @db.Uuid
   createdBy      String?             @map("created_by") @db.Uuid
   updatedBy      String?             @map("updated_by") @db.Uuid
