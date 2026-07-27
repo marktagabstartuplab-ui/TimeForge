@@ -161,11 +161,17 @@ export class UsersService {
     // Total now reflects every filter, role included.
     const totalPromise = this.prisma.user.count({ where: baseWhere });
 
-    const cursorWhere = query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {};
+    // A cursor has to seek within the same ordering the rows are sorted by.
+    // This filtered on `id > cursor` while sorting by lastName — two unrelated
+    // sequences — so pages overlapped: the directory rendered the same person
+    // on several pages (which read as duplicate accounts) and skipped others
+    // entirely. Prisma's native cursor seeks by position in `orderBy` instead;
+    // `id` is appended as a tiebreaker so that ordering is deterministic.
     const users = await this.prisma.user.findMany({
-      where: { ...baseWhere, ...cursorWhere },
+      where: baseWhere,
       include: { roles: { include: { role: true } }, department: { select: { id: true, name: true } } },
-      orderBy: { lastName: 'asc' },
+      orderBy: [{ lastName: 'asc' }, { id: 'asc' }],
+      ...(query.cursor ? { cursor: { id: decodeCursor(query.cursor) }, skip: 1 } : {}),
       take: limit + 1,
     });
 
@@ -633,7 +639,6 @@ export class UsersService {
   /** The "Pending Account Approvals" queue — PENDING self-registrations awaiting an Admin decision. */
   async listPendingAccounts(caller: AuthPrincipal, query: PendingAccountsQuery) {
     const limit = Math.min(Number(query.limit ?? 20), 100);
-    const cursorWhere = query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {};
     const where: Record<string, unknown> = {
       tenantId: caller.tenantId,
       organizationId: caller.organizationId,
@@ -653,10 +658,15 @@ export class UsersService {
 
     const total = await this.prisma.user.count({ where });
 
+    // Same cursor/order mismatch fixed in findAll: paging on `id > cursor` while
+    // sorting by createdAt walked an unrelated sequence, so pages overlapped and
+    // skipped rows. Seek by position in `orderBy` instead, with `id` as a
+    // tiebreaker to keep that ordering deterministic.
     const users = await this.prisma.user.findMany({
-      where: { ...where, ...cursorWhere },
+      where,
       include: { roles: { include: { role: true } }, department: { select: { id: true, name: true } } },
-      orderBy: { createdAt: 'desc' },
+      orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
+      ...(query.cursor ? { cursor: { id: decodeCursor(query.cursor) }, skip: 1 } : {}),
       take: limit + 1,
     });
 
