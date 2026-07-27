@@ -255,7 +255,12 @@ export function OversightTable({ onToast }: { onToast: (t: ToastState) => void }
                       </td>
                       <td className="py-2.5 pr-4">
                         <div className="flex items-center gap-2">
-                          <Avatar firstName={r.user.firstName} lastName={r.user.lastName} size="sm" />
+                          <Avatar
+                            firstName={r.user.firstName}
+                            lastName={r.user.lastName}
+                            imageUrl={r.user.avatarUrl}
+                            size="sm"
+                          />
                           <span className="font-medium text-brand-ink">{r.user.firstName} {r.user.lastName}</span>
                         </div>
                       </td>

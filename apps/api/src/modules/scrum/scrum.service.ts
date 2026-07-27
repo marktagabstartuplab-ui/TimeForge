@@ -12,6 +12,7 @@ import { AuthPrincipal } from '../../common/decorators';
 import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { PERMISSIONS } from '@timeforge/shared';
 import { NotificationsService } from '../notifications/notifications.service';
+import { StorageService, withAvatarUrl } from '../storage/storage.service';
 import {
   CommentScrumEntryDto,
   CreateScrumBlockerDto,
@@ -38,12 +39,33 @@ export interface ScrumBlockersQuery {
 
 type ScrumMgmtScope = { scope: 'org' | 'team'; userIds?: string[] };
 
+/**
+ * Fields the End of Day review writes. The entry lock freezes the *plan* (title,
+ * target, scope) once the day reaches 100% — it must not block recording what
+ * actually happened, or a fully-completed day could never file its EOD review.
+ */
+const EOD_REPORT_FIELDS: ReadonlySet<string> = new Set([
+  'actualCompleted',
+  'continueTomorrow',
+  'notCompletedReason',
+  'taskStatus',
+  'version',
+]);
+
+/** True when the payload only reports results and touches nothing in the plan. */
+function isEodReportOnly(dto: UpdateScrumTaskDto): boolean {
+  const values = dto as unknown as Record<string, unknown>;
+  const touched = Object.keys(dto).filter((key) => values[key] !== undefined);
+  return touched.length > 0 && touched.every((key) => EOD_REPORT_FIELDS.has(key));
+}
+
 @Injectable()
 export class ScrumService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly deptScope: DepartmentScopeService,
+    private readonly storage: StorageService,
   ) {}
 
   // ── Reads ───────────────────────────────────────────────────────────────────
@@ -343,7 +365,9 @@ export class ScrumService {
   async updateTask(p: AuthPrincipal, id: string, dto: UpdateScrumTaskDto): Promise<ScrumTask> {
     const task = await this.ownTask(p, id);
     if (task.version !== dto.version) throw new ConflictException('Version mismatch');
-    await this.assertEntryUnlocked(task.scrumEntryId);
+    // Result-only updates (the EOD review) are allowed through the lock; anything
+    // that edits the plan itself is not.
+    if (!isEodReportOnly(dto)) await this.assertEntryUnlocked(task.scrumEntryId);
     await this.validateProjectRef(p, dto.projectId);
     const kpiFields = dto.kpiTemplateId !== undefined ? await this.resolveKpiTemplateFields(p, dto.kpiTemplateId) : null;
 
@@ -365,6 +389,9 @@ export class ScrumService {
         kpi: kpiFields ? kpiFields.kpi : dto.kpi !== undefined ? (dto.kpi ?? null) : task.kpi,
         plannedTarget: kpiFields ? (dto.plannedTarget ?? kpiFields.suggestedTarget) : dto.plannedTarget !== undefined ? (dto.plannedTarget ?? null) : task.plannedTarget,
         actualCompleted: dto.actualCompleted !== undefined ? (dto.actualCompleted ?? null) : task.actualCompleted,
+        continueTomorrow: dto.continueTomorrow !== undefined ? (dto.continueTomorrow ?? null) : task.continueTomorrow,
+        notCompletedReason:
+          dto.notCompletedReason !== undefined ? (dto.notCompletedReason || null) : task.notCompletedReason,
         estimatedHours: dto.estimatedHours ?? task.estimatedHours,
         actualHours: dto.actualHours ?? task.actualHours,
         updatedBy: p.userId,
@@ -861,8 +888,12 @@ export class ScrumService {
     // Attach recurring blocker indicator
     await this.attachRecurringBlockerFlag(items as any);
 
+    // `avatarKey` was already selected here but never exchanged for a URL, so
+    // the submissions list could only ever render initials.
+    const avatarUrls = await this.storage.signedUrlsByKey(items.map((i) => i.user.avatarKey));
+
     return {
-      data: items,
+      data: items.map((i) => ({ ...i, user: withAvatarUrl(i.user, avatarUrls) })),
       total: count,
       limit,
     };

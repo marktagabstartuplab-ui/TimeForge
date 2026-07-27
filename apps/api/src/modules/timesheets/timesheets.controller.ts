@@ -16,7 +16,9 @@ import {
 import type { Response } from 'express';
 import { ApiOperation } from '@nestjs/swagger';
 import { TimesheetsService } from './timesheets.service';
+import { TimesheetAdjustmentsService } from './timesheet-adjustments.service';
 import {
+  AdjustTimesheetDto,
   AttachEntriesDto,
   BulkApproveTimesheetsDto,
   BulkRejectTimesheetsDto,
@@ -32,7 +34,10 @@ import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/dec
 
 @Controller({ path: 'timesheets', version: '1' })
 export class TimesheetsController {
-  constructor(private readonly svc: TimesheetsService) {}
+  constructor(
+    private readonly svc: TimesheetsService,
+    private readonly adjustments: TimesheetAdjustmentsService,
+  ) {}
 
   // -- List / detail --
 
@@ -219,6 +224,30 @@ export class TimesheetsController {
     @Param('entryId', ParseUUIDPipe) entryId: string,
   ) {
     return this.svc.detachEntry(u, id, entryId);
+  }
+
+  // -- Supervisor time adjustment (BUG-Q) --
+  //
+  // Separate from PATCH :id and from PATCH /time-entries/:id: those are the
+  // employee editing their own record and both refuse to run once a timesheet
+  // is submitted. This one only ever touches someone else's submitted record,
+  // requires its own permission, and will not run without a written reason —
+  // which is what keeps "employee edited their own entry" and "supervisor
+  // overrode an entry" distinguishable in the audit trail.
+
+  @Post(':id/adjust')
+  @HttpCode(200)
+  @RequirePermissions('timesheet:adjust_team')
+  @ApiOperation({
+    summary:
+      "Supervisor override of an employee's submitted Time In / Time Out / Total Hours / Overtime. Requires a reason; writes a TIME_ADJUSTMENT audit record with before/after values.",
+  })
+  adjust(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: AdjustTimesheetDto,
+  ) {
+    return this.adjustments.adjust(u, id, dto);
   }
 
   // -- Approval workflow --

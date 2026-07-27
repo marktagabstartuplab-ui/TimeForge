@@ -230,6 +230,16 @@ export class UpdateScrumTaskDto {
   @MaxLength(200)
   actualCompleted?: string;
 
+  /** EOD shortfall follow-ups — only captured when actual falls short of planned. */
+  @IsOptional()
+  @IsBoolean()
+  continueTomorrow?: boolean;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  notCompletedReason?: string;
+
   /** null explicitly clears an existing template link (switching to custom text); omit to leave unchanged. */
   @IsOptional()
   @IsUUID()

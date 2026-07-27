@@ -266,13 +266,29 @@ export class PayrollService {
         periodStart: { gte: period.startDate },
         periodEnd: { lte: period.endDate },
       },
-      select: { id: true, userId: true, totalMinutes: true },
+      select: { id: true, userId: true, totalMinutes: true, overtimeMinutesOverride: true },
     });
 
     // Aggregate approved minutes per user
     const userMinutes = new Map<string, number>();
     for (const ts of timesheets) {
       userMinutes.set(ts.userId, (userMinutes.get(ts.userId) ?? 0) + ts.totalMinutes);
+    }
+
+    // Timesheets a supervisor adjusted during review carry an explicit overtime
+    // figure (BUG-Q). Their regular/overtime split is taken from that figure and
+    // their entries are held out of the daily >8h rollup below, so the two can
+    // never double-count. Timesheets without an override — every timesheet until
+    // a supervisor sets one — are unaffected.
+    const adjustedTimesheetIds = new Set<string>();
+    const adjustedSplitByUser = new Map<string, { overtimeMins: number; regularMins: number }>();
+    for (const ts of timesheets) {
+      if (ts.overtimeMinutesOverride === null) continue;
+      adjustedTimesheetIds.add(ts.id);
+      const split = adjustedSplitByUser.get(ts.userId) ?? { overtimeMins: 0, regularMins: 0 };
+      split.overtimeMins += ts.overtimeMinutesOverride;
+      split.regularMins += Math.max(0, ts.totalMinutes - ts.overtimeMinutesOverride);
+      adjustedSplitByUser.set(ts.userId, split);
     }
 
     // Gather all SUBMITTED / UNDER_REVIEW / REVISION_REQUESTED timesheets (pending)
@@ -341,6 +357,7 @@ export class PayrollService {
           },
           select: {
             userId: true,
+            timesheetId: true,
             startTime: true,
             durationMinutes: true,
           },
@@ -351,6 +368,7 @@ export class PayrollService {
     const userDailyMinutes = new Map<string, Map<string, number>>();
     for (const entry of approvedEntries) {
       if (!entry.durationMinutes) continue;
+      if (entry.timesheetId && adjustedTimesheetIds.has(entry.timesheetId)) continue;
       const dateStr = entry.startTime.toISOString().slice(0, 10);
       let userDays = userDailyMinutes.get(entry.userId);
       if (!userDays) {
@@ -398,8 +416,9 @@ export class PayrollService {
         const rejectedMins = rejectedMinutes.get(user.id) ?? 0;
 
         const userDays = userDailyMinutes.get(user.id);
-        let overtimeMins = 0;
-        let regularMins = 0;
+        const adjustedSplit = adjustedSplitByUser.get(user.id);
+        let overtimeMins = adjustedSplit?.overtimeMins ?? 0;
+        let regularMins = adjustedSplit?.regularMins ?? 0;
         if (userDays) {
           const REGULAR_DAY_MINUTES = 8 * 60;
           for (const [_, dayMinutes] of userDays) {

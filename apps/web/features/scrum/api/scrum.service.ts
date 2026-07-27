@@ -48,6 +48,8 @@ export interface ScrumTask {
   kpi: string | null;
   plannedTarget: string | null;
   actualCompleted: string | null;
+  continueTomorrow: boolean | null;
+  notCompletedReason: string | null;
   kpiTemplateId: string | null;
   createdAt: string;
   updatedAt: string;
@@ -79,6 +81,8 @@ export interface UpdateScrumTaskPayload {
   kpi?: string;
   plannedTarget?: string;
   actualCompleted?: string;
+  continueTomorrow?: boolean;
+  notCompletedReason?: string;
   /** null explicitly clears an existing template link (switching to custom); omit to leave unchanged. */
   kpiTemplateId?: string | null;
   estimatedHours?: number;

@@ -29,7 +29,7 @@ import {
 import { MailerService } from '../../infra/mailer.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UploadService } from '../storage/upload.service';
-import { StorageService } from '../storage/storage.service';
+import { StorageService, withAvatarUrl } from '../storage/storage.service';
 
 type ProfileUser = Prisma.UserGetPayload<{
   include: {
@@ -190,9 +190,23 @@ export class UsersService {
       liveByUser.set(s.userId, s.currentBreakStartedAt ? 'ON_BREAK' : 'ACTIVE');
     }
 
+    // An uploaded avatar is global, so the directory has to show it to every
+    // viewer — not just the owner's own session. `shapeProfile()` already
+    // exchanges the raw storage key for a signed URL on the profile endpoints,
+    // but this listing returned the row as-is: clients got `avatarKey` and no
+    // `avatarUrl`, so every row fell back to initials however many photos had
+    // been uploaded. Signed in one deduplicated batch to keep it to a single
+    // round trip per distinct avatar rather than one per row.
+    const avatarUrls = await this.storage.signedUrlsByKey(page.data.map((u) => u.avatarKey));
+
     return {
       data: page.data.map((u) => ({
-        ...this.sanitize(u as unknown as Record<string, unknown>, caller),
+        ...withAvatarUrl(
+          this.sanitize(u as unknown as Record<string, unknown>, caller) as Record<string, unknown> & {
+            avatarKey: string | null;
+          },
+          avatarUrls,
+        ),
         // Same highest-privilege-first ordering the profile endpoints use, so
         // the directory's role column matches the profile badge.
         roles: sortRolesByPrivilege(u.roles),

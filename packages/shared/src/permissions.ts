@@ -66,6 +66,13 @@ export const PERMISSIONS = {
   TIMESHEET_SUBMIT: 'timesheet:submit',
   TIMESHEET_READ_TEAM: 'timesheet:read_team',
   TIMESHEET_READ_ORG: 'timesheet:read_org',
+  /**
+   * Supervisor override of another user's submitted time record during review.
+   * Deliberately separate from TIMESHEET_UPDATE (which is the employee editing
+   * their own draft) so "who may correct someone else's hours" is grantable and
+   * auditable on its own.
+   */
+  TIMESHEET_ADJUST_TEAM: 'timesheet:adjust_team',
   // scrum
   SCRUM_CREATE: 'scrum:create',
   SCRUM_READ: 'scrum:read',
@@ -188,6 +195,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     ...ORG_READ_PERMS,
     P.TIME_ENTRY_CREATE, P.TIME_ENTRY_READ, P.TIME_ENTRY_UPDATE, P.TIME_ENTRY_DELETE, P.TIME_ENTRY_READ_TEAM,
     P.TIMESHEET_CREATE, P.TIMESHEET_READ, P.TIMESHEET_UPDATE, P.TIMESHEET_SUBMIT, P.TIMESHEET_READ_TEAM,
+    P.TIMESHEET_ADJUST_TEAM,
     P.SCRUM_CREATE, P.SCRUM_READ, P.SCRUM_UPDATE, P.SCRUM_READ_TEAM,
     P.KPI_PROGRESS_READ, P.KPI_PROGRESS_READ_TEAM, P.KPI_TEMPLATE_READ,
     P.APPROVAL_READ_TEAM, P.APPROVAL_DECIDE, P.APPROVAL_REMARK,

@@ -27,6 +27,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "user:read",
     "time_entry:create", "time_entry:read", "time_entry:update", "time_entry:delete", "time_entry:read_team",
     "timesheet:create", "timesheet:read", "timesheet:update", "timesheet:submit", "timesheet:read_team",
+    "timesheet:adjust_team",
     "scrum:create", "scrum:read", "scrum:update", "scrum:read_team",
     "kpi_progress:read", "kpi_progress:read_team", "kpi_template:read",
     "approval:read_team", "approval:decide", "approval:remark",

@@ -20,7 +20,9 @@ import {
   listScrumEntries,
   listScrumTasks,
   updateScrumEntry,
+  updateScrumTask,
   type ScrumEntry,
+  type ScrumTask,
 } from "@/features/scrum/api/scrum.service";
 import { clockOutSession, getCurrentWorkSession } from "../api/work-sessions.service";
 import type { DaySummary } from "../lib/day-summary";
@@ -37,20 +39,188 @@ interface EodReviewModalProps {
   onSubmitted?: () => void;
 }
 
+/** Leading numeric prefix of a target string ("50", "50 calls" → 50); null when non-numeric. */
+function parseNumericTarget(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const match = String(value).trim().match(/^-?\d+(\.\d+)?/);
+  if (!match) return null;
+  const parsed = Number(match[0]);
+  return Number.isFinite(parsed) ? parsed : null;
+}
+
+/** A commitment participates in the actual-vs-planned flow only if it carries a numeric planned target. */
+function isKpiLinked(task: ScrumTask): boolean {
+  return parseNumericTarget(task.plannedTarget) !== null;
+}
+
+/** Per-commitment EOD answers, keyed by task id. */
+interface TaskReview {
+  actual: string;
+  continueTomorrow: boolean | null;
+  reason: string;
+}
+
+const EMPTY_REVIEW: TaskReview = { actual: "", continueTomorrow: null, reason: "" };
+
 /**
- * End of Day Review (Figma 127:3271). Persists via existing endpoints only:
- * stops the running timer (POST /time-entries/:id/stop) and folds the review
- * into today's scrum entry (accomplishments → `today`, blockers → `blockers`).
+ * One commitment in the review. KPI-linked commitments (those with a numeric
+ * Planned Target) get the mandatory "Actual Completed" input plus the shortfall
+ * follow-ups; everything else keeps the plain status badge.
+ */
+function CommitmentReviewRow({
+  task,
+  review,
+  error,
+  onChange,
+}: {
+  task: ScrumTask;
+  review: TaskReview;
+  error?: string;
+  onChange: (patch: Partial<TaskReview>) => void;
+}) {
+  const planned = parseNumericTarget(task.plannedTarget);
+  const actual = parseNumericTarget(review.actual);
+  const answered = review.actual.trim() !== "" && actual !== null && actual >= 0;
+  // A zero target is trivially met — treat it as 100% rather than dividing by zero.
+  const percent = answered && planned !== null ? (planned > 0 ? Math.round((actual / planned) * 100) : 100) : null;
+  const shortfall = answered && planned !== null && actual < planned;
+
+  return (
+    <li className="rounded-[12px] border border-[#c3c6d2]/50 bg-white p-4 shadow-[0px_1px_1px_rgba(0,0,0,0.05)]">
+      <div className="flex items-start justify-between gap-3">
+        <div className="flex items-start gap-2.5">
+          <Target className="mt-0.5 h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
+          <div>
+            <p className="text-sm font-semibold text-brand-ink">{task.title}</p>
+            {task.expectedOutput ? (
+              <p className="mt-0.5 text-xs text-brand-muted">{task.expectedOutput}</p>
+            ) : null}
+            {task.kpi ? (
+              <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.5px] text-brand-muted">{task.kpi}</p>
+            ) : null}
+          </div>
+        </div>
+        {planned === null ? (
+          <span
+            className={
+              task.taskStatus === "COMPLETED"
+                ? "shrink-0 rounded-full bg-[#f0fdf4] px-2.5 py-0.5 text-xs font-bold text-[#16a34a]"
+                : "shrink-0 rounded-full bg-[#f6f3f4] px-2.5 py-0.5 text-xs font-bold text-brand-muted"
+            }
+          >
+            {task.taskStatus === "COMPLETED" ? "Completed" : task.taskStatus === "IN_PROGRESS" ? "In progress" : "Pending"}
+          </span>
+        ) : percent !== null ? (
+          <span
+            className={
+              shortfall
+                ? "shrink-0 rounded-full bg-[#fef2f2] px-2.5 py-0.5 text-xs font-bold text-[#dc2626]"
+                : "shrink-0 rounded-full bg-[#f0fdf4] px-2.5 py-0.5 text-xs font-bold text-[#16a34a]"
+            }
+          >
+            {percent}% {shortfall ? "Below target" : percent > 100 ? "Above target" : "On target"}
+          </span>
+        ) : null}
+      </div>
+
+      {planned !== null ? (
+        <div className="mt-3 space-y-3 border-t border-[#c3c6d2]/40 pt-3">
+          <div className="flex flex-wrap items-end gap-4">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-[1px] text-brand-muted">Planned Target</p>
+              <p className="mt-1 text-sm font-bold text-brand-ink">{task.plannedTarget}</p>
+            </div>
+            <div className="min-w-[140px]">
+              <label
+                htmlFor={`eod-actual-${task.id}`}
+                className="text-[10px] font-bold uppercase tracking-[1px] text-brand-muted"
+              >
+                Actual Completed <span className="text-red-600">*</span>
+              </label>
+              <input
+                id={`eod-actual-${task.id}`}
+                type="number"
+                min={0}
+                step="any"
+                inputMode="decimal"
+                value={review.actual}
+                onChange={(event) => onChange({ actual: event.target.value })}
+                aria-invalid={Boolean(error)}
+                className={
+                  error
+                    ? "mt-1 h-10 w-full rounded-[10px] border border-red-400 bg-white px-3 text-sm text-brand-ink outline-none focus:border-red-500"
+                    : "mt-1 h-10 w-full rounded-[10px] border border-[#c3c6d2] bg-white px-3 text-sm text-brand-ink outline-none focus:border-brand"
+                }
+              />
+            </div>
+          </div>
+
+          {shortfall ? (
+            <div className="space-y-3 rounded-[10px] bg-[#fef2f2] px-3 py-3">
+              <fieldset>
+                <legend className="text-xs font-bold text-[#b91c1c]">Will you continue this tomorrow?</legend>
+                <div className="mt-2 flex gap-4">
+                  {[
+                    { label: "Yes", value: true },
+                    { label: "No", value: false },
+                  ].map((option) => (
+                    <label key={option.label} className="flex cursor-pointer items-center gap-2 text-sm text-brand-ink">
+                      <input
+                        type="radio"
+                        name={`eod-continue-${task.id}`}
+                        checked={review.continueTomorrow === option.value}
+                        onChange={() => onChange({ continueTomorrow: option.value })}
+                        className="size-4 accent-[#dc2626]"
+                      />
+                      {option.label}
+                    </label>
+                  ))}
+                </div>
+              </fieldset>
+              <div>
+                <label
+                  htmlFor={`eod-reason-${task.id}`}
+                  className="text-xs font-bold text-[#b91c1c]"
+                >
+                  Why was this not completed? <span className="text-red-600">*</span>
+                </label>
+                <Textarea
+                  id={`eod-reason-${task.id}`}
+                  rows={2}
+                  value={review.reason}
+                  onChange={(event) => onChange({ reason: event.target.value })}
+                  placeholder="What got in the way?"
+                  invalid={Boolean(error)}
+                  className="mt-1"
+                />
+              </div>
+            </div>
+          ) : null}
+
+          <FieldError message={error} />
+        </div>
+      ) : null}
+    </li>
+  );
+}
+
+/**
+ * End of Day Review (Figma 127:3271). Stops the running timer
+ * (POST /time-entries/:id/stop), records each KPI-linked commitment's actual
+ * result against its planned target (PATCH /scrum-entries/tasks/:id), and folds
+ * the narrative review into today's scrum entry (accomplishments → `today`,
+ * blockers → `blockers`).
  *
- * BACKEND GAPS — no dedicated EOD endpoint exists, so: commitment completion
- * (the design's checkbox + "80% Progress") is display-only, break duration is
- * derived client-side from gaps between entries, and the accuracy
- * confirmation is enforced in the UI but not stored.
+ * BACKEND GAPS — no dedicated EOD endpoint exists, so break duration is derived
+ * client-side from gaps between entries and the accuracy confirmation is
+ * enforced in the UI but not stored.
  */
 export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubmitted }: EodReviewModalProps) {
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [commitmentDone, setCommitmentDone] = useState(false);
+  const [reviews, setReviews] = useState<Record<string, TaskReview>>({});
+  const [taskErrors, setTaskErrors] = useState<Record<string, string>>({});
 
   const { data: workSession } = useQuery({
     queryKey: ["work-session", "current"],
@@ -96,11 +266,83 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
       reset({ accomplishments: "", finalBlockers: "", confirmed: false });
       setServerError(null);
       setCommitmentDone(false);
+      setTaskErrors({});
     }
   }, [open, reset]);
 
+  // Seed the per-commitment answers from whatever was already reported (the
+  // inline "Actual Completed" field on ScrumTaskCard writes the same columns),
+  // so re-opening the review doesn't wipe an earlier entry.
+  useEffect(() => {
+    if (!open) return;
+    setReviews(
+      Object.fromEntries(
+        commitments.map((task) => [
+          task.id,
+          {
+            actual: task.actualCompleted ?? "",
+            continueTomorrow: task.continueTomorrow ?? null,
+            reason: task.notCompletedReason ?? "",
+          },
+        ]),
+      ),
+    );
+  }, [open, scrumTasks]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const patchReview = (taskId: string, patch: Partial<TaskReview>) => {
+    setReviews((prev) => ({ ...prev, [taskId]: { ...(prev[taskId] ?? EMPTY_REVIEW), ...patch } }));
+    setTaskErrors((prev) => {
+      if (!prev[taskId]) return prev;
+      const next = { ...prev };
+      delete next[taskId];
+      return next;
+    });
+  };
+
+  /** Empty when every KPI-linked commitment is answered; otherwise error text by task id. */
+  const validateCommitments = (): Record<string, string> => {
+    const errs: Record<string, string> = {};
+    for (const task of commitments) {
+      if (!isKpiLinked(task)) continue;
+      const planned = parseNumericTarget(task.plannedTarget)!;
+      const review = reviews[task.id] ?? EMPTY_REVIEW;
+      const actual = parseNumericTarget(review.actual);
+
+      if (review.actual.trim() === "") {
+        errs[task.id] = "Enter what you actually completed";
+      } else if (actual === null || actual < 0) {
+        errs[task.id] = "Enter a number of 0 or more";
+      } else if (actual < planned) {
+        if (review.continueTomorrow === null) {
+          errs[task.id] = "Tell us whether you'll continue this tomorrow";
+        } else if (!review.reason.trim()) {
+          errs[task.id] = "Explain why this wasn't completed";
+        }
+      }
+    }
+    return errs;
+  };
+
   const submit = useMutation({
     mutationFn: async (values: EodReviewValues) => {
+      // Persist the per-commitment actuals BEFORE clocking out — if a task write
+      // fails (stale version, locked entry) the user is still on the clock and
+      // can retry, rather than being timed out with the numbers lost.
+      for (const task of commitments) {
+        if (!isKpiLinked(task)) continue;
+        const planned = parseNumericTarget(task.plannedTarget)!;
+        const review = reviews[task.id] ?? EMPTY_REVIEW;
+        const actual = parseNumericTarget(review.actual)!;
+        const shortfall = actual < planned;
+        await updateScrumTask(task.id, {
+          actualCompleted: review.actual.trim(),
+          taskStatus: shortfall ? "IN_PROGRESS" : "COMPLETED",
+          continueTomorrow: shortfall ? review.continueTomorrow ?? false : false,
+          notCompletedReason: shortfall ? review.reason.trim() : "",
+          version: task.version,
+        });
+      }
+
       if (workSession?.session?.isActive) {
         await clockOutSession();
       }
@@ -126,6 +368,7 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["time-entries"] });
       queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
+      queryClient.invalidateQueries({ queryKey: ["scrum-tasks"] });
       queryClient.invalidateQueries({ queryKey: ["work-session", "current"] });
       onOpenChange(false);
       onSubmitted?.();
@@ -136,6 +379,12 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
 
   const onSubmit = (values: EodReviewValues) => {
     setServerError(null);
+    const errs = validateCommitments();
+    setTaskErrors(errs);
+    if (Object.keys(errs).length > 0) {
+      setServerError("Please complete the actual results for each commitment below.");
+      return;
+    }
     submit.mutate(values);
   };
 
@@ -189,29 +438,13 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
               {commitments.length > 0 ? (
                 <ul className="flex flex-col gap-2">
                   {commitments.map((task) => (
-                    <li
+                    <CommitmentReviewRow
                       key={task.id}
-                      className="flex items-start justify-between gap-3 rounded-[12px] border border-[#c3c6d2]/50 bg-white p-4 shadow-[0px_1px_1px_rgba(0,0,0,0.05)]"
-                    >
-                      <div className="flex items-start gap-2.5">
-                        <Target className="mt-0.5 h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
-                        <div>
-                          <p className="text-sm font-semibold text-brand-ink">{task.title}</p>
-                          {task.expectedOutput ? (
-                            <p className="mt-0.5 text-xs text-brand-muted">{task.expectedOutput}</p>
-                          ) : null}
-                        </div>
-                      </div>
-                      <span
-                        className={
-                          task.taskStatus === "COMPLETED"
-                            ? "shrink-0 rounded-full bg-[#f0fdf4] px-2.5 py-0.5 text-xs font-bold text-[#16a34a]"
-                            : "shrink-0 rounded-full bg-[#f6f3f4] px-2.5 py-0.5 text-xs font-bold text-brand-muted"
-                        }
-                      >
-                        {task.taskStatus === "COMPLETED" ? "Completed" : task.taskStatus === "IN_PROGRESS" ? "In progress" : "Pending"}
-                      </span>
-                    </li>
+                      task={task}
+                      review={reviews[task.id] ?? EMPTY_REVIEW}
+                      error={taskErrors[task.id]}
+                      onChange={(patch) => patchReview(task.id, patch)}
+                    />
                   ))}
                 </ul>
               ) : scrum?.today ? (

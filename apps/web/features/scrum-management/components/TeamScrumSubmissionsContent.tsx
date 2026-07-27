@@ -222,7 +222,12 @@ export function TeamScrumSubmissionsContent({
               }
             >
               <div className="flex items-center gap-3 -mt-3 mb-4">
-                <Avatar firstName={item.user.firstName} lastName={item.user.lastName} size="md" />
+                <Avatar
+                  firstName={item.user.firstName}
+                  lastName={item.user.lastName}
+                  imageUrl={item.user.avatarUrl}
+                  size="md"
+                />
                 <div>
                   <h3 className="text-base font-semibold text-brand-navy">
                     {item.user.firstName} {item.user.lastName}

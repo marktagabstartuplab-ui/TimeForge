@@ -15,7 +15,9 @@ export type AuditAction =
   | "PAYROLL_VALIDATED"
   | "PAYROLL_APPROVED"
   | "PAYROLL_REJECTED"
-  | "PAYROLL_SENT_TO_BANK";
+  | "PAYROLL_SENT_TO_BANK"
+  /** Supervisor overrode another user's time record during review. */
+  | "TIME_ADJUSTMENT";
 
 export interface AuditActor {
   id: string;

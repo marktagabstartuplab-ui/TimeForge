@@ -59,7 +59,12 @@ export function PendingListPanel({ items, selectedId, onSelect, loading }: Pendi
             }`}
           >
             <div className="flex items-center gap-3 w-full">
-              <Avatar firstName={item.user.firstName} lastName={item.user.lastName} size="sm" />
+              <Avatar
+                firstName={item.user.firstName}
+                lastName={item.user.lastName}
+                imageUrl={item.user.avatarUrl}
+                size="sm"
+              />
               <div className="min-w-0 flex-1">
                 <p className="font-semibold text-sm text-brand-ink truncate">{name}</p>
                 <p className="text-xs text-brand-muted truncate">{item.user.department?.name ?? "No Department"}</p>
