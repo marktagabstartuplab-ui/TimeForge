@@ -7,6 +7,9 @@ export interface TimesheetRow extends Timesheet {
   /** Minutes worked beyond 8h/day, summed across the period. Only populated
    *  by getPendingTimesheets() — the supervisor review queue. */
   overtimeMinutes?: number;
+  /** Overtime a supervisor set explicitly during review; null = derived from the
+   *  entries at >8h/day. See adjustTimesheet(). */
+  overtimeMinutesOverride?: number | null;
 }
 
 export interface TimesheetOversightQuery {
@@ -118,6 +121,30 @@ export async function rejectTimesheet(id: string, payload: { expectedVersion: nu
 
 export async function requestRevisionTimesheet(id: string, payload: { expectedVersion: number; remark: string }): Promise<void> {
   await apiClient.post(`/timesheets/${id}/request-revision`, payload);
+}
+
+export interface AdjustTimesheetPayload {
+  expectedVersion: number;
+  /** Required by the API — a supervisor cannot silently change someone's hours. */
+  reason: string;
+  entries?: {
+    entryId: string;
+    startTime?: string;
+    endTime?: string;
+    /** Explicit Total Hours in minutes; omit to recompute from the times. */
+    durationMinutes?: number;
+  }[];
+  /** Explicit overtime in minutes; null clears it back to the derived >8h/day figure. */
+  overtimeMinutesOverride?: number | null;
+}
+
+/**
+ * Supervisor override of an employee's submitted hours (BUG-Q). Deliberately a
+ * different endpoint from the employee's own entry edit — the backend records it
+ * as a TIME_ADJUSTMENT audit entry with before/after values and the reason.
+ */
+export async function adjustTimesheet(id: string, payload: AdjustTimesheetPayload): Promise<void> {
+  await apiClient.post(`/timesheets/${id}/adjust`, payload);
 }
 
 /** Client-side CSV export of the currently-loaded rows — no server round trip needed. */

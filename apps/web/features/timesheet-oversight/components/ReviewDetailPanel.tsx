@@ -2,7 +2,7 @@
 
 import { useState, useMemo } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
-import { Clock, TrendingUp, BookOpen, MessageSquare, Loader2, RefreshCw, AlertCircle, Ban, ChevronDown, ChevronUp, Link2, Paperclip, Download, Sparkles } from "lucide-react";
+import { Clock, TrendingUp, BookOpen, MessageSquare, Loader2, RefreshCw, AlertCircle, Ban, ChevronDown, ChevronUp, Link2, Paperclip, Download, Sparkles, PencilLine } from "lucide-react";
 import { StatusBadge, timesheetStatusTone } from "@/components/shared/StatusBadge";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/client";
@@ -10,6 +10,8 @@ import { approveTimesheet, rejectTimesheet, requestRevisionTimesheet, type Times
 import { getAttachmentSignedUrl } from "../../time-tracking/api/time-entries.service";
 import { runAndPollAiJob } from "@/features/scrum-management/api/ai-insight.service";
 import { AiFormattedText } from "@/components/shared/AiFormattedText";
+import { useCan } from "@/features/auth/rbac";
+import { AdjustHoursModal } from "./AdjustHoursModal";
 
 interface ReviewDetailPanelProps {
   detail: TimesheetDetail | null;
@@ -33,6 +35,10 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
   const [suggestingRemark, setSuggestingRemark] = useState(false);
   const [summarizing, setSummarizing] = useState(false);
   const [aiSummary, setAiSummary] = useState<{ summary: string; recommendation: string } | null>(null);
+  const [adjustOpen, setAdjustOpen] = useState(false);
+  // Supervisors (and Admins, via the wildcard) may correct a record while it is
+  // under review; employees never see this. The API enforces the same rule.
+  const canAdjust = useCan("timesheet:adjust_team");
 
   // TIMESHEET_SUMMARY — natural-language recap of this timesheet's entries.
   const handleAiSummary = async () => {
@@ -126,29 +132,35 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
 
   const isPendingDecision = approve.isPending || reject.isPending || requestRevision.isPending;
 
-  // Split regular/overtime (8h regular limit per entry's day)
+  // Split regular/overtime (8h regular limit per entry's day), unless a
+  // supervisor set the overtime explicitly during review — then that wins, the
+  // same way the API and payroll treat it.
   const stats = useMemo(() => {
-    if (!detail) return { total: 0, overtime: 0, regular: 0 };
+    if (!detail) return { total: 0, overtime: 0, regular: 0, overtimeAdjusted: false };
     const totalMinutes = detail.entries.reduce((acc, curr) => acc + (curr.durationMinutes ?? 0), 0);
-    
+
     // Group entries by day to calculate daily overtime
     const byDay = new Map<string, number>();
     for (const entry of detail.entries) {
       const dateStr = entry.startTime.slice(0, 10);
       byDay.set(dateStr, (byDay.get(dateStr) ?? 0) + (entry.durationMinutes ?? 0));
     }
-    
+
     let overtimeMinutes = 0;
     for (const [_, dayMinutes] of byDay) {
       if (dayMinutes > 8 * 60) {
         overtimeMinutes += dayMinutes - (8 * 60);
       }
     }
-    
+
+    const overtimeAdjusted = detail.overtimeMinutesOverride != null;
+    if (overtimeAdjusted) overtimeMinutes = detail.overtimeMinutesOverride!;
+
     return {
       total: totalMinutes / 60,
       overtime: overtimeMinutes / 60,
-      regular: (totalMinutes - overtimeMinutes) / 60
+      regular: (totalMinutes - overtimeMinutes) / 60,
+      overtimeAdjusted,
     };
   }, [detail]);
 
@@ -173,6 +185,7 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
 
   const { label, tone } = timesheetStatusTone(detail.status);
   const name = `${detail.user.firstName} ${detail.user.lastName}`;
+  const underReview = detail.status === "SUBMITTED" || detail.status === "UNDER_REVIEW";
 
   return (
     <div className="flex flex-col gap-5 rounded-[16px] border border-[#c3c6d2]/50 bg-white p-6 shadow-[0px_1px_1px_rgba(0,0,0,0.05)] max-h-[calc(100vh-185px)] overflow-y-auto">
@@ -183,6 +196,17 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
           <p className="text-xs text-brand-muted">{detail.user.department?.name ?? "No Department"}</p>
         </div>
         <div className="flex items-center gap-2">
+          {canAdjust && underReview ? (
+            <button
+              type="button"
+              onClick={() => setAdjustOpen(true)}
+              title="Correct Time In / Time Out / Total Hours / Overtime before approving — logged against your name with a required reason"
+              className="inline-flex items-center gap-1.5 rounded-lg border border-amber-300 bg-amber-50 px-2.5 py-1 text-xs font-semibold text-amber-700 shadow-sm transition-colors hover:bg-amber-100"
+            >
+              <PencilLine className="h-3.5 w-3.5" />
+              Adjust Hours
+            </button>
+          ) : null}
           <button
             type="button"
             onClick={handleAiSummary}
@@ -251,7 +275,9 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
             <p className={`text-2xl font-black ${stats.overtime > 0 ? "text-amber-700" : "text-brand-muted"}`}>
               {stats.overtime.toFixed(1)}h
             </p>
-            <p className="text-[10px] text-brand-muted mt-0.5">Calculated over 8h/day</p>
+            <p className="text-[10px] text-brand-muted mt-0.5">
+              {stats.overtimeAdjusted ? "Set by supervisor adjustment" : "Calculated over 8h/day"}
+            </p>
           </div>
         </div>
       </div>
@@ -530,6 +556,15 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
           Approve
         </button>
       </div>
+
+      {canAdjust && underReview ? (
+        <AdjustHoursModal
+          open={adjustOpen}
+          onOpenChange={setAdjustOpen}
+          detail={detail}
+          onToast={onToast}
+        />
+      ) : null}
     </div>
   );
 }

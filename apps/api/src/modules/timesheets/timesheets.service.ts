@@ -374,13 +374,25 @@ export class TimesheetsService {
     return buildPage(itemsWithOvertime, limit);
   }
 
-  /** Sums, per timesheet, the portion of each day's entries beyond 8h. */
+  /**
+   * Sums, per timesheet, the portion of each day's entries beyond 8h — except
+   * where a supervisor set an explicit overtime figure during review, which
+   * wins outright (see TimesheetAdjustmentsService).
+   */
   private async computeOvertimeMinutesByTimesheet(timesheetIds: string[]): Promise<Map<string, number>> {
     const result = new Map<string, number>();
     if (timesheetIds.length === 0) return result;
 
+    const overridden = await this.prisma.timesheet.findMany({
+      where: { id: { in: timesheetIds }, overtimeMinutesOverride: { not: null } },
+      select: { id: true, overtimeMinutesOverride: true },
+    });
+    for (const t of overridden) result.set(t.id, t.overtimeMinutesOverride!);
+    const derivedIds = timesheetIds.filter((id) => !result.has(id));
+    if (derivedIds.length === 0) return result;
+
     const entries = await this.prisma.timeEntry.findMany({
-      where: { timesheetId: { in: timesheetIds }, deletedAt: null },
+      where: { timesheetId: { in: derivedIds }, deletedAt: null },
       select: { timesheetId: true, startTime: true, durationMinutes: true },
     });
 

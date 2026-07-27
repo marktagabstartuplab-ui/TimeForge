@@ -1,9 +1,14 @@
 import {
+  ArrayMaxSize,
   IsArray,
+  IsISO8601,
+  IsNotEmpty,
   IsOptional,
   IsString,
   IsUUID,
+  Max,
   MaxLength,
+  Min,
   IsInt,
   ValidateNested,
 } from 'class-validator';
@@ -104,6 +109,70 @@ export class BulkRejectTimesheetsDto {
   @IsString()
   @MaxLength(2000)
   remark!: string;
+}
+
+// ─── Supervisor time adjustment (BUG-Q) ──────────────────────────────────────
+//
+// Deliberately NOT an extension of UpdateTimeEntryDto / the employee self-edit
+// path: this is a supervisor overriding someone else's submitted record, so it
+// carries its own DTO, its own endpoint, its own permission, and a mandatory
+// reason that lands in the audit trail.
+
+export class AdjustEntryDto {
+  @IsUUID()
+  entryId!: string;
+
+  /** New Time In. Omit to keep the employee's original. */
+  @IsOptional()
+  @IsISO8601()
+  startTime?: string;
+
+  /** New Time Out. Omit to keep the employee's original. */
+  @IsOptional()
+  @IsISO8601()
+  endTime?: string;
+
+  /**
+   * New Total Hours for this entry, in minutes. Omit to recompute it from
+   * startTime/endTime; send it to override the span explicitly (e.g. keeping
+   * the clock times but deducting an unlogged break).
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(24 * 60)
+  @Type(() => Number)
+  durationMinutes?: number;
+}
+
+export class AdjustTimesheetDto {
+  @IsInt()
+  @Type(() => Number)
+  expectedVersion!: number;
+
+  /** Compliance requirement — a supervisor may not silently alter someone's hours. */
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(2000)
+  reason!: string;
+
+  @IsOptional()
+  @IsArray()
+  @ArrayMaxSize(200)
+  @ValidateNested({ each: true })
+  @Type(() => AdjustEntryDto)
+  entries?: AdjustEntryDto[];
+
+  /**
+   * Explicit overtime for the period, in minutes. `null` clears the override and
+   * returns the timesheet to derived overtime (>8h/day); omit to leave whatever
+   * is currently set untouched.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Type(() => Number)
+  overtimeMinutesOverride?: number | null;
 }
 
 export interface TimesheetHistoryQuery {

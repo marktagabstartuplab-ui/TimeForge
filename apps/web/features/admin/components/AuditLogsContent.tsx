@@ -36,6 +36,7 @@ const ACTIONS: (AuditAction | "ALL")[] = [
   "PAYROLL_APPROVED",
   "PAYROLL_REJECTED",
   "PAYROLL_SENT_TO_BANK",
+  "TIME_ADJUSTMENT",
 ];
 
 function actionLabel(action: string): string {
@@ -54,6 +55,8 @@ function actionColor(action: string): string {
   if (action === "REVISION_REQUEST") return "bg-[#fef3c7] text-[#b45309]";
   if (action === "PAYROLL_EXPORT" || action === "PAYROLL_VALIDATED") return "bg-[#ede9fe] text-[#7c3aed]";
   if (action === "ROLE_CHANGE" || action === "ADMIN_ACTION") return "bg-[#ffedd5] text-[#c2410c]";
+  // Someone's hours were changed by someone else — worth standing out.
+  if (action === "TIME_ADJUSTMENT") return "bg-[#fef3c7] text-[#92400e]";
   return "bg-[#f1f5f9] text-[#334155]";
 }
 

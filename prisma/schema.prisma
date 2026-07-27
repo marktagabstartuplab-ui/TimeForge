@@ -103,6 +103,9 @@ enum AuditAction {
   PAYROLL_APPROVED
   PAYROLL_REJECTED
   PAYROLL_SENT_TO_BANK
+  /// Supervisor overrode another user's time record during review — deliberately
+  /// distinct from the ADMIN_ACTION rows an employee's own edits write.
+  TIME_ADJUSTMENT
 }
 
 enum LeaveType {
@@ -670,6 +673,9 @@ model Timesheet {
   periodStart    DateTime        @map("period_start") @db.Date
   periodEnd      DateTime        @map("period_end") @db.Date
   totalMinutes   Int             @default(0) @map("total_minutes")
+  /// Supervisor-set overtime for this period. NULL = derive it from the entries
+  /// (>8h/day), which is how every un-adjusted timesheet behaves.
+  overtimeMinutesOverride Int?    @map("overtime_minutes_override")
   summary        String?
   submittedAt    DateTime?       @map("submitted_at") @db.Timestamptz
   decidedAt      DateTime?       @map("decided_at") @db.Timestamptz
@@ -1238,6 +1244,8 @@ enum NotificationType {
   ANNOUNCEMENT
   PASSWORD_CHANGED
   RECURRING_ISSUE_DETECTED
+  /// A supervisor corrected the employee's submitted hours during review.
+  TIME_ADJUSTED
 
   @@map("notification_type")
 }
