@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo, useState, useEffect } from "react";
+import { todayInOrgTimeZone } from "@/lib/time";
 import { useQueries, useQueryClient } from "@tanstack/react-query";
 import { ChevronLeft, ChevronRight } from "lucide-react";
 import { cn } from "@/lib/utils";
@@ -105,7 +106,9 @@ export function EmployeeScheduleCalendar() {
   }, [weekQueries]);
 
   // Build the calendar grid (6 rows × 7 cols max).
-  const todayStr = new Date().toISOString().slice(0, 10);
+  // The organization's today, not the UTC one — before 08:00 Manila the UTC
+  // slice highlights yesterday's cell.
+  const todayStr = todayInOrgTimeZone();
   const firstDay = startOfMonth(new Date(Date.UTC(year, month, 1)));
   const lastDay = endOfMonth(new Date(Date.UTC(year, month, 1)));
   const startDow = (firstDay.getUTCDay() + 6) % 7; // Mon=0

@@ -92,18 +92,36 @@ export function startOfOrgDay(
 }
 
 /**
- * Start of the ISO week (Monday) containing `instant`, in `timeZone`, as a UTC
- * instant. `weekOffset` shifts by whole weeks — pass -1 for the previous week.
+ * Start of the week containing `instant`, in `timeZone`, as a UTC instant.
+ * `weekOffset` shifts by whole weeks — pass -1 for the previous week.
+ * `weekStartsOn` is 1 (Monday, ISO) by default; pass 0 for a Sunday-start week.
  */
 export function startOfOrgWeek(
   instant: Date = new Date(),
   timeZone: string = DEFAULT_TIME_ZONE,
   weekOffset = 0,
+  weekStartsOn: 0 | 1 = 1,
 ): Date {
   const [y, m, d] = orgDayKey(instant, timeZone).split('-').map(Number);
   // getUTCDay on the local day's own calendar values gives the local weekday.
-  const weekday = new Date(Date.UTC(y, m - 1, d)).getUTCDay() || 7; // Mon = 1 … Sun = 7
-  return zonedTimeToUtc(y, m, d - (weekday - 1) + weekOffset * 7, timeZone);
+  const dow = new Date(Date.UTC(y, m - 1, d)).getUTCDay(); // Sun = 0 … Sat = 6
+  const back = weekStartsOn === 1 ? ((dow || 7) - 1) : dow;
+  return zonedTimeToUtc(y, m, d - back + weekOffset * 7, timeZone);
+}
+
+/**
+ * Start of the calendar month containing `instant`, in `timeZone`, as a UTC
+ * instant. `monthOffset` shifts by whole months — pass -5 for six months back.
+ */
+export function startOfOrgMonth(
+  instant: Date = new Date(),
+  timeZone: string = DEFAULT_TIME_ZONE,
+  monthOffset = 0,
+): Date {
+  const [y, m] = orgDayKey(instant, timeZone).split('-').map(Number);
+  // Date.UTC normalises month overflow/underflow, so this handles year edges.
+  const normalised = new Date(Date.UTC(y, m - 1 + monthOffset, 1));
+  return zonedTimeToUtc(normalised.getUTCFullYear(), normalised.getUTCMonth() + 1, 1, timeZone);
 }
 
 /**

@@ -3,6 +3,7 @@ import {
   orgDateOnly,
   orgWeekDays,
   startOfOrgDay,
+  startOfOrgMonth,
   startOfOrgWeek,
   DEFAULT_TIME_ZONE,
 } from './timezone';
@@ -124,5 +125,48 @@ describe('orgWeekDays', () => {
 
   it('returns the previous week when asked', () => {
     expect(orgWeekDays(new Date('2026-07-29T06:00:00Z'), MANILA, -1, 5)[0]).toBe('2026-07-20');
+  });
+});
+
+describe('startOfOrgMonth', () => {
+  it('returns local midnight on the 1st', () => {
+    expect(startOfOrgMonth(new Date('2026-07-29T06:00:00Z'), MANILA)).toEqual(
+      new Date('2026-06-30T16:00:00Z'), // 2026-07-01 00:00 +08:00
+    );
+  });
+
+  it('uses the local month during the Manila pre-dawn window', () => {
+    // 2026-08-01T00:30+08:00 is still 2026-07-31 in UTC, so a UTC-derived month
+    // start pointed at July.
+    expect(startOfOrgMonth(new Date('2026-07-31T16:30:00Z'), MANILA)).toEqual(
+      new Date('2026-07-31T16:00:00Z'), // 2026-08-01 00:00 +08:00
+    );
+  });
+
+  it('shifts whole months across a year boundary', () => {
+    expect(startOfOrgMonth(new Date('2026-02-10T06:00:00Z'), MANILA, -3)).toEqual(
+      new Date('2025-10-31T16:00:00Z'), // 2025-11-01 00:00 +08:00
+    );
+  });
+
+  it('accounts for DST in zones that observe it', () => {
+    expect(startOfOrgMonth(new Date('2026-01-15T12:00:00Z'), NEW_YORK)).toEqual(
+      new Date('2026-01-01T05:00:00Z'), // EST
+    );
+  });
+});
+
+describe('startOfOrgWeek — Sunday-start option', () => {
+  it('returns the local Sunday when weekStartsOn is 0', () => {
+    // 2026-07-29 is a Wednesday; the preceding Sunday is 2026-07-26.
+    expect(startOfOrgWeek(new Date('2026-07-29T06:00:00Z'), MANILA, 0, 0)).toEqual(
+      new Date('2026-07-25T16:00:00Z'), // 2026-07-26 00:00 +08:00
+    );
+  });
+
+  it('treats Sunday itself as the start of its own week', () => {
+    expect(startOfOrgWeek(new Date('2026-08-02T06:00:00Z'), MANILA, 0, 0)).toEqual(
+      new Date('2026-08-01T16:00:00Z'), // 2026-08-02 00:00 +08:00
+    );
   });
 });

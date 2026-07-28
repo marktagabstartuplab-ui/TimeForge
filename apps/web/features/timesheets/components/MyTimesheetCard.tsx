@@ -11,12 +11,13 @@ import { StatusBadge, type BadgeTone } from "@/components/shared/StatusBadge";
 import { listAllTimeEntries, type TimeEntry } from "@/features/time-tracking/api/time-entries.service";
 import { summarizeDay } from "@/features/time-tracking/lib/day-summary";
 import {
-  endOfDay,
+  endOfOrgDay,
   formatClockTime,
   formatMinutes,
   formatMinutesClock,
-  startOfDay,
-  toIsoDate,
+  startOfOrgDay,
+  toOrgIsoDate,
+  todayInOrgTimeZone,
 } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -42,16 +43,16 @@ function parseIsoDate(iso: string): Date {
   return new Date(y, m - 1, d);
 }
 
-function daysAgo(n: number): Date {
-  const t = new Date();
-  return new Date(t.getFullYear(), t.getMonth(), t.getDate() - n);
+/** `n` organization-local days before today, as a YYYY-MM-DD key. */
+function orgDaysAgo(n: number): string {
+  return toOrgIsoDate(startOfOrgDay(todayInOrgTimeZone(), -n));
 }
 
 /** Groups a range's entries into per-day timesheet rows, newest first. */
 function buildDayRows(entries: TimeEntry[]): DayRow[] {
   const byDay = new Map<string, TimeEntry[]>();
   for (const entry of entries) {
-    const key = toIsoDate(new Date(entry.startTime));
+    const key = toOrgIsoDate(new Date(entry.startTime));
     const bucket = byDay.get(key);
     if (bucket) bucket.push(entry);
     else byDay.set(key, [entry]);
@@ -124,28 +125,28 @@ const PRESETS: { id: RangePreset; label: string }[] = [
  */
 export function MyTimesheetCard({ onDaySelect }: { onDaySelect?: (dateKey: string) => void }) {
   const [preset, setPreset] = useState<RangePreset>("7d");
-  const [customFrom, setCustomFrom] = useState(() => toIsoDate(daysAgo(6)));
-  const [customTo, setCustomTo] = useState(() => toIsoDate(new Date()));
+  const [customFrom, setCustomFrom] = useState(() => orgDaysAgo(6));
+  const [customTo, setCustomTo] = useState(() => todayInOrgTimeZone());
   const [search, setSearch] = useState("");
   const [page, setPage] = useState(0);
 
-  const range = useMemo(() => {
-    if (preset === "7d") return { from: daysAgo(6), to: new Date() };
-    if (preset === "30d") return { from: daysAgo(29), to: new Date() };
-    const from = parseIsoDate(customFrom);
-    const to = parseIsoDate(customTo);
-    return from <= to ? { from, to } : { from: to, to: from };
+  // Day keys, not Date instants: a Date built from the viewer's machine clock
+  // resolves to a different organization-local day for anyone whose machine is
+  // not set to ORG_TIME_ZONE.
+  const { fromIso, toIso } = useMemo(() => {
+    if (preset === "7d") return { fromIso: orgDaysAgo(6), toIso: todayInOrgTimeZone() };
+    if (preset === "30d") return { fromIso: orgDaysAgo(29), toIso: todayInOrgTimeZone() };
+    return customFrom <= customTo
+      ? { fromIso: customFrom, toIso: customTo }
+      : { fromIso: customTo, toIso: customFrom };
   }, [preset, customFrom, customTo]);
-
-  const fromIso = toIsoDate(range.from);
-  const toIso = toIsoDate(range.to);
 
   const entriesQuery = useQuery({
     queryKey: ["time-entries", "my-timesheet", fromIso, toIso],
     queryFn: () =>
       listAllTimeEntries({
-        from: startOfDay(range.from).toISOString(),
-        to: endOfDay(range.to).toISOString(),
+        from: startOfOrgDay(fromIso).toISOString(),
+        to: endOfOrgDay(toIso).toISOString(),
       }),
   });
 
