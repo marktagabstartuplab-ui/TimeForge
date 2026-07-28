@@ -279,10 +279,21 @@ export class ScrumService {
       select: { departmentId: true },
     });
 
+    // Reopen the day's completed commitments too. Without this the unlock is
+    // cosmetic: each task stays COMPLETED (so still immutable), and the first
+    // recalcEntryProgress would immediately re-lock the entry at 100%. The
+    // reported actuals (actualCompleted etc.) are deliberately preserved.
+    await this.prisma.scrumTask.updateMany({
+      where: { scrumEntryId: id, taskStatus: 'COMPLETED', deletedAt: null },
+      data: { taskStatus: 'IN_PROGRESS', completedAt: null, updatedBy: p.userId },
+    });
+
     const updated = await this.prisma.scrumEntry.update({
       where: { id },
       data: {
         isLocked: false,
+        status: 'IN_PROGRESS',
+        progress: 0,
         updatedBy: p.userId,
         version: { increment: 1 },
       },
@@ -367,7 +378,10 @@ export class ScrumService {
     if (task.version !== dto.version) throw new ConflictException('Version mismatch');
     // Result-only updates (the EOD review) are allowed through the lock; anything
     // that edits the plan itself is not.
-    if (!isEodReportOnly(dto)) await this.assertEntryUnlocked(task.scrumEntryId);
+    if (!isEodReportOnly(dto)) {
+      this.assertTaskNotCompleted(task);
+      await this.assertEntryUnlocked(task.scrumEntryId);
+    }
     await this.validateProjectRef(p, dto.projectId);
     const kpiFields = dto.kpiTemplateId !== undefined ? await this.resolveKpiTemplateFields(p, dto.kpiTemplateId) : null;
 
@@ -424,6 +438,7 @@ export class ScrumService {
   async deleteTask(p: AuthPrincipal, id: string, version: number): Promise<void> {
     const task = await this.ownTask(p, id);
     if (task.version !== version) throw new ConflictException('Version mismatch');
+    this.assertTaskNotCompleted(task);
     await this.assertEntryUnlocked(task.scrumEntryId);
     await this.prisma.scrumTask.update({
       where: { id },
@@ -1126,6 +1141,19 @@ export class ScrumService {
       throw new ForbiddenException('You can only modify your own scrum blockers');
     }
     return blocker;
+  }
+
+  /**
+   * A COMPLETED commitment is a submitted record — the employee cannot edit the
+   * plan or delete it. Reopening goes through the supervisor unlock
+   * (`unlockEntry`), which returns the day's tasks to IN_PROGRESS.
+   */
+  private assertTaskNotCompleted(task: ScrumTask): void {
+    if (task.taskStatus === 'COMPLETED') {
+      throw new ConflictException(
+        'This commitment is completed and locked. Ask your supervisor to unlock the day to change it.',
+      );
+    }
   }
 
   private async assertEntryUnlocked(scrumEntryId: string): Promise<void> {
