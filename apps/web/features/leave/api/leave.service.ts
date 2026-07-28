@@ -9,6 +9,7 @@ export interface LeaveRequestUser {
   lastName: string;
   email: string;
   departmentId: string | null;
+  avatarUrl: string | null;
   department?: { name: string } | null;
 }
 

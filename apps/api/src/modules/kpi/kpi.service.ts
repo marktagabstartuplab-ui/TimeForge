@@ -9,6 +9,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
+import { StorageService } from '../storage/storage.service';
 import { PERMISSIONS } from '@timeforge/shared';
 import {
   CreateKpiTemplateDto,
@@ -22,6 +23,7 @@ export class KpiService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly deptScope: DepartmentScopeService,
+    private readonly storage: StorageService,
   ) {}
 
   // ── KPI Templates ────────────────────────────────────────────────────────────
@@ -482,7 +484,7 @@ export class KpiService {
         deletedAt: null,
         status: 'ACTIVE',
       },
-      select: { id: true, firstName: true, lastName: true, jobTitle: true, createdAt: true },
+      select: { id: true, firstName: true, lastName: true, jobTitle: true, createdAt: true, avatarKey: true },
     });
     const userIds = reports.map((r) => r.id);
 
@@ -491,6 +493,7 @@ export class KpiService {
     }
 
     const byUser = await this.getTeamProgressByUser(p, userIds);
+    const avatarUrls = await this.storage.signedUrlsByKey(reports.map((r) => r.avatarKey));
 
     const results = reports.map((r) => {
       const score = this.weightedScore(byUser.get(r.id) ?? []);
@@ -498,6 +501,7 @@ export class KpiService {
       return {
         userId: r.id,
         name: `${r.firstName} ${r.lastName}`,
+        avatarUrl: r.avatarKey ? (avatarUrls.get(r.avatarKey) ?? null) : null,
         role: r.jobTitle || 'Employee',
         score,
         variance,

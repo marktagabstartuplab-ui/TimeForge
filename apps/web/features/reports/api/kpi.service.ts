@@ -54,6 +54,7 @@ export interface TeamKpiChartPoint {
 export interface UnderperformingMember {
   userId: string;
   name: string;
+  avatarUrl: string | null;
   role: string;
   score: number;
   variance: number;

@@ -46,7 +46,7 @@ export function RecentSubmissions({ data, isLoading }: { data: ScrumDashboard | 
                     <td className="py-2.5 pr-4 text-brand-muted">{r.department ?? "—"}</td>
                     <td className="py-2.5 pr-4">
                       <div className="flex items-center gap-2">
-                        <Avatar firstName={firstName} lastName={rest.join(" ")} size="sm" />
+                        <Avatar firstName={firstName} lastName={rest.join(" ")} imageUrl={r.avatarUrl} size="sm" />
                         <span className="font-medium text-brand-ink">{r.name}</span>
                       </div>
                     </td>

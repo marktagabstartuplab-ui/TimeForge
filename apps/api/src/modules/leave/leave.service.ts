@@ -13,7 +13,7 @@ import { DepartmentScopeService } from '../../common/scoping/department-scope.se
 import { PERMISSIONS } from '@timeforge/shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UploadService } from '../storage/upload.service';
-import { StorageService } from '../storage/storage.service';
+import { StorageService, withAvatarUrl } from '../storage/storage.service';
 import { CreateLeaveRequestDto, LeaveDecisionDto, LeaveRequestQuery } from './dto';
 
 /** Default annual allocation per type, used to lazily provision a balance row on first read. */
@@ -199,13 +199,23 @@ export class LeaveService {
     const items = await this.prisma.leaveRequest.findMany({
       where,
       include: {
-        user: { select: { id: true, firstName: true, lastName: true, email: true, departmentId: true, department: { select: { name: true } } } },
+        user: {
+          select: {
+            id: true, firstName: true, lastName: true, email: true, departmentId: true,
+            avatarKey: true, department: { select: { name: true } },
+          },
+        },
         reviewer: { select: { id: true, firstName: true, lastName: true } },
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       take: limit + 1,
     });
-    return buildPage(items, limit);
+    const page = buildPage(items, limit);
+    const avatarUrls = await this.storage.signedUrlsByKey(page.data.map((r) => r.user.avatarKey));
+    return {
+      ...page,
+      data: page.data.map((r) => ({ ...r, user: withAvatarUrl(r.user, avatarUrls) })),
+    };
   }
 
   async findOne(p: AuthPrincipal, id: string): Promise<LeaveRequest> {

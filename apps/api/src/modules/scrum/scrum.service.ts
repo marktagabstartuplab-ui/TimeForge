@@ -562,7 +562,7 @@ export class ScrumService {
           take: 10,
           select: {
             id: true, userId: true, progress: true, status: true, submittedAt: true,
-            user: { select: { firstName: true, lastName: true, department: { select: { name: true } } } },
+            user: { select: { firstName: true, lastName: true, avatarKey: true, department: { select: { name: true } } } },
           },
         }),
         this.prisma.team.findMany({
@@ -631,6 +631,8 @@ export class ScrumService {
       };
     });
 
+    const recentAvatarUrls = await this.storage.signedUrlsByKey(recentEntries.map((e) => e.user.avatarKey));
+
     return {
       period: { from: sevenDaysAgo, to: today },
       teamsReporting: { count: teamsSubmittedToday.size, total: teamsWithMembers.size },
@@ -643,6 +645,7 @@ export class ScrumService {
         id: e.id,
         userId: e.userId,
         name: `${e.user.firstName} ${e.user.lastName}`,
+        avatarUrl: e.user.avatarKey ? (recentAvatarUrls.get(e.user.avatarKey) ?? null) : null,
         department: e.user.department?.name ?? null,
         completionPercent: e.progress,
         status: e.status,

@@ -7,6 +7,8 @@ export interface PersonRef {
   id: string;
   firstName: string;
   lastName: string;
+  /** Optional: the department endpoints return it, the org hierarchy does not. */
+  avatarUrl?: string | null;
 }
 
 export interface DepartmentRow {
@@ -154,6 +156,7 @@ export interface DepartmentEmployee {
   firstName: string;
   lastName: string;
   email: string;
+  avatarUrl: string | null;
   employmentType: string;
   jobTitle: string | null;
   status: string;

@@ -12,6 +12,7 @@ export interface ScrumDashboard {
     id: string;
     userId: string;
     name: string;
+    avatarUrl: string | null;
     department: string | null;
     completionPercent: number;
     status: string;

@@ -39,7 +39,7 @@ function FeedbackRow({ row, onToast }: { row: ScrumReviewRow; onToast: (t: Toast
     <div className="flex flex-col gap-3 rounded-[12px] border border-[#c3c6d2]/40 p-4">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-center gap-2.5">
-          <Avatar firstName={firstName} lastName={rest.join(" ")} size="sm" />
+          <Avatar firstName={firstName} lastName={rest.join(" ")} imageUrl={row.avatarUrl} size="sm" />
           <div>
             <p className="text-sm font-bold text-brand-ink">{row.employeeName}</p>
             <p className="text-xs text-brand-muted">Submitted {formatTime(row.submittedAt)}</p>

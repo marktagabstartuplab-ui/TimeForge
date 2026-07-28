@@ -158,7 +158,12 @@ export function DepartmentDetailContent({ departmentId }: { departmentId: string
           <SectionCard title="Assigned Supervisor">
             {dept.manager ? (
               <div className="flex items-center gap-3">
-                <Avatar firstName={dept.manager.firstName} lastName={dept.manager.lastName} size="md" />
+                <Avatar
+                  firstName={dept.manager.firstName}
+                  lastName={dept.manager.lastName}
+                  imageUrl={dept.manager.avatarUrl}
+                  size="md"
+                />
                 <div>
                   <p className="font-medium text-brand-ink">{dept.manager.firstName} {dept.manager.lastName}</p>
                   <p className="text-xs text-brand-muted">Department Head</p>
@@ -195,7 +200,7 @@ export function DepartmentDetailContent({ departmentId }: { departmentId: string
                       <tr key={emp.id}>
                         <td className="py-2.5 pr-4">
                           <div className="flex items-center gap-2">
-                            <Avatar firstName={emp.firstName} lastName={emp.lastName} size="sm" />
+                            <Avatar firstName={emp.firstName} lastName={emp.lastName} imageUrl={emp.avatarUrl} size="sm" />
                             <span className="font-medium text-brand-ink">{emp.firstName} {emp.lastName}</span>
                           </div>
                         </td>

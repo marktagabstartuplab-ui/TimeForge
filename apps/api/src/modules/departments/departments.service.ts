@@ -5,10 +5,11 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { CacheService } from '../../infra/cache.service';
 import { buildPage, decodeCursor, ListQuery, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { StorageService, withAvatarUrl } from '../storage/storage.service';
 import { CreateDepartmentDto, UpdateDepartmentDto } from './dto';
 
 const DEPARTMENT_INCLUDE = {
-  manager: { select: { id: true, firstName: true, lastName: true } },
+  manager: { select: { id: true, firstName: true, lastName: true, avatarKey: true } },
   _count: { select: { users: true, projects: true } },
 } satisfies Prisma.DepartmentInclude;
 
@@ -20,10 +21,17 @@ interface DepartmentCounts {
   otherCount: number;
 }
 
-function shapeDepartment(dept: DepartmentWithRelations, counts?: DepartmentCounts) {
-  const { _count, ...rest } = dept;
+function shapeDepartment(
+  dept: DepartmentWithRelations,
+  counts?: DepartmentCounts,
+  // Signed avatar URLs keyed by storage key — the department head is rendered
+  // with the shared Avatar component, which needs a URL, not a raw key.
+  signedAvatars: Map<string, string> = new Map(),
+) {
+  const { _count, manager, ...rest } = dept;
   return {
     ...rest,
+    manager: manager ? withAvatarUrl(manager, signedAvatars) : null,
     staffCount: _count.users,
     projectCount: _count.projects,
     // Active headcount split by employment type (excludes soft-deleted).
@@ -38,7 +46,13 @@ export class DepartmentsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
+    private readonly storage: StorageService,
   ) {}
+
+  /** Signs the department heads' avatars for a set of departments in one batch. */
+  private signManagerAvatars(depts: DepartmentWithRelations[]): Promise<Map<string, string>> {
+    return this.storage.signedUrlsByKey(depts.map((d) => d.manager?.avatarKey));
+  }
 
   /**
    * The Organizational Management dashboard (department directory, counts,
@@ -92,7 +106,8 @@ export class DepartmentsService {
     });
     const page = buildPage(items, limit);
     const counts = await this.countsByDepartment(tenantId, orgId, page.data.map((d) => d.id));
-    return { data: page.data.map((d) => shapeDepartment(d, counts.get(d.id))), page: page.page };
+    const avatars = await this.signManagerAvatars(page.data);
+    return { data: page.data.map((d) => shapeDepartment(d, counts.get(d.id), avatars)), page: page.page };
   }
 
   async findOne(tenantId: string, orgId: string, id: string) {
@@ -105,7 +120,7 @@ export class DepartmentsService {
     });
     if (!item) throw new NotFoundException('Department not found');
     const counts = await this.countsByDepartment(tenantId, orgId, [id]);
-    return shapeDepartment(item, counts.get(id));
+    return shapeDepartment(item, counts.get(id), await this.signManagerAvatars([item]));
   }
 
   private async validateManager(tenantId: string, orgId: string, managerId: string): Promise<void> {
@@ -141,7 +156,7 @@ export class DepartmentsService {
     if (dto.managerId) await this.grantSupervisorRole(tenantId, dto.managerId);
     await this.audit(tenantId, actorId, AuditAction.ADMIN_ACTION, 'department', created.id, { event: 'DEPARTMENT_CREATED', name: created.name });
     await this.bustOrgDashboardCache(orgId);
-    return shapeDepartment(created);
+    return shapeDepartment(created, undefined, await this.signManagerAvatars([created]));
   }
 
   private async createRow(tenantId: string, orgId: string, actorId: string, dto: CreateDepartmentDto): Promise<DepartmentWithRelations> {
@@ -201,7 +216,7 @@ export class DepartmentsService {
 
     await this.audit(caller.tenantId, caller.userId, AuditAction.ADMIN_ACTION, 'department', id, { event: 'DEPARTMENT_UPDATED', ...rest });
     await this.bustOrgDashboardCache(caller.organizationId);
-    return shapeDepartment(updated);
+    return shapeDepartment(updated, undefined, await this.signManagerAvatars([updated]));
   }
 
   private async updateRow(id: string, actorId: string, rest: { name?: string; managerId?: string | null; isActive?: boolean }): Promise<DepartmentWithRelations> {
