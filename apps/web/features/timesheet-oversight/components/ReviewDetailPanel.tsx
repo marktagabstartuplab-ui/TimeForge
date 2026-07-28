@@ -11,13 +11,14 @@ import { getAttachmentSignedUrl } from "../../time-tracking/api/time-entries.ser
 import { runAndPollAiJob } from "@/features/scrum-management/api/ai-insight.service";
 import { AiFormattedText } from "@/components/shared/AiFormattedText";
 import { useCan } from "@/features/auth/rbac";
+import type { ToastState } from "@/components/shared/Toast";
 import { AdjustHoursModal } from "./AdjustHoursModal";
 
 interface ReviewDetailPanelProps {
   detail: TimesheetDetail | null;
   loading: boolean;
   onSuccess: () => void;
-  onToast: (t: { message: string; tone: "success" | "error" }) => void;
+  onToast: (t: ToastState) => void;
 }
 
 function formatHours(minutes: number): string {
