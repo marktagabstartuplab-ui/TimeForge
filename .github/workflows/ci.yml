@@ -39,4 +39,45 @@ jobs:
       - run: npm run build
       - run: npx prisma db push --skip-generate
       - run: npm run db:seed
-      # - run: npm test   # enable once unit tests are added (Phase 8)
+      - run: npm test
+
+  # apps/web is a separate npm project with its own lockfile, and until now it
+  # was not covered by CI at all — no install, no build, no typecheck, no lint.
+  # Every frontend regression therefore reached users unchecked.
+  web:
+    name: web (typecheck + lint)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: apps/web
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+          cache: 'npm'
+          cache-dependency-path: apps/web/package-lock.json
+      - run: npm ci
+
+      # Both next-env.d.ts and the .next/types/routes.d.ts it imports are
+      # generated and gitignored, so neither exists on a fresh checkout and tsc
+      # fails to resolve the reference. typegen writes both without paying for
+      # a full build.
+      - name: Generate Next route types
+        run: npx next typegen
+
+      # `next build` cannot serve as the type gate: next.config.ts sets
+      # `typescript.ignoreBuildErrors: true`, so it compiles straight past type
+      # errors. tsc has to be invoked explicitly.
+      #
+      # --incremental false is load-bearing. tsconfig.json sets
+      # `incremental: true`, so a plain `tsc --noEmit` can be satisfied by a
+      # stale tsconfig.tsbuildinfo and silently check only a subset of files.
+      - name: Typecheck
+        run: npx tsc --noEmit --incremental false
+
+      # Fails the job on eslint errors. Warnings are not enforced: the app
+      # currently has 189 of them (mostly `no-explicit-any` and unused vars),
+      # so --max-warnings 0 would be red from day one and get ignored.
+      - name: Lint
+        run: npx eslint .
