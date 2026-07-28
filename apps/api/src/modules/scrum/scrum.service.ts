@@ -10,7 +10,8 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
-import { PERMISSIONS } from '@timeforge/shared';
+import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
+import { PERMISSIONS, orgDateOnly, orgWeekDays, startOfOrgDay } from '@timeforge/shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import { StorageService, withAvatarUrl } from '../storage/storage.service';
 import {
@@ -66,6 +67,7 @@ export class ScrumService {
     private readonly notifications: NotificationsService,
     private readonly deptScope: DepartmentScopeService,
     private readonly storage: StorageService,
+    private readonly timeZones: OrgTimeZoneService,
   ) {}
 
   // ── Reads ───────────────────────────────────────────────────────────────────
@@ -113,15 +115,13 @@ export class ScrumService {
       throw new UnprocessableEntityException('entryDate must be a valid date');
     }
 
-    // entryDate must not be in the future. Clients send their *local* calendar
-    // date, which for timezones ahead of UTC (e.g. UTC+8) is one day ahead of
-    // the server's UTC date between local midnight and local 08:00 — a strict
-    // UTC comparison rejected every scrum save in that window ("entryDate
-    // cannot be in the future"), blocking the whole Daily Scrum/EOD workflow.
-    // Allow one day of timezone grace (local offsets max out under +14h).
-    const latestAllowed = new Date();
-    latestAllowed.setUTCDate(latestAllowed.getUTCDate() + 1);
-    latestAllowed.setUTCHours(23, 59, 59, 999);
+    // entryDate must not be in the future. Clients send their local calendar
+    // date, so "today" is the organization's local day — comparing against the
+    // server's UTC date rejected every scrum save between local midnight and
+    // local 08:00, blocking the whole Daily Scrum/EOD workflow in that window.
+    // (This previously carried a blanket one-day grace to work around that; the
+    // local day is exact, so tomorrow is correctly refused again.)
+    const latestAllowed = await this.todayDate(p);
     if (entryDate > latestAllowed) {
       throw new UnprocessableEntityException('entryDate cannot be in the future');
     }
@@ -531,11 +531,14 @@ export class ScrumService {
   /** KPI cards + Recent Submissions + Team Status. */
   async dashboard(p: AuthPrincipal, query: ScrumMgmtQuery) {
     const scope = await this.resolveScrumMgmtScope(p);
-    const today = this.startOfDay(new Date());
+    const timeZone = await this.timeZones.forPrincipal(p);
+    // entryDate bounds are date-only day values; resolvedAt is a real instant.
+    const today = orgDateOnly(new Date(), timeZone);
     const tomorrow = new Date(today);
     tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
     const sevenDaysAgo = new Date(today);
     sevenDaysAgo.setUTCDate(sevenDaysAgo.getUTCDate() - 6);
+    const sevenDaysAgoInstant = startOfOrgDay(new Date(), timeZone, -6);
 
     const users = await this.prisma.user.findMany({
       where: {
@@ -565,7 +568,7 @@ export class ScrumService {
           select: { severity: true, scrumEntry: { select: { userId: true } } },
         }),
         this.prisma.scrumBlocker.findMany({
-          where: { tenantId: p.tenantId, organizationId: p.organizationId, status: 'RESOLVED', resolvedAt: { gte: sevenDaysAgo }, scrumEntry: { userId: { in: userIds } } },
+          where: { tenantId: p.tenantId, organizationId: p.organizationId, status: 'RESOLVED', resolvedAt: { gte: sevenDaysAgoInstant }, scrumEntry: { userId: { in: userIds } } },
           select: { createdAt: true, resolvedAt: true },
         }),
         this.prisma.scrumEntry.count({
@@ -720,7 +723,7 @@ export class ScrumService {
   /** Department participation rate over a period (default: today). */
   async participation(p: AuthPrincipal, query: ScrumMgmtQuery) {
     const scope = await this.resolveScrumMgmtScope(p);
-    const { from, to } = this.dateRangeOrToday(query);
+    const { from, to } = await this.dateRangeOrToday(p, query);
 
     const users = await this.prisma.user.findMany({
       where: {
@@ -765,7 +768,7 @@ export class ScrumService {
   /** Department Heatmap — Mon–Fri submission-rate matrix for the current or previous week. */
   async heatmap(p: AuthPrincipal, query: { week?: string }) {
     const scope = await this.resolveScrumMgmtScope(p);
-    const { weekStart, weekEnd, days } = this.resolveWeek(query.week);
+    const { weekStart, weekEnd, days } = await this.resolveWeek(p, query.week);
 
     const users = await this.prisma.user.findMany({
       where: {
@@ -822,7 +825,7 @@ export class ScrumService {
     const userIds = users.map((u) => u.id);
     const totalUsers = userIds.length;
 
-    const since = this.startOfDay(new Date());
+    const since = orgDateOnly(new Date(), await this.timeZones.forPrincipal(p));
     since.setUTCDate(since.getUTCDate() - (days - 1));
 
     const entries = await this.prisma.scrumEntry.findMany({
@@ -1061,43 +1064,38 @@ export class ScrumService {
     return users.map((u) => u.id);
   }
 
-  private startOfDay(date: Date): Date {
-    const d = new Date(date);
-    d.setUTCHours(0, 0, 0, 0);
-    return d;
+  /**
+   * Today as a `ScrumEntry.entryDate` value. entryDate is a date-only column
+   * naming the employee's local day, so "today" must be the organization's local
+   * day — a UTC-derived one pointed at yesterday until 08:00 Manila, which made
+   * the whole Daily Scrum dashboard read a day behind every morning.
+   */
+  private async todayDate(p: AuthPrincipal): Promise<Date> {
+    return orgDateOnly(new Date(), await this.timeZones.forPrincipal(p));
   }
 
-  private dateRangeOrToday(query: ScrumMgmtQuery): { from: Date; to: Date } {
-    const from = query.from ? new Date(query.from) : this.startOfDay(new Date());
+  private async dateRangeOrToday(p: AuthPrincipal, query: ScrumMgmtQuery): Promise<{ from: Date; to: Date }> {
+    const from = query.from ? new Date(query.from) : await this.todayDate(p);
     const to = query.to ? new Date(query.to) : new Date();
     return { from, to };
   }
 
-  private startOfIsoWeek(date: Date): Date {
-    const d = new Date(date);
-    d.setUTCHours(0, 0, 0, 0);
-    const day = d.getUTCDay() || 7; // Monday = 1 ... Sunday = 7
-    if (day !== 1) d.setUTCDate(d.getUTCDate() - (day - 1));
-    return d;
-  }
-
-  /** Mon–Fri of the current or previous ISO week. */
-  private resolveWeek(week?: string): { weekStart: Date; weekEnd: Date; days: { date: string; label: string }[] } {
-    const monday = this.startOfIsoWeek(new Date());
-    if (week === 'previous') monday.setUTCDate(monday.getUTCDate() - 7);
-
+  /** Mon–Fri of the current or previous ISO week, in the organization's timezone. */
+  private async resolveWeek(
+    p: AuthPrincipal,
+    week?: string,
+  ): Promise<{ weekStart: Date; weekEnd: Date; days: { date: string; label: string }[] }> {
+    const timeZone = await this.timeZones.forPrincipal(p);
     const labels = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri'];
-    const days = labels.map((label, i) => {
-      const d = new Date(monday);
-      d.setUTCDate(d.getUTCDate() + i);
-      return { date: d.toISOString().slice(0, 10), label };
-    });
+    const dayKeys = orgWeekDays(new Date(), timeZone, week === 'previous' ? -1 : 0, 5);
+    const days = labels.map((label, i) => ({ date: dayKeys[i], label }));
 
-    const weekEnd = new Date(monday);
-    weekEnd.setUTCDate(weekEnd.getUTCDate() + 4);
-    weekEnd.setUTCHours(23, 59, 59, 999);
-
-    return { weekStart: monday, weekEnd, days };
+    // entryDate is date-only, so the bounds are day values, not instants.
+    return {
+      weekStart: new Date(`${dayKeys[0]}T00:00:00.000Z`),
+      weekEnd: new Date(`${dayKeys[4]}T00:00:00.000Z`),
+      days,
+    };
   }
 
   private async ownEntry(p: AuthPrincipal, id: string): Promise<ScrumEntry> {

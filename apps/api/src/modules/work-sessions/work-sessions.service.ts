@@ -1,6 +1,8 @@
 import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
 import { AuditAction, Prisma, SessionEvent, WorkSession } from '@prisma/client';
+import { orgDateOnly } from '@timeforge/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
+import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { ClockInDto } from './dto';
 
@@ -14,7 +16,10 @@ export interface WorkSessionSummary {
 
 @Injectable()
 export class WorkSessionsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly timeZones: OrgTimeZoneService,
+  ) {}
 
   async current(p: AuthPrincipal): Promise<WorkSessionSummary> {
     const active = await this.prisma.workSession.findFirst({
@@ -23,7 +28,7 @@ export class WorkSessionsService {
     const session =
       active ??
       (await this.prisma.workSession.findFirst({
-        where: { tenantId: p.tenantId, userId: p.userId, workDate: this.today() },
+        where: { tenantId: p.tenantId, userId: p.userId, workDate: await this.today(p) },
         orderBy: { clockIn: 'desc' },
       }));
     if (!session) return { session: null, onBreak: false, runningEntryId: null, workedMinutes: 0 };
@@ -56,7 +61,7 @@ export class WorkSessionsService {
     // (clockOut set + isActive false). New sessions are only allowed the
     // next calendar day (after midnight). This prevents employees from
     // starting a second session after submitting their End of Day Review.
-    const todayStart = this.today();
+    const todayStart = await this.today(p);
     const todayEnd = new Date(todayStart);
     todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
     const todayCompletedSession = await this.prisma.workSession.findFirst({
@@ -79,7 +84,7 @@ export class WorkSessionsService {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
         userId: p.userId,
-        workDate: this.today(),
+        workDate: todayStart,
         clockIn: new Date(),
       },
     });
@@ -264,9 +269,13 @@ export class WorkSessionsService {
     return Math.max(0, Math.round((end.getTime() - start.getTime()) / 60_000));
   }
 
-  private today(): Date {
-    const d = new Date();
-    d.setUTCHours(0, 0, 0, 0);
-    return d;
+  /**
+   * The `workDate` (a date-only column) for right now, as the organization's
+   * local calendar day. A UTC-derived date filed a 7am Manila clock-in under
+   * the previous day, which also disagreed with the worker's rollover sweep —
+   * that closes sessions at *local* midnight.
+   */
+  private async today(p: AuthPrincipal): Promise<Date> {
+    return orgDateOnly(new Date(), await this.timeZones.forPrincipal(p));
   }
 }
