@@ -636,18 +636,23 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
                   Project: <strong className="text-brand-ink font-semibold">{projects?.find(p => p.id === item.projectId)?.name || "General work"}</strong>
                 </span>
 
-                {!locked && (
+                {/* A completed commitment is a submitted record — read-only until a
+                    supervisor unlocks the day. Only the un-completed ones stay editable. */}
+                {item.taskStatus === "COMPLETED" ? (
+                  <span className="flex items-center gap-1 text-[11px] font-semibold text-brand-muted">
+                    <Lock className="h-3 w-3" aria-hidden="true" />
+                    Completed — locked
+                  </span>
+                ) : !locked ? (
                   <div className="flex items-center gap-2">
-                    {item.taskStatus !== "COMPLETED" && (
-                      <button
-                        type="button"
-                        onClick={() => handleMarkTaskComplete(item)}
-                        className="flex h-7 items-center gap-1 rounded-[6px] bg-[#16a34a] px-3 py-1 text-xs font-bold text-white hover:bg-[#15803d] transition-colors"
-                      >
-                        <Check className="h-3 w-3" />
-                        Complete
-                      </button>
-                    )}
+                    <button
+                      type="button"
+                      onClick={() => handleMarkTaskComplete(item)}
+                      className="flex h-7 items-center gap-1 rounded-[6px] bg-[#16a34a] px-3 py-1 text-xs font-bold text-white hover:bg-[#15803d] transition-colors"
+                    >
+                      <Check className="h-3 w-3" />
+                      Complete
+                    </button>
                     <button
                       type="button"
                       onClick={() => handleEditTaskClick(item)}
@@ -665,7 +670,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
                       Delete
                     </button>
                   </div>
-                )}
+                ) : null}
               </div>
             </div>
           ))}

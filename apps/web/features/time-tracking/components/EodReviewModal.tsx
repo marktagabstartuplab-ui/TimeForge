@@ -328,6 +328,9 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
       // Persist the per-commitment actuals BEFORE clocking out — if a task write
       // fails (stale version, locked entry) the user is still on the clock and
       // can retry, rather than being timed out with the numbers lost.
+
+      // Pass 1 — KPI-linked commitments: record actuals and derive status from
+      // whether the numeric target was met.
       for (const task of commitments) {
         if (!isKpiLinked(task)) continue;
         const planned = parseNumericTarget(task.plannedTarget)!;
@@ -339,6 +342,20 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
           taskStatus: shortfall ? "IN_PROGRESS" : "COMPLETED",
           continueTomorrow: shortfall ? review.continueTomorrow ?? false : false,
           notCompletedReason: shortfall ? review.reason.trim() : "",
+          version: task.version,
+        });
+      }
+
+      // Pass 2 — Non-KPI commitments (no numeric planned target): mark COMPLETED
+      // at EOD unless they were already marked complete by the employee earlier.
+      // These tasks have no measurable shortfall, so EOD submission = implicit
+      // completion. The backend's isEodReportOnly() guard allows this write even
+      // on a locked entry (taskStatus is an EOD-report field, not a plan edit).
+      for (const task of commitments) {
+        if (isKpiLinked(task)) continue;
+        if (task.taskStatus === "COMPLETED") continue;
+        await updateScrumTask(task.id, {
+          taskStatus: "COMPLETED",
           version: task.version,
         });
       }
