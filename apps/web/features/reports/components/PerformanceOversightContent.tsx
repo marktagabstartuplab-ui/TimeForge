@@ -121,7 +121,7 @@ export function PerformanceOversightContent() {
     queryKey: ["perf", "my-kpis"],
     queryFn: getMyKpiSummary,
     // only fetch if viewing own performance (no userId search)
-    enabled: !search,
+    enabled: !selectedUserId,
   });
 
   // Export Mutation
