@@ -56,18 +56,76 @@ export function toIsoDate(date: Date): string {
 export const ORG_TIME_ZONE = "Asia/Manila";
 
 /**
- * Today's YYYY-MM-DD in the organization's timezone, for API date params.
- * Not the same as `toIsoDate(new Date())` when the viewer's machine sits in a
- * different zone — and not the same as the UTC date during Manila mornings.
+ * The organization's calendar day for `date`, as YYYY-MM-DD.
+ *
+ * Prefer this over `toIsoDate` for anything sent to the API: `toIsoDate` reads
+ * the *viewer's machine* clock, so a laptop set to another timezone silently
+ * requests a shifted window. These mirror `packages/shared/src/timezone.ts`;
+ * apps/web is a separate npm project and cannot import it.
  */
-export function todayInOrgTimeZone(): string {
+export function toOrgIsoDate(date: Date = new Date()): string {
   // en-CA renders as YYYY-MM-DD.
   return new Intl.DateTimeFormat("en-CA", {
     timeZone: ORG_TIME_ZONE,
     year: "numeric",
     month: "2-digit",
     day: "2-digit",
-  }).format(new Date());
+  }).format(date);
+}
+
+/** Today's YYYY-MM-DD in the organization's timezone. */
+export function todayInOrgTimeZone(): string {
+  return toOrgIsoDate(new Date());
+}
+
+/** Converts a wall-clock time in ORG_TIME_ZONE to the equivalent UTC instant. */
+function orgTimeToUtc(y: number, m: number, d: number): Date {
+  const utcGuess = Date.UTC(y, m - 1, d, 0, 0, 0);
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: ORG_TIME_ZONE,
+    hour12: false,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+  }).formatToParts(new Date(utcGuess));
+  const map: Record<string, number> = {};
+  for (const part of parts) if (part.type !== "literal") map[part.type] = Number(part.value);
+  const readAsUtc = Date.UTC(
+    map.year,
+    map.month - 1,
+    map.day,
+    map.hour === 24 ? 0 : map.hour,
+    map.minute,
+    map.second,
+  );
+  return new Date(utcGuess - (readAsUtc - utcGuess));
+}
+
+/** Start of an organization-timezone day, as an instant. `dayOffset` shifts whole local days. */
+export function startOfOrgDay(date: Date | string = new Date(), dayOffset = 0): Date {
+  const key = typeof date === "string" ? date : toOrgIsoDate(date);
+  const [y, m, d] = key.split("-").map(Number);
+  return orgTimeToUtc(y, m, d + dayOffset);
+}
+
+/** Last millisecond of an organization-timezone day — the inclusive `to` bound the API expects. */
+export function endOfOrgDay(date: Date | string = new Date()): Date {
+  return new Date(startOfOrgDay(date, 1).getTime() - 1);
+}
+
+/** Semi-monthly pay period (1–15, 16–end) containing `date`, in organization-local days. */
+export function currentOrgPayPeriod(date: Date = new Date()): { start: Date; end: Date } {
+  const [y, m, d] = toOrgIsoDate(date).split("-").map(Number);
+  return d <= 15
+    ? { start: startOfOrgDay(`${y}-${String(m).padStart(2, "0")}-01`), end: startOfOrgDay(`${y}-${String(m).padStart(2, "0")}-15`) }
+    : {
+        start: startOfOrgDay(`${y}-${String(m).padStart(2, "0")}-16`),
+        // Day 0 of the next month is the last day of this one.
+        end: startOfOrgDay(toOrgIsoDate(new Date(Date.UTC(y, m, 0)))),
+      };
 }
 
 /** Start of the local day. */

@@ -6,7 +6,14 @@ import { buildPage, decodeCursor } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
-import { orgDateOnly, orgDayKey, orgWeekDays, startOfOrgDay, startOfOrgWeek } from '@timeforge/shared';
+import {
+  orgDateOnly,
+  orgDayKey,
+  orgWeekDays,
+  startOfOrgDay,
+  startOfOrgMonth,
+  startOfOrgWeek,
+} from '@timeforge/shared';
 
 export interface DashboardQuery {
   from?: string;
@@ -67,17 +74,17 @@ export class DashboardService {
 
   // ─── Date range helpers ───────────────────────────────────────────────────
 
-  private dateRange(query: DashboardQuery) {
-    const from = query.from ? new Date(query.from) : this.startOfCurrentMonth();
-    const to   = query.to   ? new Date(query.to)   : new Date();
+  /**
+   * Default window is the current month *in the organization's timezone*. This
+   * used to be `setHours` — the timezone of whatever machine ran the API, so
+   * the same request answered differently on Railway (UTC) than it did locally.
+   */
+  private async dateRange(user: AuthPrincipal, query: DashboardQuery) {
+    const from = query.from
+      ? new Date(query.from)
+      : startOfOrgMonth(new Date(), await this.timeZones.forPrincipal(user));
+    const to = query.to ? new Date(query.to) : new Date();
     return { from, to };
-  }
-
-  private startOfCurrentMonth(): Date {
-    const d = new Date();
-    d.setDate(1);
-    d.setHours(0, 0, 0, 0);
-    return d;
   }
 
   private toIsoWeek(date: Date): string {
@@ -136,7 +143,7 @@ export class DashboardService {
 
   async summary(tenantId: string, user: AuthPrincipal, query: DashboardQuery) {
     const scope = this.resolveScope(user);
-    const { from, to } = this.dateRange(query);
+    const { from, to } = await this.dateRange(user, query);
     const userIds = await this.resolveUserIds(tenantId, user, scope, query);
 
     const tsWhere: Record<string, unknown> = {
@@ -346,7 +353,7 @@ export class DashboardService {
   async attendance(tenantId: string, user: AuthPrincipal, query: DashboardQuery) {
     this.requireAny(user, 'attendance:read_org', 'dashboard:read_org');
 
-    const { from, to } = this.dateRange(query);
+    const { from, to } = await this.dateRange(user, query);
 
     const tsWhere: Record<string, unknown> = {
       tenantId,
@@ -403,7 +410,7 @@ export class DashboardService {
   async payrollStatus(tenantId: string, user: AuthPrincipal, query: DashboardQuery) {
     this.requireAny(user, 'payroll:read', 'dashboard:read_org');
 
-    const { from, to } = this.dateRange(query);
+    const { from, to } = await this.dateRange(user, query);
     const limit = Math.min(Number(query.limit ?? 20), 100);
     const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
 
@@ -448,7 +455,7 @@ export class DashboardService {
   async teamSummary(tenantId: string, user: AuthPrincipal, query: DashboardQuery) {
     this.requireAny(user, 'dashboard:read_team', 'dashboard:read_org');
 
-    const { from, to } = this.dateRange(query);
+    const { from, to } = await this.dateRange(user, query);
     const isOrg = this.hasAny(user, 'dashboard:read_org');
 
     const userWhere: Record<string, unknown> = { tenantId, deletedAt: null, status: 'ACTIVE' };
@@ -527,7 +534,7 @@ export class DashboardService {
   async productivity(tenantId: string, user: AuthPrincipal, query: DashboardQuery) {
     this.requireAny(user, 'dashboard:read_team', 'dashboard:read_org');
 
-    const { from, to } = this.dateRange(query);
+    const { from, to } = await this.dateRange(user, query);
 
     const teWhere: Record<string, unknown> = {
       tenantId,
@@ -613,7 +620,7 @@ export class DashboardService {
   async reportTimesheets(tenantId: string, user: AuthPrincipal, query: DashboardQuery) {
     this.requireAny(user, 'timesheet:read_org', 'dashboard:read_org', 'approval:read');
 
-    const { from, to } = this.dateRange(query);
+    const { from, to } = await this.dateRange(user, query);
     const limit = Math.min(Number(query.limit ?? 50), 200);
     const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
 
@@ -669,7 +676,7 @@ export class DashboardService {
   async reportPayroll(tenantId: string, user: AuthPrincipal, query: DashboardQuery) {
     this.requireAny(user, 'payroll:read', 'dashboard:read_org');
 
-    const { from, to } = this.dateRange(query);
+    const { from, to } = await this.dateRange(user, query);
     const limit = Math.min(Number(query.limit ?? 20), 100);
     const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
 
@@ -1435,7 +1442,7 @@ export class DashboardService {
     const turnoverRatio = activeEmployees > 0 ? departedRecently / activeEmployees : 0;
     const turnoverProbability = turnoverRatio > 0.1 ? 'HIGH' : turnoverRatio > 0.03 ? 'MEDIUM' : 'LOW';
 
-    const startOfMonth = this.startOfCurrentMonth();
+    const startOfMonth = startOfOrgMonth(new Date(), await this.timeZones.forPrincipal(user));
     const now = new Date();
     const workedAgg = await this.prisma.timeEntry.aggregate({
       where: { tenantId, organizationId, deletedAt: null, startTime: { gte: startOfMonth, lte: now } },
@@ -1594,7 +1601,12 @@ export class DashboardService {
   }
 
   /** Resolves the report window: an explicit payroll period, or from/to query params, or current month. */
-  private async resolveAttendanceRange(tenantId: string, organizationId: string, query: Record<string, string>): Promise<{ from: Date; to: Date }> {
+  private async resolveAttendanceRange(
+    tenantId: string,
+    organizationId: string,
+    user: AuthPrincipal,
+    query: Record<string, string>,
+  ): Promise<{ from: Date; to: Date }> {
     if (query.payrollPeriodId) {
       const period = await this.prisma.payrollPeriod.findFirst({
         where: { id: query.payrollPeriodId, tenantId, organizationId, deletedAt: null },
@@ -1602,12 +1614,12 @@ export class DashboardService {
       if (!period) throw new NotFoundException('Payroll period not found');
       return { from: period.startDate, to: period.endDate };
     }
-    return this.dateRange(query);
+    return this.dateRange(user, query);
   }
 
   private async computeAttendanceRows(tenantId: string, user: AuthPrincipal, query: Record<string, string>) {
     const organizationId = user.organizationId;
-    const { from, to } = await this.resolveAttendanceRange(tenantId, organizationId, query);
+    const { from, to } = await this.resolveAttendanceRange(tenantId, organizationId, user, query);
 
     const userWhere: Record<string, unknown> = {
       tenantId,
