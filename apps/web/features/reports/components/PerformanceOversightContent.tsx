@@ -4,10 +4,8 @@ import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import {
   TrendingUp,
-  TrendingDown,
   RefreshCw,
   Download,
-  Search,
   Zap,
   Calendar,
   CheckSquare,
@@ -19,7 +17,6 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { Toast, type ToastState } from "@/components/shared/Toast";
 import { ProgressBar } from "@/components/shared/ProgressBar";
@@ -120,8 +117,8 @@ export function PerformanceOversightContent() {
   const { data: myKpis = [], isLoading: isMyKpisLoading } = useQuery({
     queryKey: ["perf", "my-kpis"],
     queryFn: getMyKpiSummary,
-    // only fetch if viewing own performance (no userId search)
-    enabled: !search,
+    // only fetch if viewing own performance (no other employee selected)
+    enabled: !selectedUserId,
   });
 
   // Export Mutation
