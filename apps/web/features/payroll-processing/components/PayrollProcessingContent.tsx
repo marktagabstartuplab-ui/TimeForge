@@ -31,7 +31,7 @@ import {
   createPeriod,
   getReportByPeriod,
   generateReport,
-  unlockPeriod,
+  lockPeriod,
   resetPeriod,
   flagDiscrepancies,
   exportPayroll,
