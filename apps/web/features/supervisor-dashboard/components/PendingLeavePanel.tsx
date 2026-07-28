@@ -31,22 +31,25 @@ const STATUS_OPTIONS = [
   { value: "CANCELLED", label: "Cancelled" },
 ] as const;
 
+import { useCan } from "@/features/auth/rbac";
+
 export function PendingLeavePanel({ onToast }: { onToast: (t: ToastState) => void }) {
   const queryClient = useQueryClient();
   const [statusFilter, setStatusFilter] = useState("PENDING");
   const [reviewRequest, setReviewRequest] = useState<LeaveRequest | null>(null);
+  const canReadOrg = useCan("leave_request:read_org");
 
   const queryParams: LeaveRequestQuery = useMemo(
     () => ({
-      scope: "team",
+      scope: canReadOrg ? "org" : "team",
       status: statusFilter as LeaveRequestQuery["status"],
       limit: 50,
     }),
-    [statusFilter],
+    [statusFilter, canReadOrg],
   );
 
   const { data, isLoading } = useQuery({
-    queryKey: ["supervisor", "dashboard-leave", statusFilter],
+    queryKey: ["supervisor", "dashboard-leave", statusFilter, canReadOrg ? "org" : "team"],
     queryFn: () => listLeaveRequests(queryParams),
     refetchInterval: 30_000,
   });

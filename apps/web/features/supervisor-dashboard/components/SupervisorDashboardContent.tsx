@@ -15,32 +15,33 @@ import { TeamKpiPanel } from "./TeamKpiPanel";
 import { ProductivityReportCard } from "./ProductivityReportCard";
 import { RecurringIssuesPanel } from "@/features/recurring-issues/components/RecurringIssuesPanel";
 
-function todayISO(): string {
-  return new Date().toISOString().slice(0, 10);
-}
+import { useCan } from "@/features/auth/rbac";
+import { toIsoDate, startOfDay, endOfDay } from "@/lib/time";
 
 export function SupervisorDashboardContent() {
   const [toast, setToast] = useState<ToastState | null>(null);
+  const canReadOrg = useCan("leave_request:read_org");
+  const scope = canReadOrg ? "org" : "team";
+  const todayStr = toIsoDate(new Date());
 
   const results = useQueries({
     queries: [
       {
-        queryKey: ["supervisor", "leave-summary", "pending"],
+        queryKey: ["supervisor", "leave-summary", "pending", scope],
         queryFn: async () => {
-          const res = await listLeaveRequests({ scope: "team", status: "PENDING", limit: 50 });
+          const res = await listLeaveRequests({ scope, status: "PENDING", limit: 50 });
           return res.data.length;
         },
         refetchInterval: 30_000,
       },
       {
-        queryKey: ["supervisor", "leave-summary", "approved-today"],
+        queryKey: ["supervisor", "leave-summary", "approved-today", scope, todayStr],
         queryFn: async () => {
-          const today = todayISO();
           const res = await listLeaveRequests({
-            scope: "team",
+            scope,
             status: "APPROVED",
-            reviewedAtFrom: today,
-            reviewedAtTo: today,
+            reviewedAtFrom: todayStr,
+            reviewedAtTo: todayStr,
             limit: 50,
           });
           return res.data.length;
@@ -48,14 +49,13 @@ export function SupervisorDashboardContent() {
         refetchInterval: 30_000,
       },
       {
-        queryKey: ["supervisor", "leave-summary", "rejected-today"],
+        queryKey: ["supervisor", "leave-summary", "rejected-today", scope, todayStr],
         queryFn: async () => {
-          const today = todayISO();
           const res = await listLeaveRequests({
-            scope: "team",
+            scope,
             status: "REJECTED",
-            reviewedAtFrom: today,
-            reviewedAtTo: today,
+            reviewedAtFrom: todayStr,
+            reviewedAtTo: todayStr,
             limit: 50,
           });
           return res.data.length;
@@ -63,14 +63,14 @@ export function SupervisorDashboardContent() {
         refetchInterval: 30_000,
       },
       {
-        queryKey: ["supervisor", "leave-summary", "active"],
+        queryKey: ["supervisor", "leave-summary", "active", scope, todayStr],
         queryFn: async () => {
-          const res = await listLeaveRequests({ scope: "team", status: "APPROVED", limit: 50 });
-          const today = new Date();
-          today.setHours(0, 0, 0, 0);
+          const res = await listLeaveRequests({ scope, status: "APPROVED", limit: 50 });
+          const now = new Date();
           const active = res.data.filter((r) => {
-            const end = new Date(r.endDate);
-            return end >= today;
+            const start = startOfDay(new Date(r.startDate));
+            const end = endOfDay(new Date(r.endDate));
+            return now >= start && now <= end;
           });
           return active.length;
         },
