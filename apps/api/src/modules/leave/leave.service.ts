@@ -10,7 +10,8 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
-import { PERMISSIONS } from '@timeforge/shared';
+import { PERMISSIONS, DEFAULT_TIME_ZONE, startOfOrgDay } from '@timeforge/shared';
+import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UploadService } from '../storage/upload.service';
 import { StorageService, withAvatarUrl } from '../storage/storage.service';
@@ -31,6 +32,7 @@ export class LeaveService {
     private readonly uploads: UploadService,
     private readonly storage: StorageService,
     private readonly deptScope: DepartmentScopeService,
+    private readonly timeZones: OrgTimeZoneService,
   ) {}
 
   private readonly ATTACHMENT_MAX_BYTES = 10 * 1024 * 1024; // 10 MB
@@ -170,6 +172,9 @@ export class LeaveService {
       scopeFilter = { userId: p.userId };
     }
 
+    const timeZone =
+      query.reviewedAtFrom || query.reviewedAtTo ? await this.timeZones.forPrincipal(p) : DEFAULT_TIME_ZONE;
+
     const where: Prisma.LeaveRequestWhereInput = {
       tenantId: p.tenantId,
       organizationId: p.organizationId,
@@ -185,11 +190,14 @@ export class LeaveService {
             ],
           }
         : {}),
+      // reviewedAtFrom/To are calendar days in the organization's timezone, not
+      // UTC: "approved today" must mean the local day. The upper bound is the
+      // start of the *next* local day so the whole day is covered.
       ...(query.reviewedAtFrom || query.reviewedAtTo
         ? {
             reviewedAt: {
-              ...(query.reviewedAtFrom ? { gte: new Date(query.reviewedAtFrom) } : {}),
-              ...(query.reviewedAtTo ? { lte: new Date(query.reviewedAtTo) } : {}),
+              ...(query.reviewedAtFrom ? { gte: startOfOrgDay(query.reviewedAtFrom, timeZone) } : {}),
+              ...(query.reviewedAtTo ? { lt: startOfOrgDay(query.reviewedAtTo, timeZone, 1) } : {}),
             },
           }
         : {}),

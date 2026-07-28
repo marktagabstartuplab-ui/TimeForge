@@ -9,7 +9,8 @@ import { AuditAction, Prisma, TimeEntry, Timesheet, TimesheetStatus } from '@pri
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
-import { PERMISSIONS } from '@timeforge/shared';
+import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
+import { PERMISSIONS, orgDayKey } from '@timeforge/shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import { AdjustEntryDto, AdjustTimesheetDto } from './dto';
 
@@ -50,6 +51,7 @@ export class TimesheetAdjustmentsService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly deptScope: DepartmentScopeService,
+    private readonly timeZones: OrgTimeZoneService,
   ) {}
 
   async adjust(p: AuthPrincipal, timesheetId: string, dto: AdjustTimesheetDto) {
@@ -105,9 +107,11 @@ export class TimesheetAdjustmentsService {
       );
     }
 
+    const timeZone = await this.timeZones.forPrincipal(p);
+
     const before = {
       totalMinutes: sheet.totalMinutes,
-      overtimeMinutes: this.deriveOvertimeMinutes(sheet.entries, sheet.overtimeMinutesOverride),
+      overtimeMinutes: this.deriveOvertimeMinutes(sheet.entries, sheet.overtimeMinutesOverride, timeZone),
       overtimeMinutesOverride: sheet.overtimeMinutesOverride,
       entries: sheet.entries.filter((e) => entryUpdates.some((u) => u.id === e.id)).map(toSnapshot),
     };
@@ -118,7 +122,7 @@ export class TimesheetAdjustmentsService {
     });
     const after = {
       totalMinutes: totalMinutesAfter,
-      overtimeMinutes: this.deriveOvertimeMinutes(entriesAfter, overtimeOverrideAfter),
+      overtimeMinutes: this.deriveOvertimeMinutes(entriesAfter, overtimeOverrideAfter, timeZone),
       overtimeMinutesOverride: overtimeOverrideAfter,
       entries: entriesAfter.filter((e) => entryUpdates.some((u) => u.id === e.id)).map(toSnapshot),
     };
@@ -234,12 +238,15 @@ export class TimesheetAdjustmentsService {
   private deriveOvertimeMinutes(
     entries: { startTime: Date; durationMinutes: number | null }[],
     override: number | null,
+    timeZone: string,
   ): number {
     if (override !== null) return override;
 
+    // Local days, not UTC — a shift starting before 08:00 local otherwise split
+    // across two buckets and lost its overtime.
     const byDay = new Map<string, number>();
     for (const e of entries) {
-      const key = e.startTime.toISOString().slice(0, 10);
+      const key = orgDayKey(e.startTime, timeZone);
       byDay.set(key, (byDay.get(key) ?? 0) + (e.durationMinutes ?? 0));
     }
     let overtime = 0;

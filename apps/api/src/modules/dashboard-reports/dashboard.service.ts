@@ -5,6 +5,8 @@ import { CacheService } from '../../infra/cache.service';
 import { buildPage, decodeCursor } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
+import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
+import { orgDateOnly, orgDayKey, orgWeekDays, startOfOrgDay, startOfOrgWeek } from '@timeforge/shared';
 
 export interface DashboardQuery {
   from?: string;
@@ -21,6 +23,11 @@ export interface DashboardQuery {
 
 type Scope = 'self' | 'team' | 'org';
 
+/** The calendar day a date-only range marker names (it has no meaningful time part). */
+function dayMarker(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
 @Injectable()
 export class DashboardService {
   private readonly logger = new Logger(DashboardService.name);
@@ -29,6 +36,7 @@ export class DashboardService {
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
     private readonly deptScope: DepartmentScopeService,
+    private readonly timeZones: OrgTimeZoneService,
   ) {}
 
   // ─── Permission helpers ───────────────────────────────────────────────────
@@ -198,9 +206,16 @@ export class DashboardService {
 
   async progress(tenantId: string, user: AuthPrincipal) {
     const now = new Date();
-    const todayStart = new Date(now);
-    todayStart.setUTCHours(0, 0, 0, 0);
-    const weekStart = this.startOfIsoWeek(now);
+    const timeZone = await this.timeZones.forPrincipal(user);
+    const todayStart = startOfOrgDay(now, timeZone);
+    // workDate is a date-only column naming a local day, so it needs the day
+    // value itself rather than the instant the local day begins.
+    const todayWorkDate = orgDateOnly(now, timeZone);
+    const weekStart = startOfOrgWeek(now, timeZone);
+    // ScrumEntry.entryDate is date-only, so it needs the Monday's day value —
+    // comparing it against the instant the local week begins drops the Monday
+    // itself in any timezone behind UTC.
+    const weekStartDate = new Date(`${orgWeekDays(now, timeZone, 0, 1)[0]}T00:00:00.000Z`);
 
     const [todayEntries, weekEntries, todaySessions, weekTasks] = await Promise.all([
       this.prisma.timeEntry.findMany({
@@ -212,7 +227,7 @@ export class DashboardService {
         select: { durationMinutes: true, startTime: true, endTime: true },
       }),
       this.prisma.workSession.findMany({
-        where: { tenantId, userId: user.userId, workDate: { gte: todayStart } },
+        where: { tenantId, userId: user.userId, workDate: { gte: todayWorkDate } },
         select: { breakMinutes: true },
       }),
       this.prisma.scrumTask.findMany({
@@ -220,7 +235,7 @@ export class DashboardService {
           tenantId,
           employeeId: user.userId,
           deletedAt: null,
-          scrumEntry: { entryDate: { gte: weekStart } },
+          scrumEntry: { entryDate: { gte: weekStartDate } },
         },
         select: { taskStatus: true },
       }),
@@ -264,14 +279,6 @@ export class DashboardService {
       productivityPercent,
       kpi,
     };
-  }
-
-  private startOfIsoWeek(date: Date): Date {
-    const d = new Date(date);
-    d.setUTCHours(0, 0, 0, 0);
-    const day = d.getUTCDay() || 7; // Monday = 1 ... Sunday = 7
-    if (day !== 1) d.setUTCDate(d.getUTCDate() - (day - 1));
-    return d;
   }
 
   // ─── Dashboard: Pending Approvals ─────────────────────────────────────────
@@ -770,10 +777,9 @@ export class DashboardService {
 
     if (!counts) {
       const now = new Date();
-      const todayStart = new Date(now);
-      todayStart.setUTCHours(0, 0, 0, 0);
-      const tomorrowStart = new Date(todayStart);
-      tomorrowStart.setUTCDate(tomorrowStart.getUTCDate() + 1);
+      const timeZone = await this.timeZones.forOrganization(tenantId, user.organizationId);
+      const todayStart = startOfOrgDay(now, timeZone);
+      const tomorrowStart = startOfOrgDay(now, timeZone, 1);
 
       const [activeUsers, organizations, pendingApprovals, payrollByStatus, todayTimesheets, activeSessions] =
         await Promise.all([
@@ -834,9 +840,12 @@ export class DashboardService {
     const cached = await this.cache.get<{ days: number; data: { date: string; count: number }[] }>(cacheKey);
     if (cached) return cached;
 
-    const since = new Date();
-    since.setUTCHours(0, 0, 0, 0);
-    since.setUTCDate(since.getUTCDate() - (days - 1));
+    // Buckets are the organization's local days: with UTC days the current day
+    // stayed empty until 08:00 local and events before then landed on the
+    // previous bar.
+    const timeZone = await this.timeZones.forOrganization(tenantId, user.organizationId);
+    const todayKey = orgDayKey(new Date(), timeZone);
+    const since = startOfOrgDay(todayKey, timeZone, -(days - 1));
 
     const events = await this.prisma.auditLog.findMany({
       where: { tenantId, createdAt: { gte: since } },
@@ -845,12 +854,10 @@ export class DashboardService {
 
     const buckets = new Map<string, number>();
     for (let i = 0; i < days; i++) {
-      const d = new Date(since);
-      d.setUTCDate(d.getUTCDate() + i);
-      buckets.set(d.toISOString().slice(0, 10), 0);
+      buckets.set(orgDayKey(startOfOrgDay(since, timeZone, i), timeZone), 0);
     }
     for (const e of events) {
-      const key = e.createdAt.toISOString().slice(0, 10);
+      const key = orgDayKey(e.createdAt, timeZone);
       if (buckets.has(key)) buckets.set(key, (buckets.get(key) ?? 0) + 1);
     }
 
@@ -1629,13 +1636,24 @@ export class DashboardService {
       return { rows: [] as any[], from, to };
     }
 
+    const timeZone = await this.timeZones.forOrganization(tenantId, organizationId);
+
     const [holidays, entries, shifts] = await Promise.all([
       this.prisma.holiday.findMany({
         where: { tenantId, organizationId, deletedAt: null, date: { gte: from, lte: to } },
         select: { date: true },
       }),
       this.prisma.timeEntry.findMany({
-        where: { tenantId, organizationId, deletedAt: null, userId: { in: userIds }, startTime: { gte: from, lte: to } },
+        // `from`/`to` name calendar days; startTime is an instant, so the window
+        // is the local day range they describe (an entry logged at 07:00 on the
+        // final day is before that day's UTC midnight and was dropped).
+        where: {
+          tenantId,
+          organizationId,
+          deletedAt: null,
+          userId: { in: userIds },
+          startTime: { gte: startOfOrgDay(dayMarker(from), timeZone), lt: startOfOrgDay(dayMarker(to), timeZone, 1) },
+        },
         select: { userId: true, startTime: true },
       }),
       this.prisma.shift.findMany({
@@ -1650,7 +1668,9 @@ export class DashboardService {
     const daysByUser = new Map<string, Set<string>>();
     const earliestByUserDate = new Map<string, Date>();
     for (const e of entries) {
-      const dateKey = e.startTime.toISOString().slice(0, 10);
+      // Local day, so this keys the same way as Shift.shiftDate and Holiday.date
+      // (both date-only columns naming a local day).
+      const dateKey = orgDayKey(e.startTime, timeZone);
       const set = daysByUser.get(e.userId) ?? new Set<string>();
       set.add(dateKey);
       daysByUser.set(e.userId, set);

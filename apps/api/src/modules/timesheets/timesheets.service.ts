@@ -11,7 +11,8 @@ import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.serv
 import { AuthPrincipal } from '../../common/decorators';
 import { registerPdfFonts, PDF_FONT, PDF_FONT_BOLD } from '../../common/pdf/pdf-fonts';
 import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
-import { PERMISSIONS } from '@timeforge/shared';
+import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
+import { PERMISSIONS, orgDayKey, startOfOrgDay } from '@timeforge/shared';
 import { NotificationsService } from '../notifications/notifications.service';
 import { ApprovalsService } from '../approvals/approvals.service';
 import { StorageService, withAvatarUrl } from '../storage/storage.service';
@@ -39,6 +40,11 @@ export interface BulkTimesheetResult {
   results: { id: string; status: 'ok' | 'error'; error?: string }[];
 }
 
+/** The calendar day a date-only range marker names (it has no meaningful time part). */
+function dayMarker(d: Date): string {
+  return d.toISOString().slice(0, 10);
+}
+
 @Injectable()
 export class TimesheetsService {
   constructor(
@@ -47,6 +53,7 @@ export class TimesheetsService {
     private readonly approvals: ApprovalsService,
     private readonly deptScope: DepartmentScopeService,
     private readonly storage: StorageService,
+    private readonly timeZones: OrgTimeZoneService,
   ) {}
 
   // -- Reads --
@@ -95,7 +102,7 @@ export class TimesheetsService {
       },
     });
 
-    const overtimeByTimesheet = await this.computeOvertimeMinutesByTimesheet(items.map((t) => t.id));
+    const overtimeByTimesheet = await this.computeOvertimeMinutesByTimesheet(p, items.map((t) => t.id));
     const avatarUrls = await this.storage.signedUrlsByKey(items.map((t) => t.user.avatarKey));
     const itemsWithOvertime = items.map((t) => ({
       ...t,
@@ -373,7 +380,7 @@ export class TimesheetsService {
     // employee's own timesheet summary and the payroll OT rate use — lets the
     // supervisor spot who has overtime right in the queue, not just after
     // opening each submission individually.
-    const overtimeByTimesheet = await this.computeOvertimeMinutesByTimesheet(items.map((t) => t.id));
+    const overtimeByTimesheet = await this.computeOvertimeMinutesByTimesheet(p, items.map((t) => t.id));
     const avatarUrls = await this.storage.signedUrlsByKey(items.map((t) => t.user.avatarKey));
     const itemsWithOvertime = items.map((t) => ({
       ...t,
@@ -389,7 +396,10 @@ export class TimesheetsService {
    * where a supervisor set an explicit overtime figure during review, which
    * wins outright (see TimesheetAdjustmentsService).
    */
-  private async computeOvertimeMinutesByTimesheet(timesheetIds: string[]): Promise<Map<string, number>> {
+  private async computeOvertimeMinutesByTimesheet(
+    p: AuthPrincipal,
+    timesheetIds: string[],
+  ): Promise<Map<string, number>> {
     const result = new Map<string, number>();
     if (timesheetIds.length === 0) return result;
 
@@ -406,10 +416,14 @@ export class TimesheetsService {
       select: { timesheetId: true, startTime: true, durationMinutes: true },
     });
 
+    // Days are the organization's local days: bucketing entries by UTC split a
+    // shift that starts before 08:00 local across two days, so neither half
+    // crossed the 8h threshold and the overtime disappeared.
+    const timeZone = await this.timeZones.forPrincipal(p);
     const dailyMinutes = new Map<string, number>(); // `${timesheetId}:${YYYY-MM-DD}` -> minutes
     for (const e of entries) {
       if (!e.timesheetId) continue;
-      const key = `${e.timesheetId}:${e.startTime.toISOString().slice(0, 10)}`;
+      const key = `${e.timesheetId}:${orgDayKey(e.startTime, timeZone)}`;
       dailyMinutes.set(key, (dailyMinutes.get(key) ?? 0) + (e.durationMinutes ?? 0));
     }
 
@@ -430,15 +444,28 @@ export class TimesheetsService {
     const userId = await this.resolveHistoryUserId(p, query.userId);
     const { from, to } = this.historyRange(query);
 
+    // `from`/`to` name calendar days. WorkSession.workDate is a date-only column
+    // so it compares against them directly; TimeEntry.startTime is an instant,
+    // so its window is the local day range those markers describe.
+    const timeZone = await this.timeZones.forPrincipal(p);
+    const entriesFrom = startOfOrgDay(dayMarker(from), timeZone);
+    const entriesToExclusive = startOfOrgDay(dayMarker(to), timeZone, 1);
+
     const [sessions, entries] = await Promise.all([
       this.prisma.workSession.findMany({
         where: { tenantId: p.tenantId, userId, workDate: { gte: from, lte: to } },
       }),
       this.prisma.timeEntry.findMany({
-        where: { tenantId: p.tenantId, userId, deletedAt: null, startTime: { gte: from, lte: this.endOfDay(to) } },
+        where: {
+          tenantId: p.tenantId,
+          userId,
+          deletedAt: null,
+          startTime: { gte: entriesFrom, lt: entriesToExclusive },
+        },
       }),
     ]);
 
+    /** WorkSession.workDate carries no time component — its UTC slice is the local day it names. */
     const dayKey = (d: Date): string => d.toISOString().slice(0, 10);
 
     const buckets = new Map<
@@ -455,7 +482,7 @@ export class TimesheetsService {
     }
 
     for (const e of entries) {
-      const key = dayKey(e.startTime);
+      const key = orgDayKey(e.startTime, timeZone);
       const b = buckets.get(key) ?? { clockIn: null, clockOut: null, workMinutes: 0, breakMinutes: 0, active: false };
       b.workMinutes += e.durationMinutes ?? 0;
       if (!b.clockIn || e.startTime < b.clockIn) b.clockIn = e.startTime;
@@ -1037,6 +1064,10 @@ export class TimesheetsService {
     if (!sheet) throw new NotFoundException('Timesheet not found');
     await this.assertCanView(p, sheet.userId);
 
+    // Entry rows are dated by the organization's local day, so the PDF agrees
+    // with the per-day rollups elsewhere in the app.
+    const timeZone = await this.timeZones.forPrincipal(p);
+
     const { default: PDFDocument } = await import('pdfkit');
     const doc = new PDFDocument({ margin: 40, size: 'A4' });
     registerPdfFonts(doc);
@@ -1098,7 +1129,7 @@ export class TimesheetsService {
     doc.moveDown(0.4);
 
     for (const entry of sheet.entries) {
-      const dateStr = entry.startTime.toISOString().slice(0, 10);
+      const dateStr = orgDayKey(entry.startTime, timeZone);
       const projName = entry.project?.name ?? 'None';
       const desc = entry.description ?? 'No details';
       const inTime = new Date(entry.startTime).toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });

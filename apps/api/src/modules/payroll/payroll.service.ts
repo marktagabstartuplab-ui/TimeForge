@@ -16,7 +16,8 @@ import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.serv
 import { IDEMPOTENCY_TTL_MS } from '../../common/constants';
 import { AuthPrincipal } from '../../common/decorators';
 import { registerPdfFonts, PDF_FONT, PDF_FONT_BOLD } from '../../common/pdf/pdf-fonts';
-import { PERMISSIONS } from '@timeforge/shared';
+import { PERMISSIONS, orgDayKey } from '@timeforge/shared';
+import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CacheService } from '../../infra/cache.service';
 import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery } from './dto';
@@ -42,6 +43,7 @@ export class PayrollService {
     private readonly prisma: PrismaService,
     private readonly notifications: NotificationsService,
     private readonly cache: CacheService,
+    private readonly timeZones: OrgTimeZoneService,
     @InjectQueue('payroll-export') private readonly exportQueue: Queue<PayrollExportJobData>,
   ) {}
 
@@ -364,12 +366,16 @@ export class PayrollService {
         })
       : [];
 
-    // Group approved entries by userId and UTC calendar day string
+    // Group approved entries by userId and *local* calendar day. Bucketing by
+    // UTC split a normal Manila shift (which starts before 08:00 local, i.e.
+    // before UTC midnight) across two days, understating each and hiding the
+    // daily overtime threshold below.
+    const timeZone = await this.timeZones.forPrincipal(p);
     const userDailyMinutes = new Map<string, Map<string, number>>();
     for (const entry of approvedEntries) {
       if (!entry.durationMinutes) continue;
       if (entry.timesheetId && adjustedTimesheetIds.has(entry.timesheetId)) continue;
-      const dateStr = entry.startTime.toISOString().slice(0, 10);
+      const dateStr = orgDayKey(entry.startTime, timeZone);
       let userDays = userDailyMinutes.get(entry.userId);
       if (!userDays) {
         userDays = new Map<string, number>();

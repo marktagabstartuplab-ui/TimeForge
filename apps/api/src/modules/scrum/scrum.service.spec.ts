@@ -5,6 +5,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
 import { StorageService } from '../storage/storage.service';
+import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
 import { AuthPrincipal } from '../../common/decorators';
 
 const principal = {
@@ -60,6 +61,10 @@ describe('ScrumService — completed commitment lock-down', () => {
         { provide: NotificationsService, useValue: { create: jest.fn() } },
         { provide: DepartmentScopeService, useValue: {} },
         { provide: StorageService, useValue: {} },
+        {
+          provide: OrgTimeZoneService,
+          useValue: { forPrincipal: jest.fn().mockResolvedValue('Asia/Manila') },
+        },
       ],
     }).compile();
 

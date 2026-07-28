@@ -52,6 +52,24 @@ export function toIsoDate(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/** The organization's operating timezone — all "today" dashboard windows are Manila days. */
+export const ORG_TIME_ZONE = "Asia/Manila";
+
+/**
+ * Today's YYYY-MM-DD in the organization's timezone, for API date params.
+ * Not the same as `toIsoDate(new Date())` when the viewer's machine sits in a
+ * different zone — and not the same as the UTC date during Manila mornings.
+ */
+export function todayInOrgTimeZone(): string {
+  // en-CA renders as YYYY-MM-DD.
+  return new Intl.DateTimeFormat("en-CA", {
+    timeZone: ORG_TIME_ZONE,
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).format(new Date());
+}
+
 /** Start of the local day. */
 export function startOfDay(date: Date): Date {
   const d = new Date(date);

@@ -16,13 +16,16 @@ import { ProductivityReportCard } from "./ProductivityReportCard";
 import { RecurringIssuesPanel } from "@/features/recurring-issues/components/RecurringIssuesPanel";
 
 import { useCan } from "@/features/auth/rbac";
-import { toIsoDate, startOfDay, endOfDay } from "@/lib/time";
+import { todayInOrgTimeZone, startOfDay, endOfDay } from "@/lib/time";
 
 export function SupervisorDashboardContent() {
   const [toast, setToast] = useState<ToastState | null>(null);
   const canReadOrg = useCan("leave_request:read_org");
   const scope = canReadOrg ? "org" : "team";
-  const todayStr = toIsoDate(new Date());
+  // Manila calendar day — the backend resolves these date params in the org
+  // timezone too, so the window is the same on both sides regardless of where
+  // the viewer's machine is set.
+  const todayStr = todayInOrgTimeZone();
 
   const results = useQueries({
     queries: [

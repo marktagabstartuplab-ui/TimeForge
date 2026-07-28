@@ -8,6 +8,7 @@ import { TimesheetAdjustmentsService } from './timesheet-adjustments.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
+import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
 import { AuthPrincipal } from '../../common/decorators';
 
 const SUPERVISOR: AuthPrincipal = {
@@ -71,6 +72,10 @@ describe('TimesheetAdjustmentsService', () => {
         {
           provide: DepartmentScopeService,
           useValue: { teamUserIds: jest.fn().mockResolvedValue(['emp-1']) },
+        },
+        {
+          provide: OrgTimeZoneService,
+          useValue: { forPrincipal: jest.fn().mockResolvedValue('Asia/Manila') },
         },
       ],
     }).compile();
