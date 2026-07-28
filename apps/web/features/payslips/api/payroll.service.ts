@@ -1,10 +1,16 @@
 import { apiClient } from "@/lib/api/client";
 
 /**
- * GET /payroll/me — employee self-view. The backend intentionally returns
- * hours only; hourlyRate and pay amounts are excluded for employees
- * (BR-PAY-06). Amount cards therefore render a restricted state unless the
- * viewer holds `payroll_rate:read` (Finance/Admin).
+ * GET /payroll/me — employee self-view. Returns the caller's own line items
+ * including the rate and pay snapshotted onto each one when the payroll report
+ * was generated, so these figures match the Finance/HR payroll tables exactly.
+ *
+ * BR-PAY-06 restricts reading *other* people's rates, not your own — see
+ * `PayrollService.getRate`, which permits `userId === p.userId`. Amount cards
+ * fall back to a restricted state only when the separate rate lookup fails.
+ *
+ * `hourlyRate` and `estimatedPay` are non-nullable `Decimal` columns, so they
+ * are always present and arrive JSON-serialised as strings.
  */
 export interface PayrollLineItemSelf {
   id: string;
@@ -12,6 +18,8 @@ export interface PayrollLineItemSelf {
   pendingHours: string | number;
   rejectedHours: string | number;
   overtimeHours: string | number;
+  hourlyRate: string | number;
+  estimatedPay: string | number;
   createdAt: string;
   payrollReport: {
     payrollPeriodId: string;
