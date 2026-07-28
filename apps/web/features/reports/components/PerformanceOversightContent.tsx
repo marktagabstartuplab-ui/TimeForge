@@ -120,8 +120,8 @@ export function PerformanceOversightContent() {
   const { data: myKpis = [], isLoading: isMyKpisLoading } = useQuery({
     queryKey: ["perf", "my-kpis"],
     queryFn: getMyKpiSummary,
-    // only fetch if viewing own performance (no userId search)
-    enabled: !search,
+    // only fetch if viewing own performance (no other employee selected)
+    enabled: !selectedUserId,
   });
 
   // Export Mutation
