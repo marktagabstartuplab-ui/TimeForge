@@ -42,6 +42,8 @@ export function DashboardHero({ firstName }: { firstName: string }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["leave"] });
       queryClient.invalidateQueries({ queryKey: ["supervisor", "leave-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["supervisor", "dashboard-leave"] });
+      queryClient.invalidateQueries({ queryKey: ["supervisor", "leave"] });
       queryClient.invalidateQueries({ queryKey: ["account", "team-presence"] });
       setToast({ message: "Welcome back! Your return to work has been confirmed and status updated to Active.", tone: "success" });
     },

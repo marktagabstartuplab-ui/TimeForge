@@ -42,8 +42,10 @@ export function LeaveReviewModal({ request, onOpenChange, onToast }: LeaveReview
     onSuccess: (_, action) => {
       const verb = action === "APPROVE" ? "approved" : "rejected";
       onToast({ message: `Leave request ${verb}.`, tone: "success" });
+      // Invalidate the leave list, the dashboard counter queries, and the in-page panel.
       queryClient.invalidateQueries({ queryKey: ["supervisor", "leave"] });
-      queryClient.invalidateQueries({ queryKey: ["supervisor"] });
+      queryClient.invalidateQueries({ queryKey: ["supervisor", "leave-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["supervisor", "dashboard-leave"] });
       setRemark("");
       onOpenChange(false);
     },

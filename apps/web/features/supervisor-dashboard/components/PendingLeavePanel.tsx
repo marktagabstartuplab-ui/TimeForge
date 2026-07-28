@@ -59,7 +59,9 @@ export function PendingLeavePanel({ onToast }: { onToast: (t: ToastState) => voi
     onSuccess: (_, vars) => {
       const verb = vars.action === "APPROVE" ? "approved" : "rejected";
       onToast({ message: `Leave request ${verb}.`, tone: "success" });
-      queryClient.invalidateQueries({ queryKey: ["supervisor"] });
+      queryClient.invalidateQueries({ queryKey: ["supervisor", "leave-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["supervisor", "dashboard-leave"] });
+      queryClient.invalidateQueries({ queryKey: ["supervisor", "leave"] });
     },
     onError: (err) => {
       const message = err instanceof ApiError ? err.message : "Action failed.";

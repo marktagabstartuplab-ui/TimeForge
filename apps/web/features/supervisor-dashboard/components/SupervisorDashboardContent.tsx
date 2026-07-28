@@ -30,7 +30,7 @@ export function SupervisorDashboardContent() {
           const res = await listLeaveRequests({ scope: "team", status: "PENDING", limit: 50 });
           return res.data.length;
         },
-        refetchInterval: 60_000,
+        refetchInterval: 30_000,
       },
       {
         queryKey: ["supervisor", "leave-summary", "approved-today"],
@@ -45,7 +45,7 @@ export function SupervisorDashboardContent() {
           });
           return res.data.length;
         },
-        refetchInterval: 60_000,
+        refetchInterval: 30_000,
       },
       {
         queryKey: ["supervisor", "leave-summary", "rejected-today"],
@@ -60,7 +60,7 @@ export function SupervisorDashboardContent() {
           });
           return res.data.length;
         },
-        refetchInterval: 60_000,
+        refetchInterval: 30_000,
       },
       {
         queryKey: ["supervisor", "leave-summary", "active"],
@@ -74,7 +74,7 @@ export function SupervisorDashboardContent() {
           });
           return active.length;
         },
-        refetchInterval: 60_000,
+        refetchInterval: 30_000,
       },
     ],
   });

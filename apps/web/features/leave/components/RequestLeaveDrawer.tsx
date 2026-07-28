@@ -93,6 +93,10 @@ export function RequestLeaveDrawer({ open, onOpenChange }: RequestLeaveDrawerPro
       setCreatedRequestId(created.id);
       queryClient.invalidateQueries({ queryKey: ["leave"] });
       queryClient.invalidateQueries({ queryKey: ["dashboard", "summary"] });
+      // Invalidate dashboard counter queries and leave list so supervisor sees the new pending count.
+      queryClient.invalidateQueries({ queryKey: ["supervisor", "leave-summary"] });
+      queryClient.invalidateQueries({ queryKey: ["supervisor", "dashboard-leave"] });
+      queryClient.invalidateQueries({ queryKey: ["supervisor", "leave"] });
     },
     onError: (err) => {
       setErrorMessage(err instanceof ApiError ? err.message : "Failed to submit leave request.");
