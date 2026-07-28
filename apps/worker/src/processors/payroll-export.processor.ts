@@ -148,6 +148,18 @@ function formatDate(d: Date): string {
   return d.toISOString().slice(0, 10);
 }
 
+// Decimal hours -> HH:MM, matching the payroll table UI. Exporting raw decimals
+// made the hours column irreconcilable with Est. Pay, which is computed from the
+// exact value.
+function formatHoursHm(hours: unknown): string {
+  const n = Number(hours ?? 0);
+  if (!Number.isFinite(n)) return '00:00';
+  const totalMinutes = Math.round(Math.abs(n) * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${n < 0 ? '-' : ''}${String(h).padStart(2, '0')}:${String(m).padStart(2, '0')}`;
+}
+
 function totalsOf(row: PeriodSummaryRow): { headcount: number; totalEstimatedPay: number } {
   const totals = row.reports[0]?.totals as { headcount?: number; totalEstimatedPay?: string } | undefined;
   return { headcount: totals?.headcount ?? 0, totalEstimatedPay: Number(totals?.totalEstimatedPay ?? 0) };
@@ -168,7 +180,7 @@ async function buildPeriodPdf(startDate: Date, endDate: Date, lineItems: LineIte
     doc.fontSize(10);
     for (const item of lineItems) {
       doc.text(
-        `${item.user.firstName} ${item.user.lastName} (${item.user.email}) — Approved: ${item.approvedHours}h, OT: ${item.overtimeHours}h, Rate: ₱${item.hourlyRate}/hr, Est. Pay: ₱${item.estimatedPay}`,
+        `${item.user.firstName} ${item.user.lastName} (${item.user.email}) — Approved: ${formatHoursHm(item.approvedHours)} (HH:MM), OT: ${formatHoursHm(item.overtimeHours)} (HH:MM), Rate: ₱${item.hourlyRate}/hr, Est. Pay: ₱${item.estimatedPay}`,
       );
     }
     doc.end();
@@ -181,8 +193,8 @@ async function buildPeriodExcel(lineItems: LineItemRow[]): Promise<Buffer> {
   sheet.columns = [
     { header: 'Employee', key: 'name', width: 28 },
     { header: 'Email', key: 'email', width: 30 },
-    { header: 'Approved Hours', key: 'approved', width: 16 },
-    { header: 'Overtime Hours', key: 'overtime', width: 16 },
+    { header: 'Approved Hours (HH:MM)', key: 'approved', width: 22 },
+    { header: 'Overtime Hours (HH:MM)', key: 'overtime', width: 22 },
     { header: 'Hourly Rate', key: 'rate', width: 14, style: { numFmt: '"₱"#,##0.00' } },
     { header: 'Estimated Pay', key: 'pay', width: 16, style: { numFmt: '"₱"#,##0.00' } },
   ];
@@ -191,8 +203,8 @@ async function buildPeriodExcel(lineItems: LineItemRow[]): Promise<Buffer> {
     sheet.addRow({
       name: `${item.user.firstName} ${item.user.lastName}`,
       email: item.user.email,
-      approved: item.approvedHours,
-      overtime: item.overtimeHours,
+      approved: formatHoursHm(item.approvedHours),
+      overtime: formatHoursHm(item.overtimeHours),
       rate: item.hourlyRate,
       pay: item.estimatedPay,
     });

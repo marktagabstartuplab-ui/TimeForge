@@ -60,6 +60,15 @@ function rowStatus(approvedHours: number, rejectedHours: number): RowStatus {
   return "Pending";
 }
 
+// Decimal hours -> HH:MM. Displaying rounded decimals (e.g. 0.02) made the hours
+// column irreconcilable with Gross Pay, which is computed from the exact value.
+function formatHoursHm(hours: number): string {
+  const totalMinutes = Math.round(Math.abs(hours) * 60);
+  const h = Math.floor(totalMinutes / 60);
+  const m = totalMinutes % 60;
+  return `${hours < 0 ? "-" : ""}${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
 function formatCurrency(n: number): string {
   return `₱${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
@@ -499,8 +508,8 @@ export function PayrollProcessingContent() {
                   <thead>
                     <tr className="border-b border-[#c3c6d2]/40 text-xs font-semibold text-brand-muted uppercase tracking-wider">
                       <th className="py-3 px-4">Employee</th>
-                      <th className="py-3 px-4">Approved Hours</th>
-                      <th className="py-3 px-4">Overtime</th>
+                      <th className="py-3 px-4">Approved Hours (HH:MM)</th>
+                      <th className="py-3 px-4">Overtime (HH:MM)</th>
                       <th className="py-3 px-4">Rate</th>
                       <th className="py-3 px-4">Gross Pay</th>
                       <th className="py-3 px-4">Status</th>
@@ -518,8 +527,8 @@ export function PayrollProcessingContent() {
                             </div>
                             <div className="text-xs text-brand-muted">{li.user.jobTitle ?? li.user.department?.name ?? li.user.employmentType}</div>
                           </td>
-                          <td className="py-3 px-4 text-brand-ink">{Number(li.approvedHours).toFixed(2)}</td>
-                          <td className="py-3 px-4 text-brand-ink">{Number(li.overtimeHours).toFixed(1)}</td>
+                          <td className="py-3 px-4 text-brand-ink tabular-nums">{formatHoursHm(Number(li.approvedHours))}</td>
+                          <td className="py-3 px-4 text-brand-ink tabular-nums">{formatHoursHm(Number(li.overtimeHours))}</td>
                           <td className="py-3 px-4 text-brand-ink">₱{Number(li.hourlyRate).toFixed(2)}/hr</td>
                           <td className="py-3 px-4 font-semibold text-brand-ink">{formatCurrency(Number(li.estimatedPay))}</td>
                           <td className="py-3 px-4">
