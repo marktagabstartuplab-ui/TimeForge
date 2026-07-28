@@ -18,6 +18,7 @@ export interface ScrumReviewRow {
   id: string;
   userId: string;
   employeeName: string;
+  avatarUrl: string | null;
   entryDate: string;
   submittedAt: string | null;
   yesterday: string;

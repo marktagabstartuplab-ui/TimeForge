@@ -6,6 +6,7 @@ import { DepartmentScopeService } from '../../common/scoping/department-scope.se
 import { PERMISSIONS } from '@timeforge/shared';
 import { ApprovalsService } from '../approvals/approvals.service';
 import { TimesheetsService } from '../timesheets/timesheets.service';
+import { StorageService } from '../storage/storage.service';
 import { BulkApproveTimesheetsDto } from '../timesheets/dto';
 import {
   SupervisorDailyScrumsQuery,
@@ -26,6 +27,7 @@ export class SupervisorService {
     private readonly approvals: ApprovalsService,
     private readonly timesheets: TimesheetsService,
     private readonly deptScope: DepartmentScopeService,
+    private readonly storage: StorageService,
   ) {}
 
   private can(p: AuthPrincipal, perm: string): boolean {
@@ -155,9 +157,11 @@ export class SupervisorService {
       },
       distinct: ['userId'],
       orderBy: [{ userId: 'asc' }, { entryDate: 'desc' }],
-      include: { user: { select: { firstName: true, lastName: true } } },
+      include: { user: { select: { firstName: true, lastName: true, avatarKey: true } } },
       take: limit,
     });
+
+    const avatarUrls = await this.storage.signedUrlsByKey(entries.map((e) => e.user.avatarKey));
 
     return entries
       .sort((a, b) => b.entryDate.getTime() - a.entryDate.getTime())
@@ -165,6 +169,7 @@ export class SupervisorService {
         id: e.id,
         userId: e.userId,
         employeeName: `${e.user.firstName} ${e.user.lastName}`,
+        avatarUrl: e.user.avatarKey ? (avatarUrls.get(e.user.avatarKey) ?? null) : null,
         entryDate: e.entryDate,
         submittedAt: e.submittedAt,
         yesterday: e.yesterday,

@@ -246,7 +246,7 @@ export function TeamKpiDashboardContent() {
                   <tr key={member.userId} className="hover:bg-gray-50/50 transition-colors">
                     <td className="py-4 px-4">
                       <div className="flex items-center gap-3">
-                        <Avatar firstName={firstName} lastName={lastName} size="sm" />
+                        <Avatar firstName={firstName} lastName={lastName} imageUrl={member.avatarUrl} size="sm" />
                         <div>
                           <div className="font-semibold text-brand-navy">{member.name}</div>
                           <div className="text-[10px] text-brand-muted">Joined: {formatJoinedDate(member.joinedAt)}</div>

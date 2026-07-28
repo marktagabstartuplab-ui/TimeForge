@@ -685,6 +685,7 @@ export class UsersService {
     });
 
     const page = buildPage(users, limit);
+    const avatarUrls = await this.storage.signedUrlsByKey(page.data.map((u) => u.avatarKey));
     return {
       data: page.data.map((u) => ({
         id: u.id,
@@ -694,6 +695,7 @@ export class UsersService {
         phone: u.phone,
         jobTitle: u.jobTitle,
         department: u.department,
+        avatarUrl: u.avatarKey ? (avatarUrls.get(u.avatarKey) ?? null) : null,
         // The self-requested role (EMPLOYEE | INTERN) chosen at registration.
         // `role` below is the assigned RBAC role, which stays EMPLOYEE until an
         // admin decides — so this is what the reviewer actually needs to see.

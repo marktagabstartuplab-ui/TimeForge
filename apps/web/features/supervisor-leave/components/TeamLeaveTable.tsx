@@ -55,7 +55,12 @@ export function TeamLeaveTable({ rows, isLoading, onReview, filtersActive, onCle
         render: (r) =>
           r.user ? (
             <div className="flex items-center gap-2.5">
-              <Avatar firstName={r.user.firstName} lastName={r.user.lastName} size="sm" />
+              <Avatar
+                firstName={r.user.firstName}
+                lastName={r.user.lastName}
+                imageUrl={r.user.avatarUrl}
+                size="sm"
+              />
               <div>
                 <div className="font-medium text-brand-ink">{r.user.firstName} {r.user.lastName}</div>
               </div>

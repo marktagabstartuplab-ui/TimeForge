@@ -236,7 +236,7 @@ export function AccountApprovalsContent() {
                   <tr key={r.id}>
                     <td className="py-2.5 pr-4">
                       <div className="flex items-center gap-2">
-                        <Avatar firstName={r.firstName} lastName={r.lastName} size="sm" />
+                        <Avatar firstName={r.firstName} lastName={r.lastName} imageUrl={r.avatarUrl} size="sm" />
                         <div>
                           <p className="font-medium text-brand-ink">{r.firstName} {r.lastName}</p>
                           <p className="text-xs text-brand-muted">{r.email}</p>
