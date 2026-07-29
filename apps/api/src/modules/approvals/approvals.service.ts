@@ -56,12 +56,13 @@ export class ApprovalsService {
         ? (query.status as TimesheetStatus)
         : { in: ['SUBMITTED', 'UNDER_REVIEW'] },
       ...(await this.resolveTeamFilter(p, query.userId)),
-      ...(query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {}),
     };
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     const items = await this.prisma.timesheet.findMany({
       where,
       orderBy: [{ submittedAt: 'asc' }, { id: 'asc' }],
       take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     return buildPage(items, limit);
   }

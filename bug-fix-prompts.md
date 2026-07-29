@@ -1,6 +1,6 @@
 # TimeForge Bug Fix Prompts — Chunked
 
-Source: `TimeForge (1).docx` — 14 defects (untitled/unnumbered in source; numbered here as BUG-A through BUG-N in document order for tracking).
+Source: `TimeForge (1).docx` (14 defects, BUG-A–BUG-N) plus follow-up QA batches (BUG-O–BUG-S) plus runtime errors and state issues found during manual testing (BUG-T–BUG-AA) — untitled/unnumbered in source, numbered here for tracking.
 
 **How to use this:** Run one at a time, in a fresh session or clearly separated turn, in the suggested order below. Never batch multiple prompts into one request — that's what causes fixing one bug to silently break another. Each prompt has a hard scope boundary, a "do not touch" list, and its own verification checklist.
 
@@ -473,21 +473,598 @@ button.
 
 ---
 
+## BUG-O — Missing "Actual Completed" input in End of Day Review
+
+**Where:** End of Day Review modal (Today's Commitments section)
+
+```
+Fix: EOD Review only shows a static "Completed" badge per task. Since
+task planning already captures a numerical Planned Target, the review
+step needs a matching numerical input to record what was actually
+delivered — right now completion is effectively a binary flag.
+
+Expected: for each KPI-linked commitment, the EOD Review UI should:
+  1. Display the original Planned Target.
+  2. Provide a mandatory numerical "Actual Completed" input.
+  3. Auto-calculate status/percentage from that input.
+  4. Show conditional follow-up fields when actual < planned — e.g.
+     "Will you continue this tomorrow?" (yes/no) and a required "Why
+     was this not completed?" text field.
+
+Scope: frontend — the EOD Review modal, replacing the static Completed
+badge with the numeric input + conditional fields. Backend — the
+submission endpoint must accept an actual numeric value instead of (or
+in addition to) the current boolean-style completion flag. Schema —
+store actual-completed per task/commitment.
+
+This directly depends on BUG-K (Planned Target must already be a real,
+per-day editable value before "actual vs planned" comparison makes
+sense). Do this AFTER BUG-K, not before — building the EOD side first
+means either building it against the wrong data model or building it
+twice.
+
+Do not touch: the KPI Metric master definition or Admin KPI Management.
+
+Verify: (a) every KPI-linked commitment in EOD Review shows Planned
+Target and an editable Actual Completed field, (b) percentage/status
+calculates correctly at, above, and below target, (c) the "why not
+completed" and "continue tomorrow" fields only appear when under
+target, and are required (can't submit without them) when they appear,
+(d) non-KPI-linked tasks (if any exist) aren't forced into this flow.
+```
+
+---
+
+## BUG-P — Gross Pay doesn't match manual math due to rounded hours display
+
+**Where:** HR Payroll Table
+
+```
+Fix: Approved Hours / Overtime are displayed rounded to 1-2 decimals,
+but Gross Pay is calculated from the unrounded underlying value —
+so anyone manually checking the math (hours × rate) gets a different
+number than what's shown as Gross Pay. E.g. Patrick Tagab shows 0.02
+hrs × ₱200 = ₱4.00 expected, but Gross Pay shows ₱3.33 (the real value
+is 1 minute = 0.0166 hrs, rounded up to 0.02 for display only).
+
+Expected: this is a display-only bug — the Gross Pay calculation itself
+is using the correct precise value. Fix by showing hours in exact HH:MM
+format instead of a rounded decimal, so the displayed time and the
+displayed Gross Pay are always mutually consistent.
+
+Scope: frontend formatting/display of the Approved Hours and Overtime
+columns in the payroll table component only — convert decimal-hours to
+HH:MM for display. Do NOT change the underlying stored value or the
+Gross Pay calculation itself — confirm first that Gross Pay is in fact
+already computed from the precise (unrounded) value and the bug is
+purely presentational, not a calculation bug. If Gross Pay turns out to
+ALSO be computed from a rounded intermediate value, treat that as a
+separate, higher-severity finding and flag it rather than silently
+fixing both here.
+
+Do not touch: the rate table, overtime premium multiplier logic, or any
+other payroll column.
+
+Verify: (a) Patrick Tagab's row now shows 00:01 (or equivalent HH:MM)
+instead of "0.02", and ₱3.33 now visibly reconciles against 1 minute at
+₱200/hr, (b) Shan Gealone's row similarly reconciles, (c) spot check 2-3
+other employees' rows to confirm the format change didn't break
+alignment/sorting, (d) exporting the payroll table (if export exists)
+uses the same corrected format, not the old decimal.
+```
+
+---
+
+## BUG-Q — Supervisors can't edit employee time logs during review
+
+**Where:** Supervisor Timesheet Review / Approval Module
+
+```
+Fix: when a timesheet has clearly wrong hours (e.g. forgot to clock
+out, showing 12 hrs instead of 8), the supervisor's only option is to
+request a revision and wait on the employee — there's no way to
+directly correct Time In, Time Out, Total Hours, or Overtime after
+discussing the discrepancy.
+
+Expected: the supervisor review interface gains an "Edit Timesheet" /
+"Adjust Hours" capability, restricted to the Supervisor role during
+review, letting them override Time In, Time Out, Total Hours, and
+Overtime before approving. Every such adjustment must be logged with
+who made it and a required "Reason for adjustment" field — this is a
+compliance-sensitive change to another person's time record.
+
+Scope: frontend — an edit/adjust action visible only to Supervisor role
+in the review view. Backend — a dedicated, permission-checked endpoint
+for supervisor-initiated time adjustments (do not just loosen the
+existing employee-edit endpoint to also allow supervisors — build this
+as its own explicit action so the audit trail clearly distinguishes
+"employee edited their own entry" from "supervisor overrode an entry").
+Audit — write an AuditLog entry (repo already has this pattern for
+payroll/HR mutations) capturing old values, new values, supervisor ID,
+and the required reason text.
+
+Do not touch: the employee's own self-edit flow (BUG-A / revision-
+requested editing) — this is a separate, supervisor-only override path,
+not an extension of the employee's edit permissions.
+
+Verify: (a) only supervisors (not employees) see the adjust action, (b)
+adjustment requires a non-empty reason before it can be saved, (c) an
+AuditLog record is created with before/after values and supervisor
+identity, (d) after adjustment, approving the timesheet uses the
+corrected values (confirm payroll sync — BUG-003 from the prior QA
+round — picks up the adjusted numbers, not the original inflated ones),
+(e) employee's own edit permissions are unchanged.
+```
+
+---
+
+## BUG-R — Sidebar notification badge gives no in-page context
+
+**Where:** Sidebar Navigation (Timesheets tab) and the Timesheets main page
+
+```
+Fix: a red badge (e.g. "1") appears on the Timesheets sidebar item, but
+opening the page shows the standard view with no indication of what
+needs attention — no highlighted row, no banner, no auto-filter.
+
+Expected:
+  1. Opening the page from a notification auto-filters or scrolls to
+     the specific item that triggered it (e.g. defaults to "Needs
+     Revision"/"Rejected" if that's the cause).
+  2. The specific row/card is visually highlighted.
+  3. The sidebar badge clears only after the user has actually viewed/
+     interacted with that specific item — not just after loading the
+     page.
+
+Scope: frontend — link the notification's payload (which should already
+carry a reference to the specific timesheet/entry, per the existing
+Notification pattern used elsewhere in the repo) to an auto-filter/
+highlight on page load, and update badge-clearing logic to fire on
+interaction with the specific item rather than on page visit.
+
+Do not touch: the notification creation/trigger logic itself (what
+causes a badge to appear) — this bug is entirely about what happens
+AFTER the user clicks into the page. Also do not change badge behavior
+for any other sidebar item (e.g. if Daily Scrum has a similar badge,
+leave it as-is unless asked to apply this pattern more broadly).
+
+Verify: (a) triggering a notification (e.g. supervisor requests
+revision) and clicking the Timesheets badge lands the user on the
+correct filtered/highlighted item, (b) the badge clears only after
+interacting with that item, not merely opening the page, (c) navigating
+to Timesheets normally (not via the badge) still shows the standard
+unfiltered view, (d) multiple pending notifications (if possible) don't
+cause the highlight/filter to point at the wrong item.
+```
+
+---
+
+## BUG-S — Profile picture updates don't sync globally across accounts
+
+**Where:** Global user directories (e.g. Management → Employees list) and other sessions/roles viewing a user's profile
+
+```
+Fix: when a user uploads a new profile picture, it's only visible in
+their own local session. Other users (admin, HR, etc.) viewing the
+Employees directory or that user's profile still see the default
+initials-based avatar — the update either isn't persisted globally or
+isn't being read by other pages/sessions.
+
+Expected: the uploaded image is saved as the user's global avatar (via
+the existing StorageProvider — repo already stores avatars in the
+`avatars` folder per CLAUDE.md), and every page that fetches user data
+(Employee Directory, profile modals, etc.) reads and displays that
+stored image URL instead of falling back to initials, for all users
+and roles.
+
+Scope:
+- Backend: confirm the avatar upload endpoint actually writes the
+  resulting image URL to the user's DB record (not just to a
+  session/local cache), and confirm the Employee list / user-fetch
+  endpoints include that URL field in their response payload — this is
+  likely the actual gap (upload works, but the list endpoint's select/
+  serializer omits the avatar URL).
+- Frontend: the shared Avatar component should render the fetched image
+  URL when present and fall back to initials only when it's null —
+  apply this consistently, don't special-case it per page.
+
+Do not touch: the upload mechanism itself (file size/type validation,
+storage provider selection) unless it's provably broken — first confirm
+whether the URL is even reaching the DB before assuming the upload path
+is at fault. Do not touch unrelated user-list fields/columns.
+
+Verify: (a) upload a photo as one user, then check the Employees
+directory as a different logged-in user (admin/HR) and confirm the
+photo now appears instead of initials, (b) a user who has never
+uploaded a photo still correctly shows initials (fallback not broken),
+(c) check at least 2 other pages that display user avatars (e.g.
+profile modal, timesheet review panel) to confirm the fix applies
+everywhere the Avatar component is used, not just the Employees list,
+(d) refreshing/re-logging as the uploading user still shows their own
+photo (regression check on the original working case).
+```
+
+---
+
+## BUG-T — Performance Report throws "search is not defined" error
+
+**Where:** Employee → Performance (accessed via `/performance` route)
+
+```
+Fix: clicking the Performance Report (or navigating to /performance)
+renders an error page: "Something went wrong - search is not defined".
+The page does not load; users cannot access the report.
+
+Expected: the Performance Report page loads without error and displays
+the user's performance data / KPI scorecard or similar report content.
+
+Scope: frontend component bug — the error indicates either:
+  (1) a `search` variable/function is referenced but never declared or
+      imported, OR
+  (2) a state hook initializing `search` is missing/broken, OR
+  (3) the component is missing a provider or context that supplies
+      `search` to child components.
+
+Before editing: check the actual Performance Report component
+(likely `apps/web/src/modules/performance/...` or similar path) and
+search for all references to a `search` variable — it's likely used
+without being defined. Also check whether this component uses hooks
+or context that should be providing it. The error is probably
+straightforward (typo, missing import, missing state initializer) —
+diagnose first before writing a fix.
+
+Do not touch: the data-fetching logic or report calculation — if those
+are broken they'll show up after the page stops erroring, address them
+separately.
+
+Verify: (a) the Performance Report page loads without any error messages,
+(b) it displays some content (even if blank or placeholder), (c)
+navigating back to other pages from Performance Report works normally,
+(d) this error doesn't appear in any other report or page.
+```
+
+---
+
+## BUG-U — Completed Daily Scrum commitments stay "In Progress" and remain editable
+
+**Where:** Employee → Daily Scrum → Today's Commitments
+
+```
+Fix: after an employee completes and submits an End-of-Day (EOD) report,
+the commitment still shows status "In Progress" (should be "Completed").
+More critically, Edit and Delete buttons remain enabled on completed
+commitments — users can modify or delete records that have already been
+submitted and should be locked.
+
+Expected:
+  1. After successful EOD submission, commitment status auto-updates to
+     "Completed" and stays visible but locked (read-only).
+  2. Edit and Delete actions are disabled/hidden for completed
+     commitments.
+  3. A completed commitment can only be reopened through an authorized
+     approval/revision process (not a direct employee edit).
+  4. The completion progress/data reflects the final submitted EOD values,
+     not a stale intermediate state.
+
+Scope:
+- Backend: confirm the EOD submission endpoint marks the commitment
+  record as completed (status field update) and persists that state.
+  Also check whether the commitment is being fetched/returned in
+  subsequent list queries (Today's Commitments should still display it,
+  just with status=Completed, not filtered out).
+- Frontend: bind the Edit/Delete button visibility to commitment.status
+  — disable these actions when status === "Completed". Also verify the
+  status field in the Today's Commitments list is being read from the
+  backend response, not cached from the pre-EOD state.
+
+Note: this is distinct from BUG-O (which adds the Actual Completed input
+field to the EOD Review form itself). This bug is about what happens
+AFTER the EOD is submitted — the persistence and UI lock-down of the
+completed record.
+
+Do not touch: the EOD Review submission logic (BUG-O covers that) — this
+is purely about the front-end state after submission and the action
+button visibility.
+
+Verify: (a) complete and submit an EOD report, refresh or re-navigate to
+Today's Commitments, confirm the commitment now shows "Completed" status
+(not In Progress), (b) Edit/Delete buttons are visibly gone/disabled for
+that completed commitment, (c) attempting to direct-edit the backend
+record (if possible via an API call) is rejected with a permission error
+— the commitment should be immutable until explicitly reopened, (d) a
+non-completed commitment (e.g. still In Progress or Pending) still shows
+Edit/Delete normally.
+```
+
+---
+
+## BUG-V — Leave dashboard counters don't update after new leave input (Pending, Approved Today, Rejected Today, Active Leave)
+
+**Where:** Supervisor / HR Dashboard (leave management section)
+
+```
+Fix: the leave status counters (Pending leave, Approved Today, Rejected
+Today, Active Leave) fail to update when new leave requests are created,
+approved, rejected, or activated. The counters show stale numbers until
+a manual page refresh.
+
+Expected: immediately after any leave action (create, approve, reject,
+activate, end), the affected counter(s) recalculate and display the new
+total without requiring a page reload.
+
+Scope: frontend state management / cache invalidation after leave
+mutations. This is likely one of two issues:
+  1. The leave-update endpoint(s) don't trigger a refetch/cache
+     invalidation on the dashboard query, or
+  2. The dashboard component isn't subscribed to realtime updates for
+     leave changes, or
+  3. The frontend state is being updated locally but not persisted/
+     fetched from the backend, causing stale numbers to appear.
+
+Diagnose: check whether leave mutations are refetching the dashboard
+query (or invalidating a cache key), and whether the dashboard component
+has a subscription/listener for leave changes. The repo likely uses
+either React Query / SWR for caching (which has cache invalidation
+patterns) or a custom fetch + state combo.
+
+Do not touch: the leave request/approval business logic itself — this is
+purely a UI refresh issue, not a data-correctness issue (the backend
+count is probably correct, just not being displayed).
+
+Verify: (a) create a leave request and immediately (without refresh)
+check if "Pending leave" counter increments, (b) approve that request
+and check if "Approved Today" increments and "Pending leave" decrements,
+(c) reject a pending request and check "Rejected Today" increments and
+"Pending leave" decrements, (d) activate a leave and check "Active
+Leave" increments, (e) end an active leave (e.g. via BUG-N's "Return to
+Work" button) and check "Active Leave" decrements. All without a manual
+page refresh.
+```
+
+---
+
+## BUG-W — "Version mismatch" error when submitting End of Day Review
+
+**Where:** End of Day Review modal (when clicking Submit Review & Time Out)
+
+```
+Fix: attempting to submit an End of Day Review displays a "Version
+mismatch" error banner and rejects the submission. The modal won't close
+and the employee can't complete their EOD.
+
+Expected: the EOD submission should succeed (or provide a clear recovery
+path if the record truly was modified by another user/process in the
+interim).
+
+Scope: this is likely an optimistic concurrency control issue — the
+backend is checking a version/timestamp field to prevent concurrent
+overwrites, but either:
+  1. The frontend isn't sending the current version in the update
+     payload, or
+  2. The frontend version is stale (fetched earlier, but the record was
+     updated server-side in between), or
+  3. The version-check logic on the backend is too strict or broken.
+
+Before editing: confirm whether this happens in a single-user scenario
+(fresh EOD for the same employee, no concurrent edits) or only when
+multiple users/sessions touch the same record. If it's single-user and
+still fails, the version-check logic is likely broken. If it only fails
+on concurrent edits, the logic is working but the error messaging
+and recovery path need improvement.
+
+Do not touch: the general optimistic concurrency pattern — it's good to
+have. Just fix the bug in its implementation so single-user EOD
+submissions work reliably.
+
+Verify: (a) submit an EOD in a fresh, non-concurrent scenario and
+confirm it succeeds without version-mismatch error, (b) if possible,
+trigger a concurrent edit (two users/sessions on the same record) and
+verify the error appears, (c) after version-mismatch error, can the user
+retry by refreshing the modal or clicking Submit again — or are they
+stuck? If stuck, improve the error UX to allow a refresh.
+```
+
+---
+
+## BUG-X — No way to reactivate a deactivated account
+
+**Where:** Admin → Employee Directory (account management)
+
+```
+Fix: once an account is deactivated (via some Admin action, e.g.
+Deactivate button or dropdown), there's no UI control or workflow to
+reactivate/restore it. The account remains permanently deactivated.
+
+Expected: a Reactivate or Restore action should be visible on deactivated
+accounts, allowing admins to restore the account to Active status without
+recreating it.
+
+Scope: frontend — add a Reactivate action (button, dropdown option) that
+appears only for deactivated accounts. Backend — a reactivate endpoint
+that sets the account status back to Active.
+
+Do not touch: the deactivate logic itself — this is purely about adding
+the reverse operation.
+
+Verify: (a) deactivate an account and confirm the Reactivate action
+appears on that account's row/modal, (b) click Reactivate and confirm
+the account's status is now Active again, (c) that user can now log in
+(assuming their password/email are still intact), (d) an already-Active
+account does not show a Reactivate action.
+```
+
+---
+
+## BUG-Y — "Email is not verified" error appears on login after password change, even though email was already verified in Admin
+
+**Where:** Login page (after changing password) and Admin account verification status
+
+```
+Fix: an account's email is verified in Admin (or verified by the user).
+Later, the user changes their password and tries to log in. The login
+rejects them with "Email is not verified" even though it was already
+verified.
+
+Expected: changing a password should never reset or clear the email
+verification status. Once verified, it stays verified unless explicitly
+unverified by an Admin action.
+
+Scope: the password-change endpoint — confirm it's not accidentally
+resetting the email_verified flag to false or unchecked. Also check the
+login validation logic — it should allow login if email is verified,
+regardless of whether the password was just changed.
+
+Before editing: confirm whether the email_verified flag is actually
+being reset by the password-change flow (check the DB/logs), or whether
+the login check has a bug (e.g. checking the wrong field, or checking a
+stale cached value). Diagnosis determines the fix.
+
+Do not touch: the email-verification flow itself (send email, confirm
+token, etc.) — this bug is specifically about password change not
+triggering a re-verification requirement.
+
+Verify: (a) verify an account's email in Admin or via normal verification
+flow, (b) change that user's password, (c) attempt login with the new
+password, (d) confirm login succeeds without any "email not verified"
+error, (e) spot-check the DB to confirm the email_verified flag is still
+true after the password change.
+```
+
+---
+
+## BUG-Z — Dashboard "Hours This Month" widget severely undercalculates vs. Timesheet totals
+
+**Where:** Employee Dashboard (Hours This Month card) vs. My Timesheet (30-day filter)
+
+```
+Fix: the Dashboard's "Hours This Month" widget shows a drastically lower
+total (e.g. 10.6h) compared to the Timesheet module's actual aggregated
+hours for the same month (e.g. 252h 26m / 208h 36m). The two should
+always match.
+
+Expected: the Dashboard widget must aggregate ALL time entries for the
+current calendar month, applying the same date-range logic as the
+Timesheet module, so both views reflect the same total.
+
+Scope: backend API endpoint feeding the dashboard widget — likely has
+broken date-filtering logic or is querying against the wrong date range
+(e.g. only last N days instead of calendar month). Before editing:
+confirm what date range the widget is actually querying (check the API
+call / logs), and compare it to the Timesheet's date range.
+
+Do not touch: the Timesheet aggregation logic — assume it's correct and
+fix the dashboard query to match it.
+
+Verify: (a) pull the dashboard widget's API response and confirm it's
+querying the correct date range for "this month", (b) manually sum the
+timesheet entries for that same month and confirm it matches Timesheet's
+displayed total, (c) update the dashboard endpoint to use the same date
+logic, (d) refresh the dashboard and confirm the Hours This Month value
+now matches Timesheet's total.
+```
+
+**Resolution:** Fixed — but the expected value stated above was wrong, and
+the "do not touch" instruction pointed at the wrong module. Both views were
+broken, in opposite directions.
+
+**Corrected expected value:** for `employee@demo.test` in July 2026 the true
+total is **225h 38m** (13538 minutes across 102 entries, confirmed by direct
+DB query). The **252h 26m** quoted above was not ground truth — it was the
+Timesheet page's own double-count. Do not use it as a target.
+
+Two independent defects produced the gap:
+
+1. *Dashboard undercount* — the widget summed `Timesheet.totalMinutes` under
+   `periodStart >= from AND periodEnd <= to`. The rollup only exists once a
+   period is aggregated, and `periodEnd <= to` with `to = now` discarded the
+   entire in-progress period plus any period straddling the 1st. Fixed in
+   `dashboard.service.ts` by aggregating `TimeEntry` on `startTime`
+   (commit `5c96df3`, branch `fix/dashboard-hours-this-month`).
+
+2. *Timesheet overcount* — every paginated list endpoint filtered
+   `where: { id: { gt: cursor } }` while ordering by a different column, so
+   walking all pages repeated some rows and skipped others. For this account
+   `GET /time-entries` returned 112 rows for 102 entries. The Timesheet page
+   sums that walk, so its displayed total was inflated by ~27h. Fixed across
+   all 18 call sites by switching to Prisma's native cursor
+   (commit `328ecf0`, branch `fix/cursor-pagination-keyset`).
+
+Both views now report 225.6h. Note that **any hours figure exported or
+reported from a paginated walk before `328ecf0` is inflated**, not just the
+Timesheet page.
+
+---
+
+## BUG-AA — "Return to Work / End Leave" button doesn't update leave status (button remains visible)
+
+**Where:** Employee Dashboard (leave banner) — when clicking the "Return to Work / End Leave" button
+
+```
+Fix: clicking the "Return to Work / End Leave" button on the employee
+dashboard's leave banner has no effect — the button remains visible and
+the leave status doesn't change to Active/Working. The employee is still
+marked as on leave.
+
+Expected: clicking the button should immediately:
+  1. Change the leave status from "Active Leave" to "Returned" or
+     "Completed"
+  2. Update the user's availability status to Active/Working
+  3. Hide/disable the Return to Work button (since leave is now ended)
+  4. Fire a notification to supervisor + HR
+
+Scope: either frontend (button click handler isn't wired or isn't calling
+the backend) or backend (the return-to-work endpoint exists but is broken
+or permission-denied). Before editing: click the button, open browser
+console/network tab, and confirm whether an API request is even being
+sent. If yes, check the response (success vs. error). If no request is
+sent, the frontend handler is broken.
+
+Note: this is related to BUG-N (which added the "Return to Work" flow
+conceptually) and BUG-V (which handles the supervisor's dashboard
+counter update). This bug is specifically about the button action itself
+not executing.
+
+Do not touch: the leave approval/creation workflow — this is only about
+ending an active leave early.
+
+Verify: (a) an employee currently on leave clicks the Return to Work
+button, (b) confirm an API request is sent (check Network tab), (c)
+confirm the response is successful (200, not 400/403/500), (d) confirm
+the leave status in the DB changed to completed/returned, (e) the button
+disappears and the employee's availability status is now Active, (f)
+supervisor's "Active Leave" counter decremented (depends on BUG-V fix).
+```
+
+---
+
 ## Suggested order
 
 Group by risk and independence — do standalone/low-risk items first, save anything touching KPI data model or RBAC role assignment for its own isolated session:
 
-1. BUG-F (copy only — trivial warm-up)
-2. BUG-J (icon only — trivial)
-3. BUG-I (remove redundant button — frontend only)
-4. BUG-E (profile modal conditional rendering — frontend only)
-5. BUG-G (payrun table columns — additive, low risk)
-6. BUG-C (directory query missing supervisor role)
-7. BUG-H (HR permission grant — isolated RBAC change)
-8. BUG-D (email uniqueness — **check for existing duplicate data before running the migration**)
-9. BUG-A (timesheet row → audit link + edit-lock)
-10. BUG-M (exclude supervisor from underperforming list)
-11. BUG-N (return-from-leave flow)
-12. BUG-B (role escalation on supervisor assignment — RBAC, do alone)
-13. BUG-L (scorecard aggregation view — new endpoint + scoping rules)
-14. BUG-K (Planned Target editable + Actual Completed — largest, touches KPI data model; if BUG-007 from the prior QA round's "KPI integration" work is being done in the same project, sequence this AFTER that so they don't define conflicting KPI-tracking fields)
+1. BUG-T (Performance Report "search is not defined" — blocks page load, high priority)
+2. BUG-Z (Dashboard hours aggregation mismatch vs. Timesheet — critical for reporting accuracy)
+3. BUG-F (copy only — trivial warm-up)
+4. BUG-J (icon only — trivial)
+5. BUG-I (remove redundant button — frontend only)
+6. BUG-E (profile modal conditional rendering — frontend only)
+7. BUG-P (Gross Pay display formatting — frontend only, confirm calc is already correct)
+8. BUG-G (payrun table columns — additive, low risk)
+9. BUG-C (directory query missing supervisor role)
+10. BUG-H (HR permission grant — isolated RBAC change)
+11. BUG-D (email uniqueness — **check for existing duplicate data before running the migration**)
+12. BUG-R (notification badge → in-page highlight/filter)
+13. BUG-Y (Email verification flag shouldn't reset after password change — login blocker, do early)
+14. BUG-X (No way to reactivate deactivated accounts — missing action)
+15. BUG-A (timesheet row → audit link + edit-lock)
+16. BUG-M (exclude supervisor from underperforming list)
+17. BUG-N (return-from-leave flow)
+18. BUG-AA (Return to Work button doesn't execute — BUG-N's implementation is broken; critical for leave workflow)
+19. BUG-V (leave dashboard counters don't update — data-sync/cache invalidation; sequence after BUG-N/AA since it validates the full leave flow works end-to-end)
+20. BUG-B (role escalation on supervisor assignment — RBAC, do alone)
+21. BUG-Q (supervisor time-adjustment override — compliance-sensitive, own session; verify it feeds correctly into BUG-003's payroll sync from the prior QA round)
+22. BUG-W (Version mismatch on EOD submit — blocks EOD completion, high priority; fix before adding new EOD features)
+23. BUG-L (scorecard aggregation view — new endpoint + scoping rules)
+24. BUG-K (Planned Target editable + Actual Completed — touches KPI data model; if BUG-007's KPI integration work is done in the same project, sequence this AFTER that so they don't define conflicting KPI-tracking fields)
+25. BUG-O (EOD "Actual Completed" input — depends on BUG-K, must come after it; also assumes BUG-W's version-mismatch bug is fixed so EOD can submit)
+26. BUG-U (Completed commitments remain editable + stay "In Progress" — depends on BUG-O working, should come after to verify the post-EOD state is correct)
+27. BUG-S (avatar sync — backend serializer/select fix + shared Avatar component fallback; low interdependency with others, but check the Avatar component broadly since it likely renders in many places)

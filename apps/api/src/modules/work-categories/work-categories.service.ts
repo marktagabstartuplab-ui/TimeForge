@@ -11,12 +11,13 @@ export class WorkCategoriesService {
 
   async findAll(tenantId: string, orgId: string, query: ListQuery): Promise<PageResult<WorkCategory>> {
     const limit = Math.min(Number(query.limit ?? 20), 100);
-    const cursorWhere = query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {};
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     const nameWhere = query.q ? { name: { contains: String(query.q), mode: 'insensitive' as const } } : {};
     const items = await this.prisma.workCategory.findMany({
-      where: { tenantId, organizationId: orgId, deletedAt: null, ...cursorWhere, ...nameWhere },
-      orderBy: { name: 'asc' },
+      where: { tenantId, organizationId: orgId, deletedAt: null, ...nameWhere },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     return buildPage(items, limit);
   }
