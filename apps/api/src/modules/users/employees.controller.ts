@@ -1,4 +1,4 @@
-import { Body, Controller, Get, Header, Param, ParseUUIDPipe, Patch, Post, Query, Res } from '@nestjs/common';
+import { Body, Controller, Get, Header, HttpCode, Param, ParseUUIDPipe, Patch, Post, Query, Res } from '@nestjs/common';
 import type { Response } from 'express';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { UsersService } from './users.service';
@@ -77,6 +77,14 @@ export class EmployeesController {
     @Body() dto: UpdateUserDto,
   ) {
     return this.svc.update(u, id, dto);
+  }
+
+  @Post(':id/reactivate')
+  @HttpCode(200)
+  @RequirePermissions('user:deactivate')
+  @ApiOperation({ summary: 'Restore a deactivated employee to ACTIVE so they can sign in again' })
+  reactivate(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.reactivate(u, id);
   }
 
   @Post('invite')

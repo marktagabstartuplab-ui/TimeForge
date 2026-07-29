@@ -110,6 +110,13 @@ export class UsersController {
     return this.svc.deactivate(u, id);
   }
 
+  @Post(':id/reactivate')
+  @HttpCode(200)
+  @RequirePermissions('user:deactivate')
+  reactivate(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.reactivate(u, id);
+  }
+
   @Post(':id/roles')
   @RequirePermissions('user:assign_role')
   assignRoles(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string, @Body() dto: AssignRolesDto) {
