@@ -746,6 +746,13 @@ export class UsersService {
         data: {
           status: UserStatus.ACTIVE,
           isApproved: true,
+          // Admin approval is an explicit human confirmation of the account, and
+          // login gates on `emailVerifiedAt` (auth.service.ts). Without this an
+          // approved user who never clicked the token link dead-ends forever on
+          // "Email not verified" — typically noticed after a password change,
+          // which is unrelated. `??` so an existing verification timestamp is
+          // never overwritten; nothing in the codebase ever clears this field.
+          emailVerifiedAt: existing.emailVerifiedAt ?? new Date(),
           ...(dto.departmentId ? { departmentId: dto.departmentId } : {}),
           ...(dto.employmentType ? { employmentType: dto.employmentType } : {}),
           supervisorId,
@@ -787,19 +794,9 @@ export class UsersService {
 
     const fullName = `${existing.firstName} ${existing.lastName}`;
     const loginUrl = `${this.frontendUrl()}/login`;
-    // Login requires BOTH an approved (ACTIVE) status AND a verified email
-    // (auth.service enforces `emailVerifiedAt`). If they haven't verified yet,
-    // include that step so the sign-in link doesn't dead-end on "Email not verified".
-    const needsVerification = !existing.emailVerifiedAt;
-    const verifyReminder = needsVerification
-      ? [
-          'One quick step first: if you haven’t already, please verify your email',
-          'address using the verification link we emailed you when you registered',
-          '(check your spam folder if you can’t find it). You’ll need to verify before',
-          'you can sign in.',
-          '',
-        ]
-      : [];
+    // Approval now also marks the email verified (see the user.update above), so
+    // the sign-in link can no longer dead-end on "Email not verified" and the
+    // old "verify first" reminder in this email would be wrong.
     void this.mailer
       .send(
         existing.email,
@@ -809,7 +806,6 @@ export class UsersService {
           '',
           'Great news! Your TimeForge account has been reviewed and approved by an administrator.',
           '',
-          ...verifyReminder,
           'You can now sign in to TimeForge using the email address and password you registered with:',
           '',
           loginUrl,
