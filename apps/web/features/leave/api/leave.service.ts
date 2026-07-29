@@ -100,6 +100,11 @@ export async function listLeaveRequests(query: LeaveRequestQuery = {}): Promise<
   return data;
 }
 
+export async function getLeaveRequest(id: string): Promise<LeaveRequest> {
+  const { data } = await apiClient.get<LeaveRequest>(`/leave/requests/${id}`);
+  return data;
+}
+
 export async function createLeaveRequest(payload: CreateLeaveRequestPayload): Promise<LeaveRequest> {
   const { data } = await apiClient.post<LeaveRequest>("/leave/requests", payload);
   return data;
