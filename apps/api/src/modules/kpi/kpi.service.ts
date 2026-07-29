@@ -37,12 +37,13 @@ export class KpiService {
       ...(query.q
         ? { name: { contains: query.q, mode: 'insensitive' } }
         : {}),
-      ...(query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {}),
     };
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     const items = await this.prisma.kpiTemplate.findMany({
       where,
       orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     return buildPage(items, limit);
   }
@@ -171,13 +172,14 @@ export class KpiService {
       ...(await this.resolveProgressUserFilter(p, query.userId)),
       ...(query.kpiTemplateId ? { kpiTemplateId: query.kpiTemplateId } : {}),
       ...(query.periodKey ? { periodKey: query.periodKey } : {}),
-      ...(query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {}),
     };
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     const items = await this.prisma.kpiProgress.findMany({
       where,
       include: { kpiTemplate: { select: { name: true, metricType: true, period: true } } },
       orderBy: [{ periodKey: 'desc' }, { id: 'asc' }],
       take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     return buildPage(items as any[], limit);
   }

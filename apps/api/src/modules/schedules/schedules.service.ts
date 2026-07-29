@@ -162,12 +162,13 @@ export class SchedulesService {
             },
           }
         : {}),
-      ...(query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {}),
     };
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     const items = await this.prisma.shift.findMany({
       where,
       orderBy: [{ shiftDate: 'asc' }, { startTime: 'asc' }, { id: 'asc' }],
       take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     return buildPage(items, limit);
   }
@@ -367,13 +368,14 @@ export class SchedulesService {
       deletedAt: null,
       status: 'DRAFT',
       ...(userIds ? { userId: { in: userIds } } : {}),
-      ...(query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {}),
     };
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     const items = await this.prisma.shift.findMany({
       where,
       include: { user: { select: { firstName: true, lastName: true } }, department: { select: { name: true } } },
       orderBy: [{ shiftDate: 'asc' }, { id: 'asc' }],
       take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     return buildPage(items as unknown as Shift[], limit);
   }

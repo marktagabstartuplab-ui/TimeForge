@@ -46,12 +46,16 @@ export class TimeTrackingService {
             },
           }
         : {}),
-      ...(query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {}),
     };
+    // Prisma's native cursor positions within `orderBy`. The previous
+    // `where: { id: { gt: cursor } }` paged by id while the rows were ordered
+    // by startTime, so later pages both repeated and skipped entries.
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     const items = await this.prisma.timeEntry.findMany({
       where,
       orderBy: [{ startTime: 'desc' }, { id: 'asc' }],
       take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     return buildPage(items, limit);
   }

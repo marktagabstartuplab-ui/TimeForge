@@ -74,7 +74,6 @@ export class TimesheetsService {
             },
           }
         : {}),
-      ...(query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {}),
     };
 
     if (query.departmentId) {
@@ -93,10 +92,12 @@ export class TimesheetsService {
     const sortField = this.resolveSortField(query.sortBy);
     const sortDir: Prisma.SortOrder = query.sortDir === 'asc' ? 'asc' : 'desc';
 
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     const items = await this.prisma.timesheet.findMany({
       where,
       orderBy: [{ [sortField]: sortDir }, { id: 'asc' }],
       take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       include: {
         user: { select: { firstName: true, lastName: true, avatarKey: true, department: { select: { name: true } } } },
       },
@@ -351,7 +352,6 @@ export class TimesheetsService {
             },
           }
         : {}),
-      ...(query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {}),
     };
 
     if (query.departmentId) {
@@ -367,10 +367,12 @@ export class TimesheetsService {
       };
     }
 
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     const items = await this.prisma.timesheet.findMany({
       where,
       orderBy: [{ periodStart: 'desc' }, { id: 'asc' }],
       take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       include: {
         user: { select: { firstName: true, lastName: true, avatarKey: true, department: { select: { name: true } } } },
       },
@@ -779,7 +781,6 @@ export class TimesheetsService {
             },
           }
         : {}),
-      ...(query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {}),
     };
 
     if (query.departmentId) {
@@ -798,10 +799,12 @@ export class TimesheetsService {
     const sortField = this.resolveSortField(query.sortBy);
     const sortDir: Prisma.SortOrder = query.sortDir === 'asc' ? 'asc' : 'desc';
 
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     const items = await this.prisma.timesheet.findMany({
       where,
       orderBy: [{ [sortField]: sortDir }, { id: 'asc' }],
       take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
       include: {
         user: { select: { firstName: true, lastName: true, department: { select: { name: true } } } },
         approvals: {
