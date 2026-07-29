@@ -357,6 +357,9 @@ export class LeaveService {
         where: { id },
         data: {
           endDate: newEndDate < request.startDate ? request.startDate : newEndDate,
+          // Terminal status so active-leave views (which filter on APPROVED) drop it
+          // immediately, including same-day leaves whose endDate can't move before startDate.
+          status: 'COMPLETED',
           updatedBy: p.userId,
           version: { increment: 1 },
         },

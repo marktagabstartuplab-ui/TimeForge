@@ -119,6 +119,7 @@ enum LeaveRequestStatus {
   APPROVED
   REJECTED
   CANCELLED
+  COMPLETED
 }
 
 enum TimeEntrySource {

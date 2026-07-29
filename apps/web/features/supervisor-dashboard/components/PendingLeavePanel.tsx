@@ -29,6 +29,7 @@ const STATUS_OPTIONS = [
   { value: "APPROVED", label: "Approved" },
   { value: "REJECTED", label: "Rejected" },
   { value: "CANCELLED", label: "Cancelled" },
+  { value: "COMPLETED", label: "Returned" },
 ] as const;
 
 import { useCan } from "@/features/auth/rbac";
