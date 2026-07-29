@@ -123,6 +123,36 @@ describe('ScrumService — completed commitment lock-down', () => {
     expect(prisma.scrumTask.update).toHaveBeenCalled();
   });
 
+  // BUG-W — recalcEntryProgress used to bump the parent entry's version. That
+  // invalidated the optimistic-lock token held by the very client that wrote the
+  // task, so the End of Day Review (write tasks, then update the entry) always
+  // 409'd "Version mismatch" in a plain single-user submit.
+  it('does not bump the entry version when recomputing derived progress', async () => {
+    prisma.scrumTask.findFirst.mockResolvedValue({ ...baseTask, taskStatus: 'IN_PROGRESS', completedAt: null });
+    prisma.scrumTask.update.mockResolvedValue({ ...baseTask, actualCompleted: '55' });
+    prisma.scrumTask.findMany.mockResolvedValue([{ taskStatus: 'COMPLETED' }]);
+    prisma.scrumEntry.findFirst.mockResolvedValue({
+      id: 'entry-1',
+      userId: 'user-1',
+      tenantId: 'tenant-1',
+      organizationId: 'org-1',
+      submittedAt: new Date(),
+      isLocked: false,
+    });
+    prisma.scrumEntry.update.mockResolvedValue({});
+
+    await service.updateTask(principal, 'task-1', { actualCompleted: '55', version: 3 } as any);
+
+    expect(prisma.scrumEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'entry-1' },
+        data: expect.objectContaining({ progress: 100, status: 'COMPLETED', isLocked: true }),
+      }),
+    );
+    const [{ data }] = prisma.scrumEntry.update.mock.calls.at(-1)!;
+    expect(data).not.toHaveProperty('version');
+  });
+
   it('unlockEntry reopens the day\'s completed commitments', async () => {
     const supervisor = { ...principal, permissions: ['scrum:read_org'] } as unknown as AuthPrincipal;
     prisma.scrumEntry.findFirst.mockResolvedValue({

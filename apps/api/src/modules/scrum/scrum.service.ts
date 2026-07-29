@@ -1209,6 +1209,12 @@ export class ScrumService {
 
     const justLocked = isLocked && !entry.submittedAt;
 
+    // Deliberately does NOT bump `version`. These are derived fields recomputed
+    // from the task rows, not a user edit of the entry — bumping here invalidated
+    // the optimistic-lock token held by whoever triggered the task write, so a
+    // client that wrote tasks and then updated the entry (the End of Day Review)
+    // always 409'd against a version it had itself just invalidated. The lock
+    // still guards real edits to yesterday/today/blockers/notes via update().
     await this.prisma.scrumEntry.update({
       where: { id: scrumEntryId },
       data: {
@@ -1217,7 +1223,6 @@ export class ScrumService {
         isLocked,
         submittedAt: justLocked ? new Date() : entry.submittedAt,
         updatedBy: actorId,
-        version: { increment: 1 },
       },
     });
 
