@@ -123,6 +123,25 @@ describe('ScrumService — completed commitment lock-down', () => {
     expect(prisma.scrumTask.update).toHaveBeenCalled();
   });
 
+  // completeTask is idempotent: re-completing an already-COMPLETED task is a
+  // no-op and must not require a current version token, or a repeat click after
+  // the version moved on 409s forever instead of quietly succeeding.
+  it('completing an already-COMPLETED task is a no-op even on a stale version', async () => {
+    prisma.scrumTask.findFirst.mockResolvedValue(baseTask); // taskStatus COMPLETED, version 3
+
+    const result = await service.completeTask(principal, 'task-1', 1); // stale version
+
+    expect(result).toEqual(baseTask);
+    expect(prisma.scrumTask.update).not.toHaveBeenCalled();
+  });
+
+  it('still rejects completing a not-yet-complete task on a stale version', async () => {
+    prisma.scrumTask.findFirst.mockResolvedValue({ ...baseTask, taskStatus: 'IN_PROGRESS', completedAt: null });
+
+    await expect(service.completeTask(principal, 'task-1', 1)).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.scrumTask.update).not.toHaveBeenCalled();
+  });
+
   // BUG-W — recalcEntryProgress used to bump the parent entry's version. That
   // invalidated the optimistic-lock token held by the very client that wrote the
   // task, so the End of Day Review (write tasks, then update the entry) always

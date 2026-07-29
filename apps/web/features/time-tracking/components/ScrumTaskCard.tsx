@@ -293,7 +293,14 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
       invalidateEntry();
       onToast({ message: "Task marked as completed." });
     },
-    onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Could not complete task", tone: "error" }),
+    onError: (err) => {
+      // A stale version token is unrecoverable unless the list is refetched —
+      // without this, every further click replays the same dead version and
+      // 409s forever. Refreshing here means the next click carries a live
+      // version and succeeds.
+      if (err instanceof ApiError && err.status === 409) invalidateEntry();
+      onToast({ message: err instanceof ApiError ? err.message : "Could not complete task", tone: "error" });
+    },
   });
 
   const removeTask = useMutation({
