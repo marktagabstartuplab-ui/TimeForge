@@ -162,13 +162,46 @@ export class DashboardService {
     });
 
     const byStatus: Record<string, number> = {};
-    let totalMinutes = 0;
     let approvedMinutes = 0;
     for (const row of timesheets) {
       byStatus[row.status] = row._count.id;
-      totalMinutes += row._sum.totalMinutes ?? 0;
       if (row.status === 'APPROVED') approvedMinutes += row._sum.totalMinutes ?? 0;
     }
+
+    // Tracked hours come from TimeEntry, not the Timesheet rollup: a rollup row
+    // only exists once a period is aggregated, and the `periodEnd <= to` window
+    // above excludes the current in-progress period entirely — together those
+    // made this card report a fraction of the Timesheet module's total. Filter
+    // on startTime over [from, to], exactly as GET /time-entries does, so the
+    // two views always agree.
+    const teWhere: Record<string, unknown> = {
+      tenantId,
+      deletedAt: null,
+      startTime: { gte: from, lte: to },
+    };
+    if (userIds) teWhere['userId'] = { in: userIds };
+
+    const [closed, running] = await Promise.all([
+      this.prisma.timeEntry.aggregate({
+        where: { ...teWhere, endTime: { not: null } },
+        _sum: { durationMinutes: true },
+      }),
+      // A running timer has no durationMinutes yet; count elapsed time so far,
+      // matching the frontend's entryMinutes() fallback.
+      this.prisma.timeEntry.findMany({
+        where: { ...teWhere, endTime: null },
+        select: { startTime: true, durationMinutes: true },
+      }),
+    ]);
+
+    const now = Date.now();
+    const totalMinutes =
+      (closed._sum.durationMinutes ?? 0) +
+      running.reduce(
+        (sum, e) =>
+          sum + (e.durationMinutes ?? Math.max(0, Math.round((now - e.startTime.getTime()) / 60_000))),
+        0,
+      );
 
     let kpi: unknown[] = [];
     if (scope === 'self') {
