@@ -418,8 +418,13 @@ export class ScrumService {
 
   async completeTask(p: AuthPrincipal, id: string, version: number): Promise<ScrumTask> {
     const task = await this.ownTask(p, id);
-    if (task.version !== version) throw new ConflictException('Version mismatch');
+    // Idempotency first: completing an already-COMPLETED task is a no-op, so it
+    // must not depend on holding a current version token. Behind the version
+    // check this branch was unreachable in the one case it exists for — a client
+    // re-clicking a task whose version had already moved on — which turned a
+    // harmless repeat click into a permanent 409.
     if (task.taskStatus === 'COMPLETED') return task;
+    if (task.version !== version) throw new ConflictException('Version mismatch');
     await this.assertEntryUnlocked(task.scrumEntryId);
 
     const updated = await this.prisma.scrumTask.update({
