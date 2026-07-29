@@ -978,6 +978,26 @@ export class UsersService {
     await this.audit(caller.tenantId, caller.userId, AuditAction.ADMIN_ACTION, 'user', id);
   }
 
+  /**
+   * Reverse of {@link deactivate} — restores a DEACTIVATED account to ACTIVE so
+   * the user can sign in again with their existing credentials. Idempotent when
+   * the account is already ACTIVE; refuses other statuses (PENDING/REJECTED/
+   * INVITED/SUSPENDED) so this can't be used to skip approval or un-suspend.
+   */
+  async reactivate(caller: AuthPrincipal, id: string) {
+    const existing = await this.prisma.user.findFirst({ where: { id, tenantId: caller.tenantId, deletedAt: null } });
+    if (!existing) throw new NotFoundException('User not found');
+    if (existing.status === UserStatus.ACTIVE) return;
+    if (existing.status !== UserStatus.DEACTIVATED) {
+      throw new ConflictException('Only deactivated accounts can be reactivated');
+    }
+    await this.prisma.user.update({
+      where: { id },
+      data: { status: UserStatus.ACTIVE, updatedBy: caller.userId, version: { increment: 1 } },
+    });
+    await this.audit(caller.tenantId, caller.userId, AuditAction.ADMIN_ACTION, 'user', id);
+  }
+
   async assignRoles(caller: AuthPrincipal, userId: string, dto: AssignRolesDto) {
     const user = await this.prisma.user.findFirst({ where: { id: userId, tenantId: caller.tenantId, deletedAt: null } });
     if (!user) throw new NotFoundException('User not found');

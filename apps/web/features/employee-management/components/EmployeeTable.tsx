@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useInfiniteQuery, useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileText, Upload, UserX, ChevronDown } from "lucide-react";
+import { Download, FileText, Upload, UserCheck, UserX, ChevronDown } from "lucide-react";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { EmptyState } from "@/components/shared/EmptyState";
@@ -36,6 +36,7 @@ import {
   updateEmployee,
   exportEmployeesCsv,
   exportEmployeesPdf,
+  reactivateEmployee,
   type EmployeeRow,
 } from "../api/employee-management.service";
 import { ImportEmployeesModal } from "./ImportEmployeesModal";
@@ -76,6 +77,7 @@ export function EmployeeTable({ isAdmin, onToast }: { isAdmin: boolean; onToast:
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [importOpen, setImportOpen] = useState(false);
   const [deactivateConfirmOpen, setDeactivateConfirmOpen] = useState(false);
+  const [reactivateTarget, setReactivateTarget] = useState<EmployeeRow | null>(null);
 
   const { data: departments } = useQuery({ queryKey: ["auth", "departments"], queryFn: fetchDepartments });
 
@@ -128,6 +130,16 @@ export function EmployeeTable({ isAdmin, onToast }: { isAdmin: boolean; onToast:
       invalidateAll();
     },
     onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Bulk deactivate failed.", tone: "error" }),
+  });
+
+  const reactivate = useMutation({
+    mutationFn: (id: string) => reactivateEmployee(id),
+    onSuccess: () => {
+      onToast({ message: "Account reactivated.", tone: "success" });
+      setReactivateTarget(null);
+      invalidateAll();
+    },
+    onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Reactivate failed.", tone: "error" }),
   });
 
   const toggleSelectAll = () => {
@@ -315,7 +327,26 @@ export function EmployeeTable({ isAdmin, onToast }: { isAdmin: boolean; onToast:
                       </td>
                       <td className="py-2.5 pr-4"><StatusBadge label={roleName} tone="info" /></td>
                       <td className="py-2.5 pr-4 text-brand-muted">{r.department?.name ?? "—"}</td>
-                      <td className="py-2.5 pr-4"><StatusBadge label={label} tone={tone} /></td>
+                      <td className="py-2.5 pr-4">
+                        <div className="flex items-center gap-2">
+                          <StatusBadge label={label} tone={tone} />
+                          {isAdmin && r.status === "DEACTIVATED" ? (
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              className="flex items-center gap-1.5"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setReactivateTarget(r);
+                              }}
+                            >
+                              <UserCheck className="h-3.5 w-3.5" aria-hidden="true" />
+                              Reactivate
+                            </Button>
+                          ) : null}
+                        </div>
+                      </td>
                       <td className="py-2.5">
                         <span className="inline-flex items-center gap-1.5">
                           <span
@@ -358,6 +389,16 @@ export function EmployeeTable({ isAdmin, onToast }: { isAdmin: boolean; onToast:
         destructive
         pending={deactivateSelected.isPending}
         onConfirm={() => deactivateSelected.mutate()}
+      />
+
+      <ConfirmationDialog
+        open={reactivateTarget !== null}
+        onOpenChange={(open) => { if (!open) setReactivateTarget(null); }}
+        title={`Reactivate ${reactivateTarget?.firstName ?? ""} ${reactivateTarget?.lastName ?? ""}?`.trim()}
+        description="This restores the account to Active. They'll be able to sign in again with their existing email and password."
+        confirmLabel="Reactivate"
+        pending={reactivate.isPending}
+        onConfirm={() => { if (reactivateTarget) reactivate.mutate(reactivateTarget.id); }}
       />
     </>
   );

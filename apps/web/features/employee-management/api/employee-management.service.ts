@@ -66,6 +66,15 @@ export async function updateEmployee(id: string, payload: UpdateEmployeePayload)
 }
 
 /**
+ * Restores a deactivated account to ACTIVE so the user can sign in again with
+ * their existing credentials. The backend only accepts DEACTIVATED accounts, so
+ * this can't be used to bypass approval or un-suspend someone.
+ */
+export async function reactivateEmployee(id: string): Promise<void> {
+  await apiClient.post(`/employees/${id}/reactivate`);
+}
+
+/**
  * Replaces a user's role set (promote/demote). The backend deletes the
  * existing UserRole rows and recreates them from `roles`, so this is a full
  * replacement, not an append — passing ["EMPLOYEE"] demotes an elevated user.
