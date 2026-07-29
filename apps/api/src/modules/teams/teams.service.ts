@@ -11,13 +11,14 @@ export class TeamsService {
 
   async findAll(tenantId: string, orgId: string, query: ListQuery): Promise<PageResult<Team>> {
     const limit = Math.min(Number(query.limit ?? 20), 100);
-    const cursorWhere = query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {};
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     const nameWhere = query.q ? { name: { contains: String(query.q), mode: 'insensitive' as const } } : {};
     const deptWhere = query.departmentId ? { departmentId: String(query.departmentId) } : {};
     const items = await this.prisma.team.findMany({
-      where: { tenantId, organizationId: orgId, deletedAt: null, ...cursorWhere, ...nameWhere, ...deptWhere },
-      orderBy: { name: 'asc' },
+      where: { tenantId, organizationId: orgId, deletedAt: null, ...nameWhere, ...deptWhere },
+      orderBy: [{ name: 'asc' }, { id: 'asc' }],
       take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     return buildPage(items, limit);
   }

@@ -201,9 +201,9 @@ export class LeaveService {
             },
           }
         : {}),
-      ...(query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {}),
     };
 
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     const items = await this.prisma.leaveRequest.findMany({
       where,
       include: {
@@ -217,6 +217,7 @@ export class LeaveService {
       },
       orderBy: [{ createdAt: 'desc' }, { id: 'asc' }],
       take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     const page = buildPage(items, limit);
     const avatarUrls = await this.storage.signedUrlsByKey(page.data.map((r) => r.user.avatarKey));
