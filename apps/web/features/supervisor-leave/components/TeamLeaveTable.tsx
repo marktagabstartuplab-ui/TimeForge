@@ -20,6 +20,8 @@ export function leaveStatusTone(status: string): { label: string; tone: BadgeTon
       return { label: "Rejected", tone: "danger" };
     case "CANCELLED":
       return { label: "Cancelled", tone: "neutral" };
+    case "COMPLETED":
+      return { label: "Returned", tone: "info" };
     default:
       return { label: status, tone: "neutral" };
   }

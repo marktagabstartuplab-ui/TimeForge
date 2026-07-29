@@ -1,7 +1,7 @@
 import { apiClient } from "@/lib/api/client";
 
 export type LeaveType = "ANNUAL" | "SICK" | "PERSONAL";
-export type LeaveRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED";
+export type LeaveRequestStatus = "PENDING" | "APPROVED" | "REJECTED" | "CANCELLED" | "COMPLETED";
 
 export interface LeaveRequestUser {
   id: string;
