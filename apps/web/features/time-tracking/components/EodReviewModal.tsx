@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
@@ -17,6 +17,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { FieldError, FormBanner } from "@/features/auth/components/FormMessages";
 import {
   createScrumEntry,
+  getScrumEntry,
   listScrumEntries,
   listScrumTasks,
   updateScrumEntry,
@@ -221,6 +222,11 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
   const [commitmentDone, setCommitmentDone] = useState(false);
   const [reviews, setReviews] = useState<Record<string, TaskReview>>({});
   const [taskErrors, setTaskErrors] = useState<Record<string, string>>({});
+  // Latest known optimistic-lock version per task, seeded from the cached list and
+  // advanced by each successful write. A failed submit leaves some tasks already
+  // written (and version-bumped), so a plain retry off the cached list would 409;
+  // this keeps retries working without refetching over the user's typed answers.
+  const taskVersions = useRef<Record<string, number>>({});
 
   const { data: workSession } = useQuery({
     queryKey: ["work-session", "current"],
@@ -267,6 +273,7 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
       setServerError(null);
       setCommitmentDone(false);
       setTaskErrors({});
+      taskVersions.current = {};
     }
   }, [open, reset]);
 
@@ -337,13 +344,14 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
         const review = reviews[task.id] ?? EMPTY_REVIEW;
         const actual = parseNumericTarget(review.actual)!;
         const shortfall = actual < planned;
-        await updateScrumTask(task.id, {
+        const updated = await updateScrumTask(task.id, {
           actualCompleted: review.actual.trim(),
           taskStatus: shortfall ? "IN_PROGRESS" : "COMPLETED",
           continueTomorrow: shortfall ? review.continueTomorrow ?? false : false,
           notCompletedReason: shortfall ? review.reason.trim() : "",
-          version: task.version,
+          version: taskVersions.current[task.id] ?? task.version,
         });
+        taskVersions.current[task.id] = updated.version;
       }
 
       // Pass 2 — Non-KPI commitments (no numeric planned target): mark COMPLETED
@@ -354,10 +362,11 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
       for (const task of commitments) {
         if (isKpiLinked(task)) continue;
         if (task.taskStatus === "COMPLETED") continue;
-        await updateScrumTask(task.id, {
+        const updated = await updateScrumTask(task.id, {
           taskStatus: "COMPLETED",
-          version: task.version,
+          version: taskVersions.current[task.id] ?? task.version,
         });
+        taskVersions.current[task.id] = updated.version;
       }
 
       if (workSession?.session?.isActive) {
@@ -365,14 +374,22 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
       }
       const eodLine = `EOD Review — ${values.accomplishments}`;
       if (scrum) {
+        // Re-read the entry immediately before writing it. Each task write above
+        // runs recalcEntryProgress() server-side, which bumps the PARENT entry's
+        // version — so the copy we opened the modal with is stale by exactly the
+        // number of commitments we just saved, and reusing it always 409s. This
+        // is our own write chain, not a competing editor, so re-reading here
+        // resolves the self-inflicted bump while leaving the optimistic lock
+        // intact for the fields we actually carry across (today/blockers).
+        const current = await getScrumEntry(scrum.id);
         // Keep only the morning commitment (everything before any prior EOD line)
         // and replace the EOD line — re-submitting the review must not append a
         // second "EOD Review —" block and duplicate Today's Commitments (QA #15).
-        const morningCommitment = (scrum.today ?? "").split("\n\nEOD Review —")[0];
+        const morningCommitment = (current.today ?? "").split("\n\nEOD Review —")[0];
         return updateScrumEntry(scrum.id, {
           today: [morningCommitment, eodLine].filter(Boolean).join("\n\n").slice(0, 5000),
-          blockers: values.finalBlockers || scrum.blockers || undefined,
-          version: scrum.version,
+          blockers: values.finalBlockers || current.blockers || undefined,
+          version: current.version,
         });
       }
       return createScrumEntry({
@@ -390,8 +407,25 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
       onOpenChange(false);
       onSubmitted?.();
     },
-    onError: (err) =>
-      setServerError(err instanceof Error ? err.message : "Could not submit your review"),
+    onError: async (err) => {
+      const message = err instanceof Error ? err.message : "Could not submit your review";
+      const conflict = /version mismatch/i.test(message);
+      setServerError(
+        conflict
+          ? "Your commitments were updated elsewhere while you were writing this review. We've refreshed them — press Submit Review & Time Out again to finish."
+          : message,
+      );
+      // Resync versions so the retry isn't stuck behind a stale lock token. Read
+      // directly rather than invalidating the query — invalidation would re-seed
+      // the form effect and wipe the answers the user just typed.
+      if (!scrum) return;
+      try {
+        const fresh = await listScrumTasks(scrum.id);
+        for (const task of fresh) taskVersions.current[task.id] = task.version;
+      } catch {
+        // Best-effort — the user can still close and reopen the review.
+      }
+    },
   });
 
   const onSubmit = (values: EodReviewValues) => {

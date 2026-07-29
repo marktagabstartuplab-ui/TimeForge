@@ -17,6 +17,7 @@ import { MetricCard } from "@/components/shared/MetricCard";
 import { StatusBadge, timesheetStatusTone } from "@/components/shared/StatusBadge";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { ErrorState } from "@/components/shared/ErrorState";
+import { startOfOrgDay, toOrgIsoDate } from "@/lib/time";
 import { Toast, type ToastState } from "@/components/shared/Toast";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -47,10 +48,11 @@ function formatDate(iso: string): string {
 }
 
 function getWeekRange(weeks: number): { from: string; to: string } {
-  const to = new Date();
-  const from = new Date();
-  from.setDate(from.getDate() - weeks * 7);
-  return { from: from.toISOString().slice(0, 10), to: to.toISOString().slice(0, 10) };
+  // Organization-local days: the previous version mixed the viewer's machine
+  // clock (setDate) with a UTC slice, so the window drifted by the viewer's
+  // offset — and by a whole day during Manila mornings.
+  const to = toOrgIsoDate();
+  return { from: toOrgIsoDate(startOfOrgDay(to, -weeks * 7)), to };
 }
 
 export function HRTimesheetsContent() {

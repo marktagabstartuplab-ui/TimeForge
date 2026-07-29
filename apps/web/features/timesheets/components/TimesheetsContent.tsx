@@ -30,13 +30,13 @@ import { TimesheetHistoryCard } from "./TimesheetHistoryCard";
 import { SessionSummaryCard } from "./SessionSummaryCard";
 import { DayTimelineCard } from "./DayTimelineCard";
 import {
-  currentPayPeriod,
-  endOfDay,
+  currentOrgPayPeriod,
+  endOfOrgDay,
   formatMinutesClock,
   formatPeriodRange,
   minutesToHours,
-  startOfDay,
-  toIsoDate,
+  startOfOrgDay,
+  toOrgIsoDate,
 } from "@/lib/time";
 import { ApiError } from "@/lib/api/client";
 import { summarizeDay, buildDayTimeline } from "@/features/time-tracking/lib/day-summary";
@@ -53,16 +53,16 @@ export function TimesheetsContent() {
   }, []);
 
   const now = useMemo(() => new Date(), []);
-  const period = useMemo(() => currentPayPeriod(now), [now]);
+  const period = useMemo(() => currentOrgPayPeriod(now), [now]);
   const periodDayCount = Math.round((period.end.getTime() - period.start.getTime()) / 86_400_000) + 1;
 
   // ── Today's entries (for Session Summary + Timeline) ──────────────────────
   const todayEntriesQuery = useQuery({
-    queryKey: ["time-entries", "today", toIsoDate(now)],
+    queryKey: ["time-entries", "today", toOrgIsoDate(now)],
     queryFn: () =>
       listTimeEntries({
-        from: startOfDay(now).toISOString(),
-        to: endOfDay(now).toISOString(),
+        from: startOfOrgDay(now).toISOString(),
+        to: endOfOrgDay(now).toISOString(),
         limit: 100,
       }),
   });
@@ -71,15 +71,15 @@ export function TimesheetsContent() {
   const timesheetsQuery = useQuery({
     queryKey: ["timesheets", "current-period"],
     queryFn: () =>
-      listTimesheets({ from: toIsoDate(period.start), to: toIsoDate(period.start), limit: 5 }),
+      listTimesheets({ from: toOrgIsoDate(period.start), to: toOrgIsoDate(period.start), limit: 5 }),
   });
 
   const entriesQuery = useQuery({
-    queryKey: ["time-entries", "period", toIsoDate(period.start)],
+    queryKey: ["time-entries", "period", toOrgIsoDate(period.start)],
     queryFn: () =>
       listTimeEntries({
         from: period.start.toISOString(),
-        to: endOfDay(period.end).toISOString(),
+        to: endOfOrgDay(period.end).toISOString(),
         limit: 100,
       }),
   });
@@ -128,8 +128,8 @@ export function TimesheetsContent() {
   const ensureTimesheet = async (): Promise<Timesheet> => {
     if (timesheet) return timesheet;
     return createTimesheet({
-      periodStart: toIsoDate(period.start),
-      periodEnd: toIsoDate(period.end),
+      periodStart: toOrgIsoDate(period.start),
+      periodEnd: toOrgIsoDate(period.end),
     });
   };
 
