@@ -13,7 +13,6 @@ import {
   Building,
   UserCheck,
   Shield,
-  FileText,
   ArrowUpRight,
   Trash2,
   Play,
@@ -32,10 +31,8 @@ import {
   auditDownloadReport, 
   deleteReport 
 } from "../api/reports.service";
-import { TeamProductivityReportContent } from "./TeamProductivityReportContent";
 
 export function ReportsDashboardContent() {
-  const [activeTab, setActiveTab] = useState<"admin" | "productivity">("admin");
   const queryClient = useQueryClient();
   const [toast, setToast] = useState<ToastState | null>(null);
   
@@ -135,38 +132,14 @@ export function ReportsDashboardContent() {
 
           {/* Tab triggers */}
           <div className="flex items-center gap-1 rounded-[10px] bg-[#f6f3f4] p-1 shadow-sm">
-            <button
-              type="button"
-              onClick={() => setActiveTab("admin")}
-              className={`flex h-9 items-center gap-2 rounded-[8px] px-4 text-sm font-bold transition-all ${
-                activeTab === "admin"
-                  ? "bg-brand text-white shadow-sm"
-                  : "text-brand-muted hover:text-brand-navy"
-              }`}
-            >
+            <span className="flex h-9 items-center gap-2 rounded-[8px] bg-brand px-4 text-sm font-bold text-white shadow-sm">
               <BarChart3 className="h-4 w-4" />
               Admin Reports
-            </button>
-            <button
-              type="button"
-              onClick={() => setActiveTab("productivity")}
-              className={`flex h-9 items-center gap-2 rounded-[8px] px-4 text-sm font-bold transition-all ${
-                activeTab === "productivity"
-                  ? "bg-brand text-white shadow-sm"
-                  : "text-brand-muted hover:text-brand-navy"
-              }`}
-            >
-              <FileText className="h-4 w-4" />
-              Productivity Report
-            </button>
+            </span>
           </div>
         </div>
       </div>
 
-      {activeTab === "productivity" ? (
-        <TeamProductivityReportContent />
-      ) : (
-      <>
       <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
         <div className="flex items-center gap-3">
           <div className="border border-[#c3c6d2] rounded-lg px-2.5 py-1 text-xs font-semibold bg-white flex items-center gap-1.5 cursor-pointer">
@@ -509,8 +482,6 @@ export function ReportsDashboardContent() {
           </div>
         </div>
       </div>
-      </>
-      )}
     </div>
   );
 }
