@@ -88,12 +88,13 @@ export class ScrumService {
             },
           }
         : {}),
-      ...(query.cursor ? { id: { gt: decodeCursor(query.cursor) } } : {}),
     };
+    const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
     const items = await this.prisma.scrumEntry.findMany({
       where,
       orderBy: [{ entryDate: 'desc' }, { id: 'asc' }],
       take: limit + 1,
+      ...(cursor ? { cursor: { id: cursor }, skip: 1 } : {}),
     });
     return buildPage(items, limit);
   }
