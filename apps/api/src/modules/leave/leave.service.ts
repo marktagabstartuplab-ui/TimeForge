@@ -141,6 +141,10 @@ export class LeaveService {
         priority: 'NORMAL',
         actionUrl: `/supervisor/leave?leaveRequest=${request.id}`,
         actionLabel: 'Review Request',
+        // Keep the record reference off the URL too: actionUrl is frozen at
+        // creation time, so a future change to the link format can rewrite old
+        // rows from this instead of guessing.
+        metadata: { leaveRequestId: request.id },
       });
     }
 
@@ -437,6 +441,7 @@ export class LeaveService {
         priority: 'NORMAL',
         actionUrl: `/supervisor/leave?leaveRequest=${id}`,
         actionLabel: 'View Leave Log',
+        metadata: { leaveRequestId: id },
       });
     }
 
@@ -533,6 +538,7 @@ export class LeaveService {
       priority: dto.action === 'APPROVE' ? 'NORMAL' : 'HIGH',
       actionUrl: `/dashboard?leaveRequest=${id}`,
       actionLabel: 'View Details',
+      metadata: { leaveRequestId: id },
     });
 
     return updated;
