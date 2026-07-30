@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Sparkles, Loader2, ClipboardCheck } from "lucide-react";
+import { Sparkles, Loader2, ClipboardCheck, Plus } from "lucide-react";
 import { runAndPollAiJob } from "@/features/scrum-management/api/ai-insight.service";
 
 /**
@@ -18,17 +18,65 @@ export interface ScrumDraftCommitment {
   projectName?: string;
 }
 
+/**
+ * One AI-proposed commitment. Shaped to match `CreateScrumTaskPayload`'s
+ * required fields so an accepted suggestion becomes a real ScrumTask with no
+ * further editing.
+ */
+export interface SuggestedCommitment {
+  title: string;
+  expectedOutput: string;
+  measurement: string;
+}
+
+/** ScrumTask.title is capped server-side; keep suggestions inside it. */
+const TITLE_MAX = 200;
+
+/**
+ * The model returns the suggestion array as JSON text in `recommendation`.
+ * Anything malformed is dropped rather than surfaced — a half-parsed
+ * suggestion would create a garbage commitment row.
+ */
+function parseSuggestions(raw: string | undefined): SuggestedCommitment[] {
+  if (!raw) return [];
+  try {
+    const parsed: unknown = JSON.parse(raw);
+    if (!Array.isArray(parsed)) return [];
+    return parsed
+      .filter((c): c is Record<string, unknown> => typeof c === "object" && c !== null)
+      .map((c) => ({
+        title: String(c.title ?? "").trim().slice(0, TITLE_MAX),
+        expectedOutput: String(c.expectedOutput ?? "").trim(),
+        measurement: String(c.measurement ?? "").trim(),
+      }))
+      .filter((c) => c.title && c.expectedOutput && c.measurement);
+  } catch {
+    return [];
+  }
+}
+
 interface AiScrumDraftPanelProps {
   userId: string;
   /** Today's Commitments — sent to the AI so the draft names real tasks. */
   commitments?: ScrumDraftCommitment[];
   onApply: (draft: { yesterday: string; today: string; blockers: string }) => void;
+  /** Accepted suggestions — the parent persists them as ScrumTask rows. */
+  onAddCommitments?: (picked: SuggestedCommitment[]) => Promise<void> | void;
   disabled?: boolean;
 }
 
-export function AiScrumDraftPanel({ userId, commitments = [], onApply, disabled = false }: AiScrumDraftPanelProps) {
+export function AiScrumDraftPanel({
+  userId,
+  commitments = [],
+  onApply,
+  onAddCommitments,
+  disabled = false,
+}: AiScrumDraftPanelProps) {
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState<{ yesterday: string; today: string; blockers: string } | null>(null);
+  const [suggestions, setSuggestions] = useState<SuggestedCommitment[]>([]);
+  const [selected, setSelected] = useState<number[]>([]);
+  const [adding, setAdding] = useState(false);
 
   const handleCompose = async () => {
     if (!userId) return;
@@ -48,6 +96,11 @@ export function AiScrumDraftPanel({ userId, commitments = [], onApply, disabled 
           blockers: blockersMatch?.[1]?.trim() || "No blockers identified.",
         });
       }
+      // Suggested commitments ride along in `recommendation` on the same call,
+      // so proposing tasks costs no extra latency or tokens.
+      const parsed = parseSuggestions(result?.recommendation);
+      setSuggestions(parsed);
+      setSelected(parsed.map((_, i) => i));
     } catch (error) {
       console.error("AI Daily Standup generation failed", error);
     } finally {
@@ -58,6 +111,23 @@ export function AiScrumDraftPanel({ userId, commitments = [], onApply, disabled 
   const handleApply = () => {
     if (draft) {
       onApply(draft);
+    }
+  };
+
+  const toggle = (index: number) =>
+    setSelected((prev) => (prev.includes(index) ? prev.filter((i) => i !== index) : [...prev, index]));
+
+  const handleAdd = async () => {
+    if (!onAddCommitments || selected.length === 0) return;
+    setAdding(true);
+    try {
+      await onAddCommitments(selected.map((i) => suggestions[i]));
+      // Accepted suggestions are now real commitment rows — drop them so the
+      // same task can't be added twice from a stale panel.
+      setSuggestions([]);
+      setSelected([]);
+    } finally {
+      setAdding(false);
     }
   };
 
@@ -95,6 +165,44 @@ export function AiScrumDraftPanel({ userId, commitments = [], onApply, disabled 
               <p className="text-brand-ink whitespace-pre-wrap">{draft.blockers}</p>
             </div>
           </div>
+          {suggestions.length > 0 && onAddCommitments ? (
+            <div className="rounded-[8px] border border-brand/20 bg-white/70 p-2.5">
+              <p className="mb-2 text-[11px] font-bold uppercase tracking-[0.5px] text-brand">
+                Suggested commitments for today
+              </p>
+              <ul className="space-y-1.5">
+                {suggestions.map((s, i) => (
+                  <li key={`${s.title}-${i}`}>
+                    <label className="flex cursor-pointer items-start gap-2 rounded-[6px] p-1.5 hover:bg-brand/5">
+                      <input
+                        type="checkbox"
+                        checked={selected.includes(i)}
+                        onChange={() => toggle(i)}
+                        className="mt-0.5 h-3.5 w-3.5 shrink-0 accent-[#1a73e8]"
+                      />
+                      <span className="text-xs">
+                        <span className="block font-semibold text-brand-navy">{s.title}</span>
+                        <span className="block text-brand-muted">Expected: {s.expectedOutput}</span>
+                        <span className="block text-brand-muted">Measure: {s.measurement}</span>
+                      </span>
+                    </label>
+                  </li>
+                ))}
+              </ul>
+              <div className="flex justify-end pt-2">
+                <button
+                  type="button"
+                  onClick={handleAdd}
+                  disabled={adding || selected.length === 0}
+                  className="flex h-8 items-center gap-1.5 rounded-[8px] bg-brand px-3 text-xs font-bold text-white transition-colors hover:bg-[#1467d6] disabled:cursor-not-allowed disabled:opacity-60"
+                >
+                  {adding ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Plus className="h-3.5 w-3.5" />}
+                  {adding ? "Adding..." : `Add ${selected.length} as commitment${selected.length === 1 ? "" : "s"}`}
+                </button>
+              </div>
+            </div>
+          ) : null}
+
           <div className="flex justify-end pt-1">
             <button
               type="button"

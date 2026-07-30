@@ -675,12 +675,37 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
             actualCompleted: t.actualCompleted ?? undefined,
             projectName: projects?.find((p) => p.id === t.projectId)?.name,
           }))}
-          onApply={(draft) => {
-            setValue("yesterday", draft.yesterday);
-            setValue("notes", draft.blockers !== "No blockers identified." ? `Blockers Identified: ${draft.blockers}` : "");
-            if (draft.today && draft.today !== "No today activities identified.") {
-              setTaskDesc(draft.today);
+          // Accepted suggestions become real ScrumTask rows, the same shape the
+          // manual planner writes — so they appear under Today's Commitments and
+          // feed the next draft, rather than sitting as prose the user retypes.
+          onAddCommitments={async (picked) => {
+            const activeEntry = await ensureEntry.mutateAsync();
+            for (const s of picked) {
+              await createScrumTask(activeEntry.id, {
+                title: s.title,
+                expectedOutput: s.expectedOutput,
+                measurement: s.measurement,
+              });
             }
+            invalidateEntry();
+            onToast({ message: `${picked.length} commitment${picked.length === 1 ? "" : "s"} added.` });
+          }}
+          onApply={(draft) => {
+            setValue("yesterday", draft.yesterday, { shouldDirty: true });
+            setValue(
+              "notes",
+              draft.blockers !== "No blockers identified." ? `Blockers Identified: ${draft.blockers}` : "",
+              { shouldDirty: true },
+            );
+            // draft.today is deliberately NOT applied. It is a summary spanning
+            // every commitment, and the only field it could land in here is the
+            // planner's Task Description — which becomes a single ScrumTask's
+            // `title`. That produced paragraph-length task titles, and was
+            // circular besides: the composer is fed these same commitments, so
+            // applying its summary back into "Plan New Task" invited the user to
+            // re-plan work they had already planned. Today's scrum is the
+            // commitment rows themselves; the draft's Today section stays visible
+            // in the panel above for the employee to read.
           }}
         />
       )}

@@ -351,7 +351,7 @@ const standupDraft: FeatureHandler = async (prisma, ctx) => {
     .join('\n');
 
   return {
-    systemPrompt: `You are an assistant that drafts professional Daily Scrum standups. Respond with JSON: { "summary": "...", "recommendation": "...", "confidence": 0.0-1.0 }. In the "summary" field, write the drafted standup with three distinct sections: 'Yesterday', 'Today', and 'Blockers'. The employee's planned commitments for today, when provided, are the authoritative source for the 'Today' section — name each one specifically, using its expected output, measurement criteria and KPI target, and reflect its status. Never write a generic 'Today' section while commitments are provided. In the 'recommendation' field, write any tips or suggested focus points.`,
+    systemPrompt: `You are an assistant that drafts professional Daily Scrum standups. Respond with JSON: { "summary": "...", "recommendation": "...", "confidence": 0.0-1.0 }. In the "summary" field, write the drafted standup with three distinct sections: 'Yesterday', 'Today', and 'Blockers'. The employee's planned commitments for today, when provided, are the authoritative source for the 'Today' section — name each one specifically, using its expected output, measurement criteria and KPI target, and reflect its status. Never write a generic 'Today' section while commitments are provided. In the "recommendation" field, return a JSON array of 2-4 concrete commitments the employee should plan for today, each shaped { "title": "...", "expectedOutput": "...", "measurement": "..." }. "title" is a short imperative task name under 120 characters — not a sentence and not a summary of the whole day. "expectedOutput" is the tangible artifact it produces, one sentence. "measurement" is how completion is objectively verified, one sentence. Base them on unfinished commitments, yesterday's work, and today's tracked time. Never restate a commitment already listed as planned, and never invent work with no basis in the input — return an empty array [] rather than padding. Plain text inside the fields: no markdown.`,
     userPrompt: `Draft a daily scrum standup for employee ${name}.\n\nToday's Commitments — the employee's planned tasks for today (primary source for the "Today" section):\n${commitmentLines || 'No commitments planned for today.'}\n\nTime tracked today (supporting detail for the "Today" section):\n${taskDescriptions || 'No tasks logged today.'}\n\nWhat they listed as 'Today' in their last scrum (to populate "Yesterday" section):\n${previousToday}`,
   };
 };
@@ -415,8 +415,30 @@ const internAdvisory: FeatureHandler = async (prisma, ctx) => {
 };
 
 // ─── IMPROVE_DESCRIPTION ─────────────────────────────────────────────────────
+
+/**
+ * The improved text lands in a plain <textarea>, which renders no markdown — so
+ * "**bold**" and "### heading" show up as literal punctuation. Models also tend
+ * to inflate a one-line status update into a multi-section report full of
+ * details the employee never claimed. Both are formatting failures for this
+ * field, so both are forbidden explicitly.
+ */
+const PLAIN_TEXT_RULE =
+  ' FORMATTING: output plain text only — no markdown, no asterisks, no "#" headings, no bold, no section titles, no numbered outline. Write flowing sentences (use plain "- " bullet lines only if the input itself lists several separate items). CONTENT: rewrite only what the input actually says. Do not invent tasks, tools, standards, metrics, outcomes, or next steps that are not in the input, and do not add "Objective", "Outcome", "Technical Notes" or "Next Steps" sections. Keep the output proportional to the input: a one-line update stays 1-3 sentences.';
+
 const improveDescription: FeatureHandler = async (prisma, ctx) => {
   const originalText = (ctx.options?.text as string) || '';
+
+  // The client sends the target field's character budget so the rewrite fits
+  // without manual editing (BUG-AM). Stated in characters *and* an approximate
+  // word count, because models honour word budgets far more reliably.
+  const maxChars = Number(ctx.options?.maxChars) || 0;
+  const lengthRule = maxChars
+    ? ` HARD LIMIT: the "recommendation" value must be at most ${maxChars} characters (roughly ${Math.max(
+        1,
+        Math.floor(maxChars / 6),
+      )} words). Being under the limit is always better than being near it; never exceed it. Do not pad with filler to reach it.`
+    : '';
 
   // mode: 'task-plan' — instead of rewriting the text, derive the two required
   // Daily Scrum planning fields from it. Reuses this feature (same permission,
@@ -441,9 +463,18 @@ const improveDescription: FeatureHandler = async (prisma, ctx) => {
     };
   }
 
+  // mode: 'deliverables' — format the tangible outputs of a session as a short
+  // scannable list rather than prose (BUG-AN).
+  if (ctx.options?.mode === 'deliverables') {
+    return {
+      systemPrompt: `You are a professional documentation assistant. Rewrite the text as a concise list of tangible deliverables produced by a work session — completed assets, merged PRs, documents, designs, releases. Respond with JSON: { "summary": "...", "recommendation": "...", "confidence": 0.0-1.0 }. In "recommendation", return the deliverables as short bullet lines each starting with "- ", one deliverable per line, each naming a concrete artifact (include identifiers such as PR numbers or file names when the input provides them). No prose intro, no closing summary, no invented deliverables. Plain text only — no markdown, no asterisks, no bold, no headings. In "summary", one sentence describing the improvement.${lengthRule}`,
+      userPrompt: `Rewrite these session deliverables as a concise, concrete list:\n"${originalText}"`,
+    };
+  }
+
   return {
-    systemPrompt: `You are a professional documentation assistant. Rewrite the task description to be clear, descriptive, professional, and outcome-oriented. Respond with JSON: { "summary": "...", "recommendation": "...", "confidence": 0.0-1.0 }. Place the improved, detailed description inside the "recommendation" field, and a brief description of the improvement in the "summary" field.`,
-    userPrompt: `Rewrite this vague task description to be professional and detailed:\n"${originalText}"`,
+    systemPrompt: `You are a professional documentation assistant. Rewrite the task description to be clear, professional, and outcome-oriented. Respond with JSON: { "summary": "...", "recommendation": "...", "confidence": 0.0-1.0 }. Place the improved description inside the "recommendation" field, and a brief description of the improvement in the "summary" field. Return only the rewritten text in "recommendation" — no preamble, quotes, or commentary.${PLAIN_TEXT_RULE}${lengthRule}`,
+    userPrompt: `Rewrite this vague task description to be professional and clear:\n"${originalText}"`,
   };
 };
 
