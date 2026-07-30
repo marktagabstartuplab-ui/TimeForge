@@ -71,3 +71,40 @@ export async function exportPayroll(input: PayrollExportInput): Promise<{ jobId:
   const { data } = await apiClient.post<{ jobId: string }>("/payroll/export", input);
   return data;
 }
+
+// ─── Overtime rate configuration (BUG-AQ) ─────────────────────────────────────
+
+/** The org's `payroll.overtime` setting. Other keys are preserved on write. */
+export interface OvertimeSettingValue {
+  multiplier?: number;
+  dailyThresholdHours?: number;
+  [key: string]: unknown;
+}
+
+interface OrganizationSetting {
+  key: string;
+  value: unknown;
+}
+
+export const DEFAULT_OVERTIME_MULTIPLIER = 1.25;
+
+/** Reads the overtime config, falling back to the Labor Code default. */
+export async function getOvertimeSetting(): Promise<OvertimeSettingValue> {
+  const { data } = await apiClient.get<OrganizationSetting[]>("/organization/settings");
+  const setting = data.find((s) => s.key === "payroll.overtime");
+  return (setting?.value as OvertimeSettingValue) ?? {};
+}
+
+/**
+ * Writes the multiplier back. The endpoint replaces the whole JSON value, so
+ * the rest of the setting is spread in rather than dropped.
+ */
+export async function updateOvertimeMultiplier(
+  multiplier: number,
+  current: OvertimeSettingValue,
+): Promise<void> {
+  await apiClient.put("/organization/settings/payroll.overtime", {
+    value: { ...current, multiplier },
+    type: "json",
+  });
+}

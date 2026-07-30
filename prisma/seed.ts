@@ -148,7 +148,9 @@ async function main() {
       ],
       type: 'json',
     },
-    { key: 'payroll.overtime', value: { dailyThresholdHours: 8 }, type: 'json' },
+    // multiplier = the overtime premium (1.25 = the Philippine Labor Code
+    // minimum of 125%). Admin-editable; absent means the same default.
+    { key: 'payroll.overtime', value: { dailyThresholdHours: 8, multiplier: 1.25 }, type: 'json' },
     { key: 'schedule.workweek', value: ['MON', 'TUE', 'WED', 'THU', 'FRI'], type: 'json' },
     { key: 'ai.provider', value: 'OPENAI', type: 'scalar' },
     {

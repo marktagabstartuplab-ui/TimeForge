@@ -4,6 +4,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { registerPdfFonts, PDF_FONT, PDF_FONT_BOLD } from '../../common/pdf/pdf-fonts';
 import { DepartmentScopeService } from '../../common/scoping/department-scope.service';
+import { OvertimeRateService } from '../../common/payroll/overtime-rate.service';
 import { CacheService } from '../../infra/cache.service';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
@@ -42,6 +43,7 @@ export class ReportsService {
     private readonly prisma: PrismaService,
     private readonly cache: CacheService,
     private readonly deptScope: DepartmentScopeService,
+    private readonly overtimeRates: OvertimeRateService,
     @InjectQueue('reports-export') private readonly exportQueue: Queue,
   ) {}
 
@@ -1186,11 +1188,16 @@ export class ReportsService {
       },
     });
 
+    // Priced with the same org-configured multiplier payroll uses (BUG-AQ) —
+    // a hardcoded 1.25 here would report a labour cost that disagreed with the
+    // payslips it is supposed to summarise.
+    const overtimeMultiplier = await this.overtimeRates.forPrincipal(p);
+
     const totalOvertimeHours = lineItems.reduce((acc, li) => acc + Number(li.overtimeHours), 0);
     const totalOvertimeCost = lineItems.reduce((acc, li) => {
       const rate = Number(li.hourlyRate);
       const otHours = Number(li.overtimeHours);
-      return acc + otHours * rate * 1.25;
+      return acc + otHours * rate * overtimeMultiplier;
     }, 0);
 
     const deptMap = new Map<string, { hours: number; cost: number; employees: Set<string> }>();
@@ -1198,7 +1205,7 @@ export class ReportsService {
       const dept = li.user.department?.name ?? 'Unassigned';
       const entry = deptMap.get(dept) ?? { hours: 0, cost: 0, employees: new Set<string>() };
       entry.hours += Number(li.overtimeHours);
-      entry.cost += Number(li.overtimeHours) * Number(li.hourlyRate) * 1.25;
+      entry.cost += Number(li.overtimeHours) * Number(li.hourlyRate) * overtimeMultiplier;
       entry.employees.add(li.userId);
       deptMap.set(dept, entry);
     }
