@@ -121,7 +121,7 @@ Supabase is used as **managed PostgreSQL + object storage** only — NOT Supabas
 - `apps/api/src/modules/storage/` — abstracted behind `StorageProvider` interface
 - Provider selected by `STORAGE_DRIVER` env var: `local` (dev default) or `supabase`
 - `SupabaseStorageProvider` (`apps/api/src/modules/storage/providers/supabase-storage.provider.ts:18`) uses `SUPABASE_SERVICE_ROLE_KEY` server-side only
-- Bucket name: `timeforge` (`SUPABASE_STORAGE_BUCKET`)
+- Bucket name: `TimeForge` (`SUPABASE_STORAGE_BUCKET`) — case-sensitive; this is the only bucket on the project
 - Logical folders: `avatars`, `scrum-attachments`, `reports`, `exports`, `documents`
 - Used by: avatar uploads, time-entry attachments, scrum attachments, report/payroll/performance exports
 

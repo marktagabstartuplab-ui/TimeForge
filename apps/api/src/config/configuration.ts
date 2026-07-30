@@ -46,7 +46,9 @@ export default () => ({
     url: process.env.SUPABASE_URL,
     anonKey: process.env.SUPABASE_ANON_KEY,
     serviceRoleKey: process.env.SUPABASE_SERVICE_ROLE_KEY,
-    bucket: process.env.SUPABASE_STORAGE_BUCKET ?? 'timeforge',
+    // Bucket names are case-sensitive and only `TimeForge` exists on the
+    // project — a lowercase fallback silently breaks every upload.
+    bucket: process.env.SUPABASE_STORAGE_BUCKET ?? 'TimeForge',
   },
   mail: {
     // 'auto' | 'edge' | 'smtp' | 'mock' — see env.validation.ts / MailerService.
