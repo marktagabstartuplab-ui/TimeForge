@@ -329,9 +329,30 @@ const standupDraft: FeatureHandler = async (prisma, ctx) => {
   const taskDescriptions = entries.map(e => `[Project: ${e.project?.name ?? 'General'}] ${e.description}`).join('\n');
   const previousToday = lastScrum?.today ?? 'None';
 
+  // Today's Commitments, passed by the client (BUG-AK). In the task-driven
+  // flow these live in ScrumTask rows and the free-text `today` field is
+  // created empty, so without them the draft had nothing specific to work
+  // from and came back generic.
+  const commitments = Array.isArray(ctx.options?.commitments)
+    ? (ctx.options.commitments as Array<Record<string, unknown>>)
+    : [];
+  const commitmentLines = commitments
+    .map((c) => {
+      const parts = [
+        `- ${String(c.title ?? '').trim() || 'Untitled commitment'} [${String(c.status ?? 'PENDING')}]`,
+      ];
+      if (c.expectedOutput) parts.push(`  Expected output: ${String(c.expectedOutput)}`);
+      if (c.measurement) parts.push(`  Measurement criteria: ${String(c.measurement)}`);
+      if (c.kpi) parts.push(`  KPI: ${String(c.kpi)}${c.plannedTarget ? ` (target ${String(c.plannedTarget)})` : ''}`);
+      if (c.actualCompleted) parts.push(`  Actual completed: ${String(c.actualCompleted)}`);
+      if (c.projectName) parts.push(`  Project: ${String(c.projectName)}`);
+      return parts.join('\n');
+    })
+    .join('\n');
+
   return {
-    systemPrompt: `You are an assistant that drafts professional Daily Scrum standups. Respond with JSON: { "summary": "...", "recommendation": "...", "confidence": 0.0-1.0 }. In the "summary" field, write the drafted standup with three distinct sections: 'Yesterday', 'Today', and 'Blockers'. In the 'recommendation' field, write any tips or suggested focus points.`,
-    userPrompt: `Draft a daily scrum standup for employee ${name}.\n\nTasks worked on today (to populate "Today" section):\n${taskDescriptions || 'No tasks logged today.'}\n\nWhat they listed as 'Today' in their last scrum (to populate "Yesterday" section):\n${previousToday}`,
+    systemPrompt: `You are an assistant that drafts professional Daily Scrum standups. Respond with JSON: { "summary": "...", "recommendation": "...", "confidence": 0.0-1.0 }. In the "summary" field, write the drafted standup with three distinct sections: 'Yesterday', 'Today', and 'Blockers'. The employee's planned commitments for today, when provided, are the authoritative source for the 'Today' section — name each one specifically, using its expected output, measurement criteria and KPI target, and reflect its status. Never write a generic 'Today' section while commitments are provided. In the 'recommendation' field, write any tips or suggested focus points.`,
+    userPrompt: `Draft a daily scrum standup for employee ${name}.\n\nToday's Commitments — the employee's planned tasks for today (primary source for the "Today" section):\n${commitmentLines || 'No commitments planned for today.'}\n\nTime tracked today (supporting detail for the "Today" section):\n${taskDescriptions || 'No tasks logged today.'}\n\nWhat they listed as 'Today' in their last scrum (to populate "Yesterday" section):\n${previousToday}`,
   };
 };
 
