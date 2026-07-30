@@ -8,6 +8,7 @@ import type { ToastState } from "@/components/shared/Toast";
 import type { ScrumTask } from "@/features/scrum/api/scrum.service";
 import { listProjects } from "../api/catalog.service";
 import { readPinnedKeys, togglePinnedKey, type WorkTask } from "../lib/task-select";
+import { TaskPreviewModal, type TaskPreviewField } from "./TaskPreviewModal";
 import { formatMinutes } from "@/lib/time";
 import { cn } from "@/lib/utils";
 
@@ -15,13 +16,13 @@ interface QuickSelectRailProps {
   /** Distinct tasks derived from recent time entries, newest first. */
   tasks: WorkTask[];
   loading: boolean;
-  /** One click populates Work Details (and seeds the next Clock In). */
+  /** Confirmed in the preview modal — populates Work Details (and seeds the next Clock In). */
   onSelect: (task: WorkTask) => void;
   /** Uncompleted commitments the user said they'd continue, from a previous EOD. */
   carryOver: ScrumTask[];
   /** YYYY-MM-DD the carried-over commitments came from. */
   carryOverDate: string | null;
-  /** One click loads the commitment into the Daily Scrum planner. */
+  /** Confirmed in the preview modal — loads the commitment into the Daily Scrum planner. */
   onSelectCarryOver: (task: ScrumTask) => void;
   onToast: (toast: ToastState) => void;
 }
@@ -40,7 +41,7 @@ function CarryOverCard({ task, onPick }: { task: ScrumTask; onPick: (task: Scrum
     <button
       type="button"
       onClick={() => onPick(task)}
-      aria-label={`Add continued task ${task.title} to today's commitments`}
+      aria-label={`Preview continued task ${task.title}`}
       className="block w-full rounded-[12px] border border-[#f59e0b]/50 bg-[#fffbeb] p-3.5 text-left transition-colors hover:border-[#f59e0b]"
     >
       <p className="text-sm font-bold text-brand-ink">{task.title}</p>
@@ -88,7 +89,7 @@ function TaskCard({ task, highlight, pinned, projectLabel, onPick, onTogglePin }
         type="button"
         onClick={() => onPick(task)}
         className="block w-full text-left"
-        aria-label={`Use task ${task.title}`}
+        aria-label={`Preview task ${task.title}`}
       >
         <p className="pr-7 text-sm font-bold text-brand-ink">{task.title}</p>
         <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.5px] text-brand-muted">
@@ -153,15 +154,47 @@ export function QuickSelectRail({
       .map(([id, minutes]) => ({ id, minutes }));
   })();
 
-  const pick = (task: WorkTask) => {
-    onSelect(task);
-    onToast({ message: `"${task.title}" loaded into your Daily Scrum planner.` });
+  // Clicking a card only *previews* it (BUG-AL) — nothing is applied to Work
+  // Details or the planner until "Load Task" is confirmed in the modal.
+  const [preview, setPreview] = useState<
+    { kind: "task"; task: WorkTask } | { kind: "carryOver"; task: ScrumTask } | null
+  >(null);
+
+  const confirmPreview = () => {
+    if (!preview) return;
+    if (preview.kind === "task") onSelect(preview.task);
+    else onSelectCarryOver(preview.task);
+    onToast({ message: `"${preview.task.title}" loaded into your Daily Scrum planner.` });
+    setPreview(null);
   };
 
-  const pickCarryOver = (task: ScrumTask) => {
-    onSelectCarryOver(task);
-    onToast({ message: `"${task.title}" loaded into your Daily Scrum planner.` });
-  };
+  const previewFields: TaskPreviewField[] =
+    preview === null
+      ? []
+      : preview.kind === "task"
+        ? [
+            { label: "Task Name", value: preview.task.title },
+            { label: "Project", value: projectName(preview.task.projectId) },
+            { label: "Description", value: preview.task.details },
+            { label: "Tracked This Week", value: formatMinutes(preview.task.minutes) },
+          ]
+        : [
+            { label: "Task Name", value: preview.task.title },
+            { label: "Project", value: projectName(preview.task.projectId) },
+            { label: "Description", value: preview.task.description },
+            { label: "Expected Output", value: preview.task.expectedOutput },
+            { label: "Measurement", value: preview.task.measurement },
+            { label: "KPI", value: preview.task.kpi },
+            { label: "Planned Target", value: preview.task.plannedTarget },
+            {
+              label: "Carried Over From",
+              value: carryOverDate ? shortDate(carryOverDate) : null,
+            },
+          ];
+
+  const pick = (task: WorkTask) => setPreview({ kind: "task", task });
+
+  const pickCarryOver = (task: ScrumTask) => setPreview({ kind: "carryOver", task });
 
   const togglePin = (key: string) => setPinnedKeys(togglePinnedKey(key));
 
@@ -195,7 +228,7 @@ export function QuickSelectRail({
           </SectionLabel>
           <p className="-mt-1 mb-2 text-[11px] text-brand-muted">
             You marked these to continue{carryOverDate ? ` from ${shortDate(carryOverDate)}` : ""}.
-            Click one to add it to today&apos;s commitments.
+            Click one to preview it before adding it to today&apos;s commitments.
           </p>
           <div className="flex flex-col gap-2">
             {carryOver.map((t) => (
@@ -263,6 +296,17 @@ export function QuickSelectRail({
           ) : null}
         </div>
       )}
+
+      <TaskPreviewModal
+        open={preview !== null}
+        onOpenChange={(open) => {
+          if (!open) setPreview(null);
+        }}
+        title={preview?.task.title ?? ""}
+        kind={preview?.kind === "carryOver" ? "Continued task" : "Recent task"}
+        fields={previewFields}
+        onConfirm={confirmPreview}
+      />
     </div>
   );
 }
