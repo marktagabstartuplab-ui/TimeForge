@@ -380,11 +380,18 @@ export class LeaveService {
     const newEndDate = new Date(today);
     newEndDate.setUTCDate(today.getUTCDate() - 1);
 
+    const effectiveEndDate = newEndDate < request.startDate ? request.startDate : newEndDate;
+    // days was computed from the original range at submission. Shortening the
+    // leave without recomputing it leaves the stored duration describing days
+    // never taken — a 2-day range reading "11 day(s)" in the UI.
+    const effectiveDays = this.computeDays(request.startDate, effectiveEndDate);
+
     const updated = await this.prisma.$transaction(async (tx) => {
       const res = await tx.leaveRequest.update({
         where: { id },
         data: {
-          endDate: newEndDate < request.startDate ? request.startDate : newEndDate,
+          endDate: effectiveEndDate,
+          days: effectiveDays,
           // Terminal status so active-leave views (which filter on APPROVED) drop it
           // immediately, including same-day leaves whose endDate can't move before startDate.
           status: 'COMPLETED',
@@ -400,7 +407,13 @@ export class LeaveService {
           action: 'ADMIN_ACTION',
           entityType: 'leave_request',
           entityId: id,
-          metadata: { event: 'LEAVE_RETURNED_EARLY', originalEndDate: request.endDate, returnDate: new Date() },
+          metadata: {
+            event: 'LEAVE_RETURNED_EARLY',
+            originalEndDate: request.endDate,
+            originalDays: Number(request.days),
+            days: effectiveDays,
+            returnDate: new Date(),
+          },
         },
       });
 

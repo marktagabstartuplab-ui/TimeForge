@@ -1,6 +1,6 @@
 # HeroTime — Project Status Snapshot
 
-Last updated: 2026-07-07
+Last updated: 2026-07-28
 
 **All client feature gaps are closed. The project is production-deploy ready.**
 
@@ -43,7 +43,8 @@ timeforge/
 | Exception filter | ✅ | `AllExceptionsFilter` — structured `{ success, error, code }`, no stack leakage |
 | RLS | ✅ | `scripts/apply-rls.js` — run `npm run db:rls` after deploy |
 | Migrations | ✅ | 14 migrations; latest captures `attachments`/`task`/`department_id` |
-| Tests | ✅ | `jest.config.ts` + 7 tests (admin config + AI feature-toggling) |
+| Tests | ✅ | `jest.config.ts` + 7 suites / 42 tests — prisma, department scope, mailer, admin, AI, storage, timesheet adjustments |
+| CI | ✅ | `.github/workflows/ci.yml` — `build` job (api/worker + Prisma + seed + `npm test`) and `web` job (typecheck + lint). See [CI gate](#ci-gate) |
 
 ### Other fixes completed during gap work
 
@@ -76,6 +77,33 @@ Follow this process for every bug fix in this repo:
 4. **Verify with tests.** After the change, run any existing relevant tests (`npm run test` for the affected app) and confirm they pass. If no test covers this path, note that explicitly rather than skipping verification.
 5. **Summarize impact.** Summarize exactly what changed (files + diff summary) and explicitly call out any other feature/module that could be affected by this change, so it can be spot-checked.
 6. **Migrations, not hand edits.** If the fix requires a schema change, generate a Prisma migration — don't hand-edit the DB.
+
+---
+
+## CI gate
+
+`.github/workflows/ci.yml` runs on every PR and on pushes to `main`, as two parallel jobs:
+
+| Job | Covers |
+|-----|--------|
+| `build` | `npm run build` (nest build api + worker), Prisma generate/push, seed, `npm test` — needs Postgres + Redis services |
+| `web` | `apps/web` — `next typegen`, then `tsc --noEmit --incremental false`, then `eslint .` |
+
+`apps/web` is a **separate npm project** with its own `package-lock.json` — it is not an npm workspace, so it needs its own `npm ci` inside `apps/web`.
+
+### Reproducing the web job locally
+
+```bash
+cd apps/web && npx next typegen && npx tsc --noEmit --incremental false && npx eslint .
+```
+
+### Three traps — all of these have bitten before
+
+- **Always pass `--incremental false`.** `tsconfig.json` sets `incremental: true`, so a bare `tsc --noEmit` can be served by a stale `tsconfig.tsbuildinfo` and check only a subset of files. This has produced a false all-clear on a genuinely broken tree.
+- **`next build` is not a type gate.** `next.config.ts` sets `typescript.ignoreBuildErrors: true` — the build compiles straight past type errors. `tsc` must be invoked explicitly.
+- **Run `next typegen` first.** `next-env.d.ts` and the `.next/types/routes.d.ts` it imports are both generated and gitignored, so on a clean checkout `tsc` cannot resolve the reference and fails for reasons unrelated to your code.
+
+Lint gates on **errors only**. There are ~186 pre-existing warnings; don't add `--max-warnings 0` without a cleanup pass first.
 
 ---
 
@@ -136,10 +164,12 @@ Supabase is used as **managed PostgreSQL + object storage** only — NOT Supabas
 
 1. **Deliverables field** — the brief mentions a dedicated Deliverables field on time entries. Not implemented, was lowest priority.
 2. **Open-ended KPI metric types** — `KpiMetricType` is a fixed 4-value enum. Brief may want free-text. Was confirmed as stretch goal.
-3. **Test coverage** — 7 tests is a foundation. Full coverage of all modules would be ideal but wasn't scoped.
-4. **CI/CD** — No GitHub Actions or similar pipeline configured. No lint/typecheck/test gate.
-5. **OpenAI key** — Worker falls back to stub mode when `OPENAI_API_KEY` is absent. Not a bug, but production needs the real key.
-6. **Seed data** — Demo accounts use `ChangeMe123!` — rotate before production.
+3. **Test coverage** — 7 suites / 42 tests is a foundation, all backend. There are no frontend tests at all; `apps/web` is covered only by typecheck and lint. Full coverage wasn't scoped.
+4. **Lint warnings** — `apps/web` carries ~186 eslint warnings (mostly `no-explicit-any` and unused vars). CI gates on errors only; `--max-warnings 0` would need a cleanup pass first.
+5. **`ignoreBuildErrors`** — `apps/web/next.config.ts` still sets `typescript.ignoreBuildErrors: true`, so Vercel deploys even with type errors. CI now catches them pre-merge, but dropping this flag would close the gap properly.
+6. **Duplicate Vercel project** — `time-forge-n2gg` fails on every commit (Root Directory is the repo root, so Next can't be detected). `time-forge` is the working one. Delete or repoint the duplicate; the root `vercel.json` exists only to serve it.
+7. **OpenAI key** — Worker falls back to stub mode when `OPENAI_API_KEY` is absent. Not a bug, but production needs the real key.
+8. **Seed data** — Demo accounts use `ChangeMe123!` — rotate before production.
 
 ---
 

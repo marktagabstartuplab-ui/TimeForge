@@ -1,6 +1,6 @@
 # TimeForge Bug Fix Prompts — Chunked
 
-Source: `TimeForge (1).docx` (14 defects, BUG-A–BUG-N) plus follow-up QA batches (BUG-O–BUG-S) plus runtime errors and state issues found during manual testing (BUG-T–BUG-AA) — untitled/unnumbered in source, numbered here for tracking.
+Source: `TimeForge (1).docx` (14 defects, BUG-A–BUG-N) plus follow-up QA batches (BUG-O–BUG-S) plus runtime errors, state issues, and missing features found during manual testing (BUG-T–BUG-AD) — untitled/unnumbered in source, numbered here for tracking.
 
 **How to use this:** Run one at a time, in a fresh session or clearly separated turn, in the suggested order below. Never batch multiple prompts into one request — that's what causes fixing one bug to silently break another. Each prompt has a hard scope boundary, a "do not touch" list, and its own verification checklist.
 
@@ -1037,6 +1037,126 @@ supervisor's "Active Leave" counter decremented (depends on BUG-V fix).
 
 ---
 
+## BUG-AB — Leave request "View Details" link redirects to Dashboard instead of the specific leave request
+
+**Where:** Notification inbox (Leave request approved/rejected notifications)
+
+```
+Fix: clicking the "View Details" link on a leave request notification
+(approved, rejected, etc.) redirects the user to the Dashboard instead
+of opening the specific leave request record or approval details.
+
+Expected: "View Details" should deep-link directly to the specific leave
+request — opening either:
+  (a) the leave request detail page/modal, or
+  (b) the approval workflow page if the request is pending review, or
+  (c) the leave record in the Leave Management module.
+
+Scope: the notification link routing — the "View Details" link either:
+  1. isn't wired to a specific leave-request ID (it's just pointing to
+     a generic "leave" page), or
+  2. the deep-link route exists but the link is broken/malformed, or
+  3. there's a permission check blocking access to the specific record.
+
+Before editing: check the notification object to see if it carries a
+leave-request ID or record reference. Then check the link's href/route
+to see what ID (if any) is being passed. Diagnosis determines the fix.
+
+Do not touch: the notification creation/sending logic — this bug is
+purely about the link routing after the notification arrives.
+
+Verify: (a) receive/open a leave request notification (create/approve
+one or wait for an existing one), (b) click "View Details", (c) confirm
+you land on the specific leave request (not the generic Dashboard), (d)
+the URL shows the leave-request ID or similar identifier (not just
+"dashboard"), (e) you can see and interact with the leave request
+details (approval buttons, reason, dates, etc., depending on the user's
+role and the request's status).
+```
+
+---
+
+## BUG-AC — Missing feature: employees can't view their leave request details from notifications
+
+**Where:** Employee notifications and employee dashboard (when viewing their own leave requests)
+
+```
+Fix: when an employee receives a notification about their leave request
+(approved, rejected, pending), clicking "View Details" has no destination.
+Employees also can't see a detailed view of their own leave requests
+elsewhere in the system (the Leave Management page is supervisor-only).
+
+Note: The Supervisor → Leave Management page already exists and is fully
+functional. This bug is specifically about the EMPLOYEE VIEW of their own
+leave request details, accessible from notifications and potentially
+their own dashboard.
+
+Expected: a leave request detail modal that employees can access by:
+  1. Clicking "View Details" on a leave request notification
+  2. (Optional) Clicking on a leave request row in their own leave
+     history/dashboard view
+
+The modal should display (read-only for employees):
+  - Request status (pending, approved, rejected)
+  - Requested dates and duration
+  - Reason/comment they provided
+  - If approved/rejected: the approver's name, timestamp, and any
+    rejection reason/comments
+
+Scope: frontend — build the employee-facing leave request detail modal
+component. Backend — ensure the leave-request API endpoint exposes all
+necessary fields when queried by the employee viewing their own request.
+
+This is a foundational missing feature blocking BUG-AB's "View Details"
+link. The supervisor Leave Management already works.
+
+Do not touch: the Supervisor Leave Management page (already exists and
+works), the leave request creation/approval workflow.
+
+Verify: (a) an employee receives a leave request notification
+(create/approve a request or wait for one), (b) clicking "View Details"
+opens a modal (not dashboard redirect), (c) the modal displays request
+details (dates, status, reason, approver info), (d) the modal is
+read-only for employees (no edit buttons), (e) the modal can be closed
+via X or outside-click, (f) this does not interfere with the existing
+Supervisor Leave Management page.
+```
+
+---
+
+## BUG-AD — Leave Request Details modal opens off-screen / not immediately visible
+
+**Where:** Employee notifications / leave request list (when clicking "View Details")
+
+```
+Fix: the Leave Request Details modal does open and contains the correct
+data, BUT it appears positioned below the current viewport (off-screen
+or below the fold). The user must scroll down to see the modal, which
+is unexpected UX — modals should open centered and immediately visible.
+
+Expected: when clicking "View Details" on a leave request notification
+or link, the modal should:
+  1. Open centered on the screen (vertically and horizontally)
+  2. Be immediately visible without requiring any scroll
+  3. Have proper z-index so it appears on top of all other content
+  4. Optionally: scroll the page up if needed to ensure the modal's
+     header/title is visible in the viewport
+
+Scope: frontend modal rendering — likely a CSS/positioning issue or a
+missing scroll-to-top/focus behavior when the modal mounts.
+
+Do not touch: the modal's content, data fetching, or close behavior —
+this is purely about visibility/positioning when it first opens.
+
+Verify: (a) click "View Details" on a leave request, (b) the modal
+immediately appears centered on screen without any scroll required, (c)
+the modal's header and top controls (X button) are visible, (d) you can
+close the modal and re-open it with the same good behavior, (e) this
+works on different screen sizes/resolutions.
+```
+
+---
+
 ## Suggested order
 
 Group by risk and independence — do standalone/low-risk items first, save anything touching KPI data model or RBAC role assignment for its own isolated session:
@@ -1053,18 +1173,21 @@ Group by risk and independence — do standalone/low-risk items first, save anyt
 10. BUG-H (HR permission grant — isolated RBAC change)
 11. BUG-D (email uniqueness — **check for existing duplicate data before running the migration**)
 12. BUG-R (notification badge → in-page highlight/filter)
-13. BUG-Y (Email verification flag shouldn't reset after password change — login blocker, do early)
-14. BUG-X (No way to reactivate deactivated accounts — missing action)
-15. BUG-A (timesheet row → audit link + edit-lock)
-16. BUG-M (exclude supervisor from underperforming list)
-17. BUG-N (return-from-leave flow)
-18. BUG-AA (Return to Work button doesn't execute — BUG-N's implementation is broken; critical for leave workflow)
-19. BUG-V (leave dashboard counters don't update — data-sync/cache invalidation; sequence after BUG-N/AA since it validates the full leave flow works end-to-end)
-20. BUG-B (role escalation on supervisor assignment — RBAC, do alone)
-21. BUG-Q (supervisor time-adjustment override — compliance-sensitive, own session; verify it feeds correctly into BUG-003's payroll sync from the prior QA round)
-22. BUG-W (Version mismatch on EOD submit — blocks EOD completion, high priority; fix before adding new EOD features)
-23. BUG-L (scorecard aggregation view — new endpoint + scoping rules)
-24. BUG-K (Planned Target editable + Actual Completed — touches KPI data model; if BUG-007's KPI integration work is done in the same project, sequence this AFTER that so they don't define conflicting KPI-tracking fields)
-25. BUG-O (EOD "Actual Completed" input — depends on BUG-K, must come after it; also assumes BUG-W's version-mismatch bug is fixed so EOD can submit)
-26. BUG-U (Completed commitments remain editable + stay "In Progress" — depends on BUG-O working, should come after to verify the post-EOD state is correct)
-27. BUG-S (avatar sync — backend serializer/select fix + shared Avatar component fallback; low interdependency with others, but check the Avatar component broadly since it likely renders in many places)
+13. BUG-AC (Missing leave request detail/review page — foundational feature, blocks BUG-AB and other workflows; must come before BUG-AB can work)
+14. BUG-AD (Leave Request Details modal opens off-screen/not visible — UX issue; fix after BUG-AC is built)
+15. BUG-AB (Leave request "View Details" link routes wrong — notification deep-linking bug; assumes BUG-AC detail page exists)
+16. BUG-Y (Email verification flag shouldn't reset after password change — login blocker, do early)
+17. BUG-X (No way to reactivate deactivated accounts — missing action)
+18. BUG-A (timesheet row → audit link + edit-lock)
+19. BUG-M (exclude supervisor from underperforming list)
+20. BUG-N (return-from-leave flow)
+21. BUG-AA (Return to Work button doesn't execute — BUG-N's implementation is broken; critical for leave workflow)
+22. BUG-V (leave dashboard counters don't update — data-sync/cache invalidation; sequence after BUG-N/AA since it validates the full leave flow works end-to-end)
+23. BUG-B (role escalation on supervisor assignment — RBAC, do alone)
+24. BUG-Q (supervisor time-adjustment override — compliance-sensitive, own session; verify it feeds correctly into BUG-003's payroll sync from the prior QA round)
+25. BUG-W (Version mismatch on EOD submit — blocks EOD completion, high priority; fix before adding new EOD features)
+26. BUG-L (scorecard aggregation view — new endpoint + scoping rules)
+27. BUG-K (Planned Target editable + Actual Completed — touches KPI data model; if BUG-007's KPI integration work is done in the same project, sequence this AFTER that so they don't define conflicting KPI-tracking fields)
+28. BUG-O (EOD "Actual Completed" input — depends on BUG-K, must come after it; also assumes BUG-W's version-mismatch bug is fixed so EOD can submit)
+29. BUG-U (Completed commitments remain editable + stay "In Progress" — depends on BUG-O working, should come after to verify the post-EOD state is correct)
+30. BUG-S (avatar sync — backend serializer/select fix + shared Avatar component fallback; low interdependency with others, but check the Avatar component broadly since it likely renders in many places)
