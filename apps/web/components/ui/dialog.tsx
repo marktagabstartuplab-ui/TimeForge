@@ -25,6 +25,14 @@ function DialogBackdrop({ className, ...props }: DialogPrimitive.Backdrop.Props)
 /**
  * Centered modal popup (EOD Review, confirmations). Scrolls internally when
  * taller than the viewport.
+ *
+ * Centering is done by a full-viewport flex positioner rather than
+ * `top-1/2 left-1/2 -translate-1/2` on the popup itself: a `position: fixed`
+ * element is laid out against the nearest ancestor that establishes a
+ * containing block (any ancestor with a transform/filter/backdrop-filter/
+ * contain), which pushed the popup out of view — BUG-AD. The positioner is
+ * pointer-events-none so backdrop clicks still reach the backdrop and close
+ * the dialog.
  */
 function DialogContent({
   className,
@@ -34,17 +42,22 @@ function DialogContent({
   return (
     <DialogPrimitive.Portal>
       <DialogBackdrop />
-      <DialogPrimitive.Popup
-        data-slot="dialog-content"
-        className={cn(
-          "fixed left-1/2 top-1/2 z-50 flex max-h-[92dvh] w-[min(640px,calc(100vw-2rem))] -translate-x-1/2 -translate-y-1/2 flex-col overflow-hidden rounded-[16px] bg-white shadow-xl outline-none",
-          "transition-all duration-200 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 data-[ending-style]:scale-95 data-[ending-style]:opacity-0",
-          className,
-        )}
-        {...props}
+      <div
+        data-slot="dialog-positioner"
+        className="pointer-events-none fixed inset-0 z-50 flex items-center justify-center overflow-y-auto p-4"
       >
-        {children}
-      </DialogPrimitive.Popup>
+        <DialogPrimitive.Popup
+          data-slot="dialog-content"
+          className={cn(
+            "pointer-events-auto relative m-auto flex max-h-[92dvh] w-[min(640px,100%)] flex-col overflow-hidden rounded-[16px] bg-white shadow-xl outline-none",
+            "transition-all duration-200 data-[starting-style]:scale-95 data-[starting-style]:opacity-0 data-[ending-style]:scale-95 data-[ending-style]:opacity-0",
+            className,
+          )}
+          {...props}
+        >
+          {children}
+        </DialogPrimitive.Popup>
+      </div>
     </DialogPrimitive.Portal>
   );
 }
