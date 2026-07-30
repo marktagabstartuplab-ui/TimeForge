@@ -33,7 +33,7 @@ DECLARE
     -- Time tracking & timesheets (Phase 7/8)
     'time_entries', 'timesheets',
     -- Daily Scrum (Phase 9 + task/blocker expansion)
-    'scrum_entries', 'scrum_tasks', 'scrum_blockers',
+    'scrum_entries', 'scrum_tasks', 'scrum_blockers', 'scrum_edit_requests',
     -- Supervisor approval, KPI, payroll (Phase 9)
     'approvals', 'kpi_templates', 'kpi_progress',
     'payroll_periods', 'payroll_reports', 'payroll_line_items',

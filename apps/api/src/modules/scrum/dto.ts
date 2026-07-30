@@ -116,6 +116,26 @@ export class UnlockScrumEntryDto {
   reason!: string;
 }
 
+export class CreateScrumEditRequestDto {
+  /**
+   * Why the employee needs their locked scrum back. Shown to the supervisor as
+   * the basis for the decision, so it must say something — same 5-char floor as
+   * the supervisor's unlock reason.
+   */
+  @IsString()
+  @MinLength(5)
+  @MaxLength(1000)
+  reason!: string;
+}
+
+export class DeclineScrumEditRequestDto {
+  /** Supervisor's explanation, returned to the employee with the decline. */
+  @IsString()
+  @MinLength(5)
+  @MaxLength(1000)
+  reason!: string;
+}
+
 export interface ScrumQuery {
   limit?: string;
   cursor?: string;

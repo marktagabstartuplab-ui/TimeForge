@@ -13,6 +13,7 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { Textarea } from "@/components/ui/textarea";
 import { FieldError, FormBanner } from "@/features/auth/components/FormMessages";
 import {
@@ -222,6 +223,8 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
   const [commitmentDone, setCommitmentDone] = useState(false);
   const [reviews, setReviews] = useState<Record<string, TaskReview>>({});
   const [taskErrors, setTaskErrors] = useState<Record<string, string>>({});
+  // Values staged by the submit handler, awaiting the confirmation dialog.
+  const [pendingSubmit, setPendingSubmit] = useState<EodReviewValues | null>(null);
   // Latest known optimistic-lock version per task, seeded from the cached list and
   // advanced by each successful write. A failed submit leaves some tasks already
   // written (and version-bumped), so a plain retry off the cached list would 409;
@@ -273,6 +276,7 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
       setServerError(null);
       setCommitmentDone(false);
       setTaskErrors({});
+      setPendingSubmit(null);
       taskVersions.current = {};
     }
   }, [open, reset]);
@@ -431,6 +435,10 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
     },
   });
 
+  // Confirmation gate (BUG-AI). Validation runs first so the dialog never opens
+  // on a review that is about to be rejected anyway; the values are staged and
+  // only dispatched when the user confirms. Cancel writes nothing and keeps
+  // every answer already typed into the review.
   const onSubmit = (values: EodReviewValues) => {
     setServerError(null);
     const errs = validateCommitments();
@@ -439,6 +447,13 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
       setServerError("Please complete the actual results for each commitment below.");
       return;
     }
+    setPendingSubmit(values);
+  };
+
+  const confirmSubmit = () => {
+    if (!pendingSubmit) return;
+    const values = pendingSubmit;
+    setPendingSubmit(null);
     submit.mutate(values);
   };
 
@@ -611,6 +626,21 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
           </div>
         </form>
       </DialogContent>
+
+      {/* Safety net before the write (BUG-AI). Submitting the review records
+          every commitment's actuals, locks the day and clocks the employee
+          out — three irreversible things behind one click. */}
+      <ConfirmationDialog
+        open={pendingSubmit !== null}
+        onOpenChange={(isOpen) => {
+          if (!isOpen) setPendingSubmit(null);
+        }}
+        title="Submit your end of day review?"
+        description="This records your results for today, locks the entry and times you out. You will not be able to edit it afterward without asking your supervisor to unlock it."
+        confirmLabel="Yes, submit and time out"
+        pending={submit.isPending}
+        onConfirm={confirmSubmit}
+      />
     </Dialog>
   );
 }

@@ -12,10 +12,12 @@ import {
   Check,
   CheckCircle2,
   ClipboardList,
+  Clock3,
   Edit3,
   History,
   Loader2,
   Lock,
+  LockOpen,
   MessageSquareText,
   Plus,
   Save,
@@ -23,6 +25,14 @@ import {
   Trash2,
 } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogDescription,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { ProgressBar } from "@/components/shared/ProgressBar";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import { FieldLabel } from "@/features/auth/components/fields";
@@ -35,8 +45,10 @@ import {
   createScrumTask,
   deleteScrumBlocker,
   deleteScrumTask,
+  getMyScrumEditRequest,
   listScrumBlockers,
   listScrumTasks,
+  requestScrumEdit,
   resolveScrumBlocker,
   updateScrumBlocker,
   updateScrumEntry,
@@ -108,6 +120,11 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
   // Last successful server save, distinct from the local draft autosave above.
   // Surfaced only while the form is pristine.
   const [savedAt, setSavedAt] = useState<string | null>(null);
+  // Values staged by the submit handler, awaiting the confirmation dialog.
+  const [pendingSave, setPendingSave] = useState<DailyScrumValues | null>(null);
+  // "Request Edit" dialog for a locked day, and its reason draft.
+  const [editRequestOpen, setEditRequestOpen] = useState(false);
+  const [editRequestReason, setEditRequestReason] = useState("");
 
   // Plan New Task Form States
   const [taskDesc, setTaskDesc] = useState("");
@@ -168,6 +185,28 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
     queryKey: ["scrum-blockers", entry?.id],
     queryFn: () => listScrumBlockers(entry!.id),
     enabled: Boolean(entry),
+  });
+
+  // Only meaningful once the day is locked, so it isn't fetched before then.
+  const { data: editRequest } = useQuery({
+    queryKey: ["scrum-edit-request", entry?.id],
+    queryFn: () => getMyScrumEditRequest(entry!.id),
+    enabled: Boolean(entry?.isLocked),
+  });
+
+  const requestEdit = useMutation({
+    mutationFn: () => requestScrumEdit(entry!.id, editRequestReason.trim()),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["scrum-edit-request", entry?.id] });
+      setEditRequestOpen(false);
+      setEditRequestReason("");
+      onToast({ message: "Edit request sent to your supervisor." });
+    },
+    onError: (err) =>
+      onToast({
+        message: err instanceof ApiError ? err.message : "Could not send your edit request",
+        tone: "error",
+      }),
   });
 
   // Only a fully COMPLETED day is locked (server-computed from task completion).
@@ -537,13 +576,20 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
     },
   });
 
-  const onSubmit = useCallback(
-    (values: DailyScrumValues) => {
-      setServerError(null);
-      save.mutate(values);
-    },
-    [save],
-  );
+  // Confirmation gate (BUG-AI). Submit stages the values instead of firing the
+  // mutation; the dialog's Yes dispatches it. Cancel just drops the staged
+  // values, so nothing typed is lost and nothing is written.
+  const onSubmit = useCallback((values: DailyScrumValues) => {
+    setServerError(null);
+    setPendingSave(values);
+  }, []);
+
+  const confirmSave = () => {
+    if (!pendingSave) return;
+    const values = pendingSave;
+    setPendingSave(null);
+    save.mutate(values);
+  };
 
   // Performance Score — derived from server-fetched tasks for this entry.
   const totalTasks = tasks.length;
@@ -1104,16 +1150,39 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
         </div>
 
         {locked ? (
-          <div className="flex items-center gap-3 rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3.5">
+          <div className="flex flex-wrap items-center gap-3 rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3.5">
             <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
               <Lock className="h-4 w-4" aria-hidden="true" />
             </span>
-            <div>
+            <div className="min-w-0 flex-1">
               <p className="text-sm font-bold text-amber-800">Today&apos;s Scrum Locked</p>
               <p className="text-xs text-amber-700">
                 Submitted at {entry?.submittedAt ? formatClockTime(entry.submittedAt) : entry ? formatClockTime(entry.updatedAt) : "—"} · Editing Disabled
               </p>
+              {/* A locked day used to be a dead end (BUG-AH) — the employee can
+                  now ask their supervisor to reopen it, and see where that ask
+                  stands without chasing anyone. */}
+              {editRequest?.status === "PENDING" ? (
+                <p className="mt-1 flex items-center gap-1.5 text-xs font-semibold text-amber-800">
+                  <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+                  Edit request sent — waiting for your supervisor.
+                </p>
+              ) : editRequest?.status === "DECLINED" ? (
+                <p className="mt-1 text-xs font-semibold text-red-700">
+                  Edit request declined{editRequest.resolutionNote ? `: ${editRequest.resolutionNote}` : ""}
+                </p>
+              ) : null}
             </div>
+            {entry && editRequest?.status !== "PENDING" ? (
+              <button
+                type="button"
+                onClick={() => setEditRequestOpen(true)}
+                className="flex h-9 shrink-0 items-center gap-1.5 rounded-[8px] border border-amber-300 bg-white px-3 text-xs font-bold text-amber-800 transition-colors hover:bg-amber-100"
+              >
+                <LockOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                {editRequest?.status === "DECLINED" ? "Request again" : "Request Edit"}
+              </button>
+            ) : null}
           </div>
         ) : (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#c3c6d2]/40 pt-4">
@@ -1172,6 +1241,67 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
         </div>
         )}
       </form>
+
+      {/* Safety net before the write (BUG-AI). The copy tracks what will
+          actually happen: this submit only locks the day when every commitment
+          is complete, and warning about a lock that isn't coming would train
+          people to click through the dialog. */}
+      <ConfirmationDialog
+        open={pendingSave !== null}
+        onOpenChange={(open) => {
+          if (!open) setPendingSave(null);
+        }}
+        title={willComplete ? "Submit and lock today's scrum?" : "Save your daily plan?"}
+        description={
+          willComplete
+            ? "All of today's commitments are complete, so submitting locks this entry — you will not be able to edit it afterward without asking your supervisor to unlock it."
+            : "Your accomplishments and notes will be saved. Today's entry stays editable until every commitment is complete."
+        }
+        confirmLabel={willComplete ? "Yes, submit and lock" : "Yes, save"}
+        pending={save.isPending}
+        onConfirm={confirmSave}
+      />
+
+      {/* Reopen request for a locked day (BUG-AH). The reason is what the
+          supervisor decides on, so it is required — same 5-char floor the
+          backend enforces. */}
+      <Dialog open={editRequestOpen} onOpenChange={setEditRequestOpen}>
+        <DialogContent className="w-[min(480px,calc(100vw-2rem))]">
+          <div className="flex flex-col gap-2 px-6 pt-6">
+            <DialogTitle className="text-xl font-bold text-brand-navy">Request edit access</DialogTitle>
+            <DialogDescription>
+              Your supervisor will be notified and can reopen this day for you. Tell them what needs
+              correcting.
+            </DialogDescription>
+          </div>
+          <div className="px-6 pt-4">
+            <FieldLabel htmlFor="edit-request-reason">Reason</FieldLabel>
+            <Textarea
+              id="edit-request-reason"
+              rows={3}
+              value={editRequestReason}
+              onChange={(e) => setEditRequestReason(e.target.value)}
+              placeholder="e.g. I logged 30 calls but the actual number was 45."
+              className="bg-white"
+            />
+            <p className="mt-1 text-xs text-brand-muted">At least 5 characters.</p>
+          </div>
+          <div className="flex items-center justify-end gap-3 px-6 py-5">
+            <DialogClose className="rounded-[10px] px-4 py-2 text-sm font-bold text-brand-ink hover:bg-[#f6f3f4]">
+              Cancel
+            </DialogClose>
+            <button
+              type="button"
+              onClick={() => requestEdit.mutate()}
+              disabled={editRequestReason.trim().length < 5 || requestEdit.isPending}
+              className="flex h-10 items-center gap-2 rounded-[10px] bg-brand px-5 text-sm font-bold text-white hover:bg-[#1467d6] disabled:cursor-not-allowed disabled:opacity-60"
+            >
+              {requestEdit.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
+              Send request
+            </button>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

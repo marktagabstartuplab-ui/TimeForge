@@ -27,6 +27,7 @@ export const TENANT_MODELS = new Set([
   'ScrumEntry',
   'ScrumTask',
   'ScrumBlocker',
+  'ScrumEditRequest',
   'RecurringIssue',
   'WorkSession',
   'SessionEvent',

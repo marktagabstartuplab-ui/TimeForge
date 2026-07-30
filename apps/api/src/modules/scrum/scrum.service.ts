@@ -5,7 +5,15 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { Prisma, ScrumEntry, ScrumTask, ScrumBlocker, BlockerSeverity, BlockerStatus } from '@prisma/client';
+import {
+  Prisma,
+  ScrumEntry,
+  ScrumTask,
+  ScrumBlocker,
+  ScrumEditRequest,
+  BlockerSeverity,
+  BlockerStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
@@ -18,7 +26,9 @@ import {
   CommentScrumEntryDto,
   CreateScrumBlockerDto,
   CreateScrumEntryDto,
+  CreateScrumEditRequestDto,
   CreateScrumTaskDto,
+  DeclineScrumEditRequestDto,
   ScrumQuery,
   UnlockScrumEntryDto,
   UpdateScrumBlockerDto,
@@ -343,6 +353,146 @@ export class ScrumService {
     return updated;
   }
 
+  // ── Edit requests (locked-entry reopen workflow) ────────────────────────────
+
+  /**
+   * Employee asks their supervisor to reopen their own locked scrum. Creates a
+   * PENDING request and notifies the supervisor; granting it is the existing
+   * unlock endpoint. One open request per entry — re-asking updates the reason
+   * rather than stacking duplicates in the supervisor's queue.
+   */
+  async requestEdit(
+    p: AuthPrincipal,
+    entryId: string,
+    dto: CreateScrumEditRequestDto,
+  ): Promise<ScrumEditRequest> {
+    const entry = await this.ownEntry(p, entryId);
+    if (!entry.isLocked) {
+      throw new ConflictException('This scrum entry is not locked — you can still edit it');
+    }
+
+    const reason = dto.reason?.trim() ?? '';
+    if (reason.length < 5) {
+      throw new UnprocessableEntityException('A reason of at least 5 characters is required');
+    }
+
+    const existing = await this.prisma.scrumEditRequest.findFirst({
+      where: { scrumEntryId: entry.id, status: 'PENDING', deletedAt: null },
+    });
+
+    const request = existing
+      ? await this.prisma.scrumEditRequest.update({
+          where: { id: existing.id },
+          data: { reason, updatedBy: p.userId, version: { increment: 1 } },
+        })
+      : await this.prisma.scrumEditRequest.create({
+          data: {
+            tenantId: p.tenantId,
+            organizationId: p.organizationId,
+            scrumEntryId: entry.id,
+            requesterId: p.userId,
+            reason,
+            createdBy: p.userId,
+            updatedBy: p.userId,
+          },
+        });
+
+    await this.notifySupervisorOf(p.userId, p.tenantId, p.organizationId, {
+      type: 'SCRUM_ENTRY_LOCKED',
+      title: 'Daily Scrum edit requested',
+      message: `An employee asked to reopen their locked scrum for ${entry.entryDate.toISOString().slice(0, 10)}. Reason: ${reason}`,
+      actionUrl: '/team-scrum',
+      actionLabel: 'Review request',
+    });
+
+    return request;
+  }
+
+  /** The caller's own open request for an entry, if any — drives the employee's button state. */
+  async myEditRequest(p: AuthPrincipal, entryId: string): Promise<ScrumEditRequest | null> {
+    await this.ownEntry(p, entryId);
+    return this.prisma.scrumEditRequest.findFirst({
+      where: { scrumEntryId: entryId, requesterId: p.userId, deletedAt: null },
+      orderBy: { createdAt: 'desc' },
+    });
+  }
+
+  /**
+   * Pending reopen requests the caller is allowed to act on — the supervisor's
+   * dashboard queue. Scoped exactly like the unlock they lead to: admins see the
+   * organization, supervisors only their own department's members.
+   */
+  async listEditRequests(p: AuthPrincipal) {
+    const scope = await this.resolveScrumMgmtScope(p);
+    const requests = await this.prisma.scrumEditRequest.findMany({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        status: 'PENDING',
+        deletedAt: null,
+        ...(scope.scope === 'team' ? { requesterId: { in: scope.userIds ?? [] } } : {}),
+      },
+      include: {
+        requester: { select: { id: true, firstName: true, lastName: true, avatarKey: true } },
+        scrumEntry: { select: { id: true, entryDate: true, isLocked: true } },
+      },
+      orderBy: { createdAt: 'asc' },
+    });
+    const avatarUrls = await this.storage.signedUrlsByKey(requests.map((r) => r.requester.avatarKey));
+    return requests.map((r) => ({ ...r, requester: withAvatarUrl(r.requester, avatarUrls) }));
+  }
+
+  /**
+   * Supervisor declines a reopen request. The entry stays locked; the employee
+   * is told why so the request doesn't just vanish from their screen.
+   */
+  async declineEditRequest(
+    p: AuthPrincipal,
+    requestId: string,
+    dto: DeclineScrumEditRequestDto,
+  ): Promise<ScrumEditRequest> {
+    const request = await this.prisma.scrumEditRequest.findFirst({
+      where: { id: requestId, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+    });
+    if (!request) throw new NotFoundException('Edit request not found');
+    if (request.status !== 'PENDING') {
+      throw new ConflictException('This request has already been resolved');
+    }
+    await this.assertCanUnlock(p, request.requesterId);
+
+    const reason = dto.reason?.trim() ?? '';
+    if (reason.length < 5) {
+      throw new UnprocessableEntityException('A reason of at least 5 characters is required');
+    }
+
+    const updated = await this.prisma.scrumEditRequest.update({
+      where: { id: request.id },
+      data: {
+        status: 'DECLINED',
+        resolvedById: p.userId,
+        resolvedAt: new Date(),
+        resolutionNote: reason,
+        updatedBy: p.userId,
+        version: { increment: 1 },
+      },
+    });
+
+    await this.notifications.create({
+      tenantId: p.tenantId,
+      organizationId: p.organizationId,
+      userId: request.requesterId,
+      senderId: p.userId,
+      type: 'ANNOUNCEMENT',
+      category: 'DAILY_SCRUM',
+      title: 'Daily Scrum edit request declined',
+      message: `Your supervisor declined to reopen your scrum. Reason: ${reason}`,
+      actionUrl: `/time-tracking?scrum=${request.scrumEntryId}`,
+      actionLabel: 'View Scrum',
+    });
+
+    return updated;
+  }
+
   /**
    * Supervisor unlocks a team member's locked Today's Commitment so the
    * employee/intern can edit their scrum tasks again. Department-scoped: only the
@@ -355,17 +505,7 @@ export class ScrumService {
     });
     if (!entry) throw new NotFoundException('Scrum entry not found');
 
-    // Admin (org scope, via wildcard) may unlock any entry org-wide. A Supervisor
-    // (team scope) may only unlock entries owned by a member of the department(s)
-    // they head — department isolation. Anyone else is refused.
-    if (!this.can(p, PERMISSIONS.SCRUM_READ_ORG)) {
-      if (!this.can(p, PERMISSIONS.SCRUM_READ_TEAM)) {
-        throw new ForbiddenException('Only supervisors can unlock team scrum entries');
-      }
-      if (!(await this.isInTeam(p, entry.userId))) {
-        throw new ForbiddenException('This entry is outside your team');
-      }
-    }
+    await this.assertCanUnlock(p, entry.userId);
 
     if (!entry.isLocked) {
       throw new ConflictException('This scrum entry is not locked');
@@ -418,6 +558,20 @@ export class ScrumService {
           departmentId: owner?.departmentId ?? null,
           entryDate: entry.entryDate.toISOString(),
         },
+      },
+    });
+
+    // An unlock IS the approval of any open reopen request for this entry, so
+    // close it out — otherwise it would sit in the supervisor's queue forever,
+    // asking for something already granted.
+    await this.prisma.scrumEditRequest.updateMany({
+      where: { scrumEntryId: id, status: 'PENDING', deletedAt: null },
+      data: {
+        status: 'APPROVED',
+        resolvedById: p.userId,
+        resolvedAt: new Date(),
+        resolutionNote: reason,
+        updatedBy: p.userId,
       },
     });
 
@@ -1146,6 +1300,22 @@ export class ScrumService {
     throw new ForbiddenException('Not permitted to view this scrum entry');
   }
 
+  /**
+   * Who may reopen a locked entry — and therefore who may decline the request to
+   * reopen it. Admin (org scope, via wildcard) may act org-wide; a Supervisor
+   * (team scope) only on members of the department(s) they head — department
+   * isolation. Anyone else is refused.
+   */
+  private async assertCanUnlock(p: AuthPrincipal, ownerId: string): Promise<void> {
+    if (this.can(p, PERMISSIONS.SCRUM_READ_ORG)) return;
+    if (!this.can(p, PERMISSIONS.SCRUM_READ_TEAM)) {
+      throw new ForbiddenException('Only supervisors can unlock team scrum entries');
+    }
+    if (!(await this.isInTeam(p, ownerId))) {
+      throw new ForbiddenException('This entry is outside your team');
+    }
+  }
+
   private async isInTeam(p: AuthPrincipal, userId: string): Promise<boolean> {
     if (this.can(p, PERMISSIONS.SCRUM_READ_TEAM)) {
       return (await this.teamUserIds(p)).includes(userId);
@@ -1350,7 +1520,13 @@ export class ScrumService {
     userId: string,
     tenantId: string,
     organizationId: string,
-    input: { type: 'SCRUM_ENTRY_LOCKED' | 'SCRUM_BLOCKER_ADDED'; title: string; message: string },
+    input: {
+      type: 'SCRUM_ENTRY_LOCKED' | 'SCRUM_BLOCKER_ADDED';
+      title: string;
+      message: string;
+      actionUrl?: string;
+      actionLabel?: string;
+    },
   ): Promise<void> {
     const employee = await this.prisma.user.findFirst({ where: { id: userId }, select: { supervisorId: true } });
     if (!employee?.supervisorId) return;
@@ -1363,8 +1539,8 @@ export class ScrumService {
       category: 'DAILY_SCRUM',
       title: input.title,
       message: input.message,
-      actionUrl: '/time-tracking',
-      actionLabel: 'View Scrum',
+      actionUrl: input.actionUrl ?? '/time-tracking',
+      actionLabel: input.actionLabel ?? 'View Scrum',
     });
   }
 }

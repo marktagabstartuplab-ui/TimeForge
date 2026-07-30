@@ -144,6 +144,37 @@ export async function listScrumEntries(params: { from?: string; to?: string; lim
   return data;
 }
 
+export type ScrumEditRequestStatus = "PENDING" | "APPROVED" | "DECLINED";
+
+/** An employee's request to have their locked Daily Scrum reopened. */
+export interface ScrumEditRequest {
+  id: string;
+  scrumEntryId: string;
+  requesterId: string;
+  reason: string;
+  status: ScrumEditRequestStatus;
+  resolvedById: string | null;
+  resolvedAt: string | null;
+  /** Supervisor's note when declining. */
+  resolutionNote: string | null;
+  createdAt: string;
+  updatedAt: string;
+  version: number;
+}
+
+export async function requestScrumEdit(entryId: string, reason: string): Promise<ScrumEditRequest> {
+  const { data } = await apiClient.post<ScrumEditRequest>(`/scrum-entries/${entryId}/edit-request`, { reason });
+  return data;
+}
+
+/** The caller's own latest request for an entry — null when they've never asked. */
+export async function getMyScrumEditRequest(entryId: string): Promise<ScrumEditRequest | null> {
+  const { data } = await apiClient.get<ScrumEditRequest | null>(`/scrum-entries/${entryId}/edit-request`, {
+    params: { _t: Date.now() },
+  });
+  return data;
+}
+
 /** Uncompleted tasks carried over from a previous day's EOD ("continue tomorrow" = Yes). */
 export interface ScrumCarryOver {
   sourceEntryId: string | null;

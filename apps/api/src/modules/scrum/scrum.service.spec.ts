@@ -50,6 +50,7 @@ describe('ScrumService — completed commitment lock-down', () => {
     prisma = {
       scrumTask: { findFirst: jest.fn(), update: jest.fn(), updateMany: jest.fn(), findMany: jest.fn() },
       scrumEntry: { findFirst: jest.fn(), update: jest.fn() },
+      scrumEditRequest: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
       auditLog: { create: jest.fn() },
       user: { findFirst: jest.fn() },
     };
@@ -349,5 +350,116 @@ describe('ScrumService — carry-over of continued commitments', () => {
 
     expect(result).toEqual({ sourceEntryId: null, sourceDate: null, tasks: [] });
     expect(prisma.scrumEntry.findFirst).not.toHaveBeenCalled();
+  });
+});
+
+describe('ScrumService — locked-entry edit requests', () => {
+  let service: ScrumService;
+  let prisma: any;
+
+  const lockedEntry = {
+    id: 'entry-1',
+    userId: 'user-1',
+    tenantId: 'tenant-1',
+    organizationId: 'org-1',
+    isLocked: true,
+    entryDate: new Date('2026-07-30T00:00:00.000Z'),
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      scrumEntry: { findFirst: jest.fn(), update: jest.fn() },
+      scrumEditRequest: { findFirst: jest.fn(), create: jest.fn(), update: jest.fn(), updateMany: jest.fn() },
+      scrumTask: { updateMany: jest.fn() },
+      auditLog: { create: jest.fn() },
+      user: { findFirst: jest.fn() },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ScrumService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: NotificationsService, useValue: { create: jest.fn() } },
+        { provide: DepartmentScopeService, useValue: {} },
+        { provide: StorageService, useValue: {} },
+        {
+          provide: OrgTimeZoneService,
+          useValue: { forPrincipal: jest.fn().mockResolvedValue('Asia/Manila') },
+        },
+      ],
+    }).compile();
+
+    service = module.get(ScrumService);
+  });
+
+  it('refuses an edit request on an entry that is not locked', async () => {
+    prisma.scrumEntry.findFirst.mockResolvedValue({ ...lockedEntry, isLocked: false });
+
+    await expect(
+      service.requestEdit(principal, 'entry-1', { reason: 'Wrong numbers' } as any),
+    ).rejects.toBeInstanceOf(ConflictException);
+    expect(prisma.scrumEditRequest.create).not.toHaveBeenCalled();
+  });
+
+  it('creates a pending request and notifies the supervisor', async () => {
+    prisma.scrumEntry.findFirst.mockResolvedValue(lockedEntry);
+    prisma.scrumEditRequest.findFirst.mockResolvedValue(null);
+    prisma.scrumEditRequest.create.mockResolvedValue({ id: 'req-1', status: 'PENDING' });
+    prisma.user.findFirst.mockResolvedValue({ supervisorId: 'sup-1' });
+
+    const result = await service.requestEdit(principal, 'entry-1', { reason: 'Miscounted my calls' } as any);
+
+    expect(result).toEqual({ id: 'req-1', status: 'PENDING' });
+    expect(prisma.scrumEditRequest.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ scrumEntryId: 'entry-1', requesterId: 'user-1', reason: 'Miscounted my calls' }),
+      }),
+    );
+  });
+
+  // Re-asking must not stack duplicates in the supervisor's queue.
+  it('updates the open request instead of creating a second one', async () => {
+    prisma.scrumEntry.findFirst.mockResolvedValue(lockedEntry);
+    prisma.scrumEditRequest.findFirst.mockResolvedValue({ id: 'req-1', status: 'PENDING' });
+    prisma.scrumEditRequest.update.mockResolvedValue({ id: 'req-1', status: 'PENDING' });
+    prisma.user.findFirst.mockResolvedValue({ supervisorId: 'sup-1' });
+
+    await service.requestEdit(principal, 'entry-1', { reason: 'Adding more detail' } as any);
+
+    expect(prisma.scrumEditRequest.create).not.toHaveBeenCalled();
+    expect(prisma.scrumEditRequest.update).toHaveBeenCalledWith(
+      expect.objectContaining({ where: { id: 'req-1' } }),
+    );
+  });
+
+  it('an unlock approves the entry\'s open request', async () => {
+    const supervisor = { ...principal, permissions: ['scrum:read_org'] } as unknown as AuthPrincipal;
+    prisma.scrumEntry.findFirst.mockResolvedValue({ ...lockedEntry, userId: 'user-2' });
+    prisma.user.findFirst.mockResolvedValue({ departmentId: 'dept-1' });
+    prisma.scrumEntry.update.mockResolvedValue({ id: 'entry-1', isLocked: false });
+
+    await service.unlockEntry(supervisor, 'entry-1', { reason: 'Approved the correction' } as any);
+
+    expect(prisma.scrumEditRequest.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ scrumEntryId: 'entry-1', status: 'PENDING' }),
+        data: expect.objectContaining({ status: 'APPROVED', resolvedById: 'user-1' }),
+      }),
+    );
+  });
+
+  it('refuses to decline a request outside the supervisor\'s scope', async () => {
+    const outsider = { ...principal, permissions: [] } as unknown as AuthPrincipal;
+    prisma.scrumEditRequest.findFirst.mockResolvedValue({
+      id: 'req-1',
+      status: 'PENDING',
+      requesterId: 'user-9',
+      scrumEntryId: 'entry-1',
+    });
+
+    await expect(
+      service.declineEditRequest(outsider, 'req-1', { reason: 'Not allowed' } as any),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.scrumEditRequest.update).not.toHaveBeenCalled();
   });
 });
