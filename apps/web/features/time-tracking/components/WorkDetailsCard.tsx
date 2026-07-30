@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Download, FileText, Link2, Loader2, NotebookPen, Paperclip, Upload, X, Zap } from "lucide-react";
+import { Check, Download, FileText, Link2, Loader2, NotebookPen, Paperclip, Upload, X, Zap } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -30,6 +30,7 @@ import { useAuth } from "@/providers/auth-provider";
 import { AiImproveTaskButton } from "./AiImproveTaskButton";
 import { workDetailsSchema, type WorkDetailsValues } from "../schemas/time-entry.schema";
 import { type WorkTask } from "../lib/task-select";
+import { formatClockTime } from "@/lib/time";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
 
@@ -69,6 +70,9 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
   const [attachments, setAttachments] = useState<TimeEntryAttachment[]>(running?.attachments ?? []);
   const [currentVersion, setCurrentVersion] = useState(running?.version ?? 0);
   const [uploadError, setUploadError] = useState<string | null>(null);
+  // When the last successful save happened. Shown only while the form is
+  // pristine — the moment the user edits again it is no longer "saved".
+  const [savedAt, setSavedAt] = useState<string | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
@@ -96,7 +100,7 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
     reset,
     watch,
     setValue,
-    formState: { errors },
+    formState: { errors, isDirty },
   } = useForm<WorkDetailsValues>({
     resolver: zodResolver(workDetailsSchema),
     defaultValues: {
@@ -113,15 +117,22 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
   // Quick Select populates the form (one click → Work Details filled).
   useEffect(() => {
     if (!selectedTask) return;
-    reset({
-      task: selectedTask.title,
-      workDescription: selectedTask.details,
-      deliverables: running?.deliverables ?? "",
-      departmentId: running?.departmentId ?? profileDepartmentId ?? "",
-      clientId: selectedTask.clientId ?? "",
-      projectId: selectedTask.projectId ?? "",
-      workCategoryId: selectedTask.workCategoryId ?? "",
-    });
+    reset(
+      {
+        task: selectedTask.title,
+        workDescription: selectedTask.details,
+        deliverables: running?.deliverables ?? "",
+        departmentId: running?.departmentId ?? profileDepartmentId ?? "",
+        clientId: selectedTask.clientId ?? "",
+        projectId: selectedTask.projectId ?? "",
+        workCategoryId: selectedTask.workCategoryId ?? "",
+      },
+      // Keep the mount-time defaults as the dirty baseline so a Quick Select
+      // prefill counts as an unsaved change — otherwise the form would come up
+      // pristine and the Save button would be disabled on the very values the
+      // user just asked to load.
+      { keepDefaultValues: true },
+    );
   }, [selectedTask, reset]);
 
   const watchTask = watch("task");
@@ -146,6 +157,24 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
       queryClient.invalidateQueries({ queryKey: ["time-entries"] });
       setCurrentVersion(updated.version);
       setServerError(null);
+      // Re-seed the form from what the server actually stored. This is what
+      // makes the save legible: the fields now provably mirror the record, and
+      // the form goes pristine, so the Save button disables until something
+      // genuinely changes (no accidental duplicate submits). Values are kept
+      // rather than cleared — this card edits a live entry, and blanking it
+      // would hide the running session's own context.
+      reset({
+        task: updated.task ?? "",
+        workDescription: updated.description ?? "",
+        deliverables: updated.deliverables ?? "",
+        departmentId: updated.departmentId ?? profileDepartmentId ?? "",
+        clientId: updated.clientId ?? "",
+        projectId: updated.projectId ?? "",
+        workCategoryId: updated.workCategoryId ?? "",
+      });
+      setLinks(updated.referenceLinks ?? []);
+      setAttachments(updated.attachments ?? []);
+      setSavedAt(new Date().toISOString());
       onToast({ message: "Work details saved to the running session." });
     },
     onError: (err) => {
@@ -536,11 +565,26 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
           </div>
           </div>
 
-          <div className="flex justify-end border-t border-[#c3c6d2]/40 pt-4">
+          <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#c3c6d2]/40 pt-4">
+            {/* Persistent confirmation — a toast disappears, leaving the user
+                unsure whether the values on screen are the saved ones. */}
+            <p className="text-xs text-brand-muted" role="status">
+              {savedAt && !isDirty ? (
+                <span className="flex items-center gap-1.5 font-semibold text-[#16a34a]">
+                  <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                  Saved at {formatClockTime(savedAt)} — these are the stored values.
+                </span>
+              ) : isDirty ? (
+                "Unsaved changes."
+              ) : (
+                ""
+              )}
+            </p>
             <button
               type="submit"
-              disabled={save.isPending}
-              className="flex h-11 items-center justify-center gap-2 rounded-[10px] bg-brand px-6 text-sm font-bold text-white transition-colors hover:bg-[#1467d6] disabled:opacity-60"
+              disabled={save.isPending || !isDirty}
+              title={!isDirty && !save.isPending ? "No changes to save" : undefined}
+              className="flex h-11 items-center justify-center gap-2 rounded-[10px] bg-brand px-6 text-sm font-bold text-white transition-colors hover:bg-[#1467d6] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}
               Save Work Details

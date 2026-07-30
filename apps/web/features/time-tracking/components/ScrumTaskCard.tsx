@@ -105,6 +105,9 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
   const [draftSavedAt, setDraftSavedAt] = useState<string | null>(null);
+  // Last successful server save, distinct from the local draft autosave above.
+  // Surfaced only while the form is pristine.
+  const [savedAt, setSavedAt] = useState<string | null>(null);
 
   // Plan New Task Form States
   const [taskDesc, setTaskDesc] = useState("");
@@ -228,7 +231,14 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
       });
     } else {
       const draft = readDraft();
-      if (draft) reset({ yesterday: draft.yesterday, today: "", blockers: "", notes: draft.notes, progress: 0, status: "NOT_STARTED" });
+      // A restored draft is unsaved work, so keep the mount-time defaults as
+      // the dirty baseline — otherwise the form reads pristine and the Save
+      // button would be disabled on content that only exists in localStorage.
+      if (draft)
+        reset(
+          { yesterday: draft.yesterday, today: "", blockers: "", notes: draft.notes, progress: 0, status: "NOT_STARTED" },
+          { keepDefaultValues: true },
+        );
     }
   }, [entry, reset]);
 
@@ -503,10 +513,23 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
         version: activeEntry.version,
       });
     },
-    onSuccess: () => {
+    onSuccess: (updated) => {
       queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
       window.localStorage.removeItem(draftKey());
       setDraftSavedAt(null);
+      // Re-seed from the persisted entry so the form goes pristine: the Save
+      // button disables until something actually changes, the "unsaved work"
+      // warnings stand down, and the fields provably mirror the record. Not
+      // cleared — this is a per-day record the employee keeps referring to.
+      reset({
+        yesterday: updated.yesterday,
+        today: "",
+        blockers: "",
+        notes: updated.notes ?? "",
+        progress: updated.progress,
+        status: updated.status,
+      });
+      setSavedAt(new Date().toISOString());
       onToast({ message: "Daily Scrum updated." });
     },
     onError: (err) => {
@@ -1095,10 +1118,17 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
         ) : (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#c3c6d2]/40 pt-4">
           <div className="text-xs text-brand-muted">
-            <p>
-              {draftSavedAt ? `Draft auto-saved at ${formatClockTime(draftSavedAt)} · ` : ""}
-              Auto-saves every 30s · Ctrl+Enter to submit
-            </p>
+            {savedAt && !isDirty ? (
+              <p role="status" className="flex items-center gap-1.5 font-semibold text-[#16a34a]">
+                <Check className="h-3.5 w-3.5" aria-hidden="true" />
+                Saved at {formatClockTime(savedAt)} — these are the stored values.
+              </p>
+            ) : (
+              <p>
+                {draftSavedAt ? `Draft auto-saved at ${formatClockTime(draftSavedAt)} · ` : ""}
+                Auto-saves every 30s · Ctrl+Enter to submit
+              </p>
+            )}
           </div>
 
           <div className="flex items-center gap-3">
@@ -1124,7 +1154,8 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
             {!locked && (
               <button
                 type="submit"
-                disabled={save.isPending || loading}
+                disabled={save.isPending || loading || !isDirty}
+                title={!isDirty && !save.isPending ? "No changes to save" : undefined}
                 className="flex h-11 items-center justify-center gap-2 rounded-[10px] bg-brand px-6 text-sm font-bold text-white transition-colors hover:bg-[#1467d6] disabled:opacity-60"
               >
                 {save.isPending ? (
