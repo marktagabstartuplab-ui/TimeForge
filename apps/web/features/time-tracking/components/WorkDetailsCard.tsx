@@ -27,6 +27,7 @@ import {
   type TimeEntryAttachment,
 } from "../api/time-entries.service";
 import { useAuth } from "@/providers/auth-provider";
+import { type ScrumTask } from "@/features/scrum/api/scrum.service";
 import { AiImproveTaskButton } from "./AiImproveTaskButton";
 import { workDetailsSchema, type WorkDetailsValues } from "../schemas/time-entry.schema";
 import { type WorkTask } from "../lib/task-select";
@@ -43,6 +44,8 @@ interface WorkDetailsCardProps {
   profileDepartmentId: string | null;
   /** Available departments for the dropdown. */
   departments: { id: string; name: string }[];
+  /** Today's planned scrum commitments — offered as one-click chips (BUG-AJ). */
+  plannedTasks?: ScrumTask[];
   onToast: (toast: ToastState) => void;
 }
 
@@ -59,7 +62,7 @@ const PROFILE_DEPARTMENT = "__profile_department__";
  * POST /time-entries/:id/attachments, stored in the `attachments` JSON column;
  * URL links still use `referenceLinks`.
  */
-export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, departments, onToast }: WorkDetailsCardProps) {
+export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, departments, plannedTasks = [], onToast }: WorkDetailsCardProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -362,6 +365,36 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
                     userId={user?.id ?? ""}
                   />
                 </div>
+                {/* Commitments planned in "Plan New Task" above, offered as
+                    one-click fills so the same task isn't re-typed (BUG-AJ).
+                    Chips only — never auto-overwrite, since this card may
+                    already hold work the user is typing. */}
+                {plannedTasks.length > 0 ? (
+                  <div className="mb-2 flex flex-wrap gap-1.5">
+                    <span className="w-full text-[10px] font-bold uppercase tracking-[0.5px] text-brand-muted">
+                      From today&apos;s commitments
+                    </span>
+                    {plannedTasks.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          setValue("task", t.title, { shouldDirty: true });
+                          if (t.projectId) setValue("projectId", t.projectId, { shouldDirty: true });
+                        }}
+                        title={t.expectedOutput}
+                        className={cn(
+                          "max-w-full truncate rounded-full border px-2.5 py-1 text-xs font-semibold transition-colors",
+                          watchTask === t.title
+                            ? "border-brand bg-brand/10 text-brand"
+                            : "border-[#c3c6d2] bg-white text-brand-navy hover:border-brand hover:bg-[#f6f3f4]",
+                        )}
+                      >
+                        {t.title}
+                      </button>
+                    ))}
+                  </div>
+                ) : null}
                 <Textarea
                   id="wd-task"
                   placeholder="e.g. UI Refactoring"

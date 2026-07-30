@@ -360,6 +360,7 @@ export function TimeTrackingContent() {
               selectedTask={selectedTask}
               profileDepartmentId={meQuery.data?.departmentId ?? null}
               departments={departmentsQuery.data ?? []}
+              plannedTasks={scrumTasks}
               onToast={onToast}
             />
 
