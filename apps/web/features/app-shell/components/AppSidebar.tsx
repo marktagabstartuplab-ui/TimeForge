@@ -30,7 +30,10 @@ const NAV_ITEMS: NavItem[] = [
   { id: "time-tracking", href: "/time-tracking", label: "Daily Scrum", icon: "timer", section: "WORKSPACE" },
   { id: "timesheets", href: "/timesheets", label: "Time Sheet", icon: "file-text", section: "WORKSPACE" },
   { id: "payslips", href: "/payslips", label: "Payslips", icon: "wallet", section: "FINANCE_REPORTS" },
-  { id: "reports", href: "/reports", label: "Reports", icon: "bar-chart-3", section: "FINANCE_REPORTS" },
+  // Mirrors the server catalog's label (BUG-AT) — this static list is the
+  // fallback used before the nav request resolves, so a stale label here would
+  // flash the old text on every load.
+  { id: "reports", href: "/reports", label: "Administrative Reports", icon: "bar-chart-3", section: "FINANCE_REPORTS" },
   { id: "performance", href: "/performance", label: "Performance Report", icon: "bar-chart-3", section: "FINANCE_REPORTS" },
 ];
 

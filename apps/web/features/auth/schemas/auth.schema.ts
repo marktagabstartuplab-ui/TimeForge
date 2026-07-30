@@ -53,13 +53,13 @@ export const REQUESTABLE_ROLES = [
 
 // Step 2. Department was chosen in step 1; here the user picks a Requested Role
 // (an admin assigns the real role on approval). Terms are agreed once, in step
-// 1 — not duplicated here. workCategory is design-parity only and not sent.
+// 1 — not duplicated here. workCategory was carried for design parity only,
+// never sent, and its disabled input was removed in BUG-AU.
 export const registerStep2Schema = z
   .object({
     password: strongPassword,
     confirmPassword: z.string().min(1, "Please confirm your password"),
     requestedRole: z.enum(["EMPLOYEE", "INTERN"], { message: "Select a requested role" }),
-    workCategory: z.string().optional(),
   })
   .refine((data) => data.password === data.confirmPassword, {
     message: "Passwords do not match",

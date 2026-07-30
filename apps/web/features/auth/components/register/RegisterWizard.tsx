@@ -39,7 +39,6 @@ export function RegisterWizard() {
     const { firstName, lastName } = splitName(step1.fullName);
     // The design omits a job-title field; the backend register DTO requires
     // one, so we default it (all self-signups become EMPLOYEE anyway).
-    // workCategory has no backend home and is not sent.
     await registerUser({
       email: step1.email,
       password: values.password,
