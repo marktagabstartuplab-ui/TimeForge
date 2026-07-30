@@ -3,7 +3,15 @@
 import { useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { Search, Calendar, AlertCircle, MessageSquare, Flag, Loader2, ChevronLeft, ChevronRight, Check, Lock, LockOpen, Sparkles, X } from "lucide-react";
-import { getTeamScrums, postScrumComment, postScrumFlag, postScrumUnlock } from "../api/scrum-management.service";
+import {
+  getScrumEditRequests,
+  getTeamScrums,
+  postScrumComment,
+  postScrumEditRequestDecline,
+  postScrumFlag,
+  postScrumUnlock,
+  type ScrumEditRequestItem,
+} from "../api/scrum-management.service";
 import { runAndPollAiJob } from "../api/ai-insight.service";
 import { AiFormattedText } from "@/components/shared/AiFormattedText";
 import { SectionCard } from "@/components/shared/SectionCard";
@@ -50,6 +58,9 @@ export function TeamScrumSubmissionsContent({
   // Unlock modal: the entry being unlocked + the optional reason draft.
   const [unlockTarget, setUnlockTarget] = useState<{ id: string; name: string } | null>(null);
   const [unlockReason, setUnlockReason] = useState("");
+  // Decline modal: the request being refused + the reason sent back to the employee.
+  const [declineTarget, setDeclineTarget] = useState<ScrumEditRequestItem | null>(null);
+  const [declineReason, setDeclineReason] = useState("");
 
   const { data, isLoading } = useQuery({
     queryKey: ["scrum-team-submissions", { search, date, hasBlockers, needsReview, page }],
@@ -87,12 +98,35 @@ export function TeamScrumSubmissionsContent({
     },
   });
 
+  // Pending reopen requests awaiting this supervisor.
+  const { data: editRequests = [] } = useQuery({
+    queryKey: ["scrum-edit-requests"],
+    queryFn: getScrumEditRequests,
+    refetchOnMount: "always",
+  });
+
+  const declineMutation = useMutation({
+    mutationFn: ({ id, reason }: { id: string; reason: string }) => postScrumEditRequestDecline(id, reason),
+    onSuccess: () => {
+      setToast({ message: "Edit request declined", tone: "success" });
+      setDeclineTarget(null);
+      setDeclineReason("");
+      queryClient.invalidateQueries({ queryKey: ["scrum-edit-requests"] });
+    },
+    onError: (err: any) => {
+      setToast({ message: err?.message || "Failed to decline the request", tone: "error" });
+    },
+  });
+
   const unlockMutation = useMutation({
     mutationFn: ({ id, reason }: { id: string; reason: string }) => postScrumUnlock(id, reason),
     onSuccess: () => {
       setToast({ message: "Today's Commitment unlocked", tone: "success" });
       setUnlockTarget(null);
       setUnlockReason("");
+      // The unlock approves any open request for that entry server-side, so the
+      // queue above has to be re-read or it keeps showing a granted request.
+      queryClient.invalidateQueries({ queryKey: ["scrum-edit-requests"] });
       queryClient.invalidateQueries({ queryKey: ["scrum-team-submissions"] });
     },
     onError: (err: any) => {
@@ -111,6 +145,69 @@ export function TeamScrumSubmissionsContent({
         <h1 className="text-2xl font-bold text-brand-navy">Team Scrum Submissions</h1>
         <p className="text-sm text-brand-muted">Review daily updates and identify blockers to ensure delivery timelines.</p>
       </div>
+
+      {/* Pending reopen requests (BUG-AH). Sits above the submissions list —
+          someone is blocked waiting on each of these, so it should be the first
+          thing a supervisor sees rather than buried in notifications. */}
+      {editRequests.length > 0 ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4">
+          <h2 className="flex items-center gap-2 text-sm font-bold uppercase tracking-[0.5px] text-amber-800">
+            <LockOpen className="h-4 w-4" aria-hidden="true" />
+            Edit access requests
+            <span className="rounded-full bg-amber-200 px-2 py-0.5 text-[10px] font-bold normal-case tracking-normal text-amber-900">
+              {editRequests.length} pending
+            </span>
+          </h2>
+          <ul className="mt-3 flex flex-col gap-2">
+            {editRequests.map((req) => (
+              <li
+                key={req.id}
+                className="flex flex-wrap items-center justify-between gap-3 rounded-[10px] border border-amber-200 bg-white px-3 py-2.5"
+              >
+                <div className="flex min-w-0 items-center gap-2.5">
+                  <Avatar
+                    firstName={req.requester.firstName}
+                    lastName={req.requester.lastName}
+                    imageUrl={req.requester.avatarUrl}
+                    size="sm"
+                  />
+                  <div className="min-w-0">
+                    <p className="truncate text-sm font-bold text-brand-ink">
+                      {req.requester.firstName} {req.requester.lastName}
+                      <span className="ml-2 text-xs font-medium text-brand-muted">
+                        {req.scrumEntry.entryDate.slice(0, 10)}
+                      </span>
+                    </p>
+                    <p className="truncate text-xs text-brand-muted">{req.reason}</p>
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center gap-2">
+                  <button
+                    type="button"
+                    onClick={() =>
+                      setUnlockTarget({
+                        id: req.scrumEntryId,
+                        name: `${req.requester.firstName} ${req.requester.lastName}`,
+                      })
+                    }
+                    className="flex h-8 items-center gap-1.5 rounded-[6px] bg-brand px-3 text-xs font-bold text-white hover:bg-[#1467d6]"
+                  >
+                    <LockOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                    Unlock
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setDeclineTarget(req)}
+                    className="h-8 rounded-[6px] border border-[#c3c6d2] px-3 text-xs font-bold text-brand-navy hover:bg-[#f6f3f4]"
+                  >
+                    Decline
+                  </button>
+                </div>
+              </li>
+            ))}
+          </ul>
+        </div>
+      ) : null}
 
       {/* Header controls */}
       <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between bg-white p-4 rounded-xl border border-[#c3c6d2]/30">
@@ -469,6 +566,59 @@ export function TeamScrumSubmissionsContent({
       ) : null}
 
       <RecurringIssuesPanel />
+
+      {/* Decline edit-request modal — same shape as the unlock modal below. */}
+      {declineTarget ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-xl bg-white p-6 shadow-xl">
+            <div className="flex items-center gap-2 text-brand-navy">
+              <Lock className="h-5 w-5" />
+              <h3 className="text-lg font-semibold">Decline edit request</h3>
+            </div>
+            <p className="mt-2 text-sm text-brand-muted">
+              <span className="font-semibold text-brand-navy">
+                {declineTarget.requester.firstName} {declineTarget.requester.lastName}
+              </span>{" "}
+              asked to reopen their scrum: &ldquo;{declineTarget.reason}&rdquo;. Their entry stays locked and
+              they&apos;ll see your reason.
+            </p>
+
+            <label className="mt-4 block text-sm font-semibold text-brand-navy">
+              Reason <span className="text-red-600">*</span>
+            </label>
+            <textarea
+              value={declineReason}
+              onChange={(e) => setDeclineReason(e.target.value)}
+              placeholder="e.g. Submit a correction request through payroll instead"
+              className="mt-1.5 w-full rounded-lg border border-[#c3c6d2] p-2.5 text-sm outline-none focus:border-brand min-h-[80px]"
+            />
+            <p className="mt-1 text-xs text-brand-muted">Required — at least 5 characters.</p>
+
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => {
+                  setDeclineTarget(null);
+                  setDeclineReason("");
+                }}
+                disabled={declineMutation.isPending}
+                className="rounded-lg border border-[#c3c6d2] px-4 py-2 text-sm font-semibold text-brand-navy hover:bg-[#f5f6fa] disabled:opacity-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={() => declineMutation.mutate({ id: declineTarget.id, reason: declineReason.trim() })}
+                disabled={declineMutation.isPending || declineReason.trim().length < 5}
+                className="flex items-center gap-1.5 rounded-lg bg-red-600 px-4 py-2 text-sm font-semibold text-white hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-50"
+              >
+                {declineMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                Decline
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
 
       {/* Unlock Commitment modal */}
       {unlockTarget ? (

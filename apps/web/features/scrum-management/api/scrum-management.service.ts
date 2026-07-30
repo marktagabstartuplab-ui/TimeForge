@@ -168,3 +168,27 @@ export async function postScrumFlag(id: string, version: number): Promise<void> 
 export async function postScrumUnlock(id: string, reason: string): Promise<void> {
   await apiClient.post(`/scrum/${id}/unlock`, { reason });
 }
+
+/** A team member's pending request to have their locked Daily Scrum reopened. */
+export interface ScrumEditRequestItem {
+  id: string;
+  scrumEntryId: string;
+  requesterId: string;
+  reason: string;
+  createdAt: string;
+  requester: { id: string; firstName: string; lastName: string; avatarUrl: string | null };
+  scrumEntry: { id: string; entryDate: string; isLocked: boolean };
+}
+
+/** Pending reopen requests in the supervisor's scope (their department, or org-wide for admins). */
+export async function getScrumEditRequests(): Promise<ScrumEditRequestItem[]> {
+  const { data } = await apiClient.get<ScrumEditRequestItem[]>("/scrum/edit-requests", {
+    params: { _t: Date.now() },
+  });
+  return data;
+}
+
+/** Refuse a reopen request. The entry stays locked and the employee is told why. */
+export async function postScrumEditRequestDecline(requestId: string, reason: string): Promise<void> {
+  await apiClient.post(`/scrum/edit-requests/${requestId}/decline`, { reason });
+}

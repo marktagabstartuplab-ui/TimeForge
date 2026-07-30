@@ -58,6 +58,12 @@ enum ScrumTaskPriority {
   HIGH
 }
 
+enum ScrumEditRequestStatus {
+  PENDING
+  APPROVED
+  DECLINED
+}
+
 enum BlockerSeverity {
   LOW
   MEDIUM
@@ -318,6 +324,8 @@ model User {
   timesheets            Timesheet[]
   scrumEntries          ScrumEntry[]
   scrumTasks            ScrumTask[]
+  scrumEditRequests     ScrumEditRequest[] @relation("ScrumEditRequester")
+  scrumEditResolutions  ScrumEditRequest[] @relation("ScrumEditResolver")
   workSessions          WorkSession[]
   kpiProgress           KpiProgress[]
   approvals             Approval[]        @relation("SupervisorApprovals")
@@ -736,6 +744,7 @@ model ScrumEntry {
   client       Client?        @relation(fields: [clientId], references: [id])
   tasks        ScrumTask[]
   blockerItems ScrumBlocker[]
+  editRequests ScrumEditRequest[]
 
   // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
   // see migration 20260710000000_soft_delete_partial_unique_indexes. The plain
@@ -792,6 +801,41 @@ model ScrumTask {
   @@index([tenantId, scrumEntryId])
   @@index([tenantId, employeeId])
   @@map("scrum_tasks")
+}
+
+/// An employee's request to reopen their own locked Daily Scrum. The supervisor
+/// grants it through the existing unlock endpoint (which resolves the request);
+/// declining closes it with a reason. Purely a request record — the authority to
+/// edit still comes from ScrumEntry.isLocked.
+model ScrumEditRequest {
+  id             String                 @id @default(uuid()) @db.Uuid
+  tenantId       String                 @map("tenant_id") @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  scrumEntryId   String                 @map("scrum_entry_id") @db.Uuid
+  /// The employee who owns the entry and asked for it back.
+  requesterId    String                 @map("requester_id") @db.Uuid
+  reason         String
+  status         ScrumEditRequestStatus @default(PENDING)
+  /// Supervisor who approved (via unlock) or declined.
+  resolvedById   String?                @map("resolved_by_id") @db.Uuid
+  resolvedAt     DateTime?              @map("resolved_at") @db.Timestamptz
+  /// Supervisor's note when declining.
+  resolutionNote String?                @map("resolution_note")
+  createdBy      String?                @map("created_by") @db.Uuid
+  updatedBy      String?                @map("updated_by") @db.Uuid
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?              @map("deleted_at") @db.Timestamptz
+  version        Int                    @default(0)
+
+  scrumEntry ScrumEntry @relation(fields: [scrumEntryId], references: [id])
+  requester  User       @relation("ScrumEditRequester", fields: [requesterId], references: [id])
+  resolvedBy User?      @relation("ScrumEditResolver", fields: [resolvedById], references: [id])
+
+  @@index([tenantId, scrumEntryId])
+  @@index([tenantId, organizationId, status])
+  @@index([tenantId, requesterId])
+  @@map("scrum_edit_requests")
 }
 
 model ScrumBlocker {

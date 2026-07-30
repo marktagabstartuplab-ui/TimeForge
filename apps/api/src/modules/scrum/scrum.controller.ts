@@ -15,6 +15,7 @@ import { ScrumService } from './scrum.service';
 import {
   CommentScrumEntryDto,
   CreateScrumBlockerDto,
+  CreateScrumEditRequestDto,
   CreateScrumEntryDto,
   CreateScrumTaskDto,
   ScrumQuery,
@@ -43,6 +44,24 @@ export class ScrumController {
   @RequirePermissions('scrum:read')
   carryOver(@CurrentUser() u: AuthPrincipal) {
     return this.svc.carryOverTasks(u);
+  }
+
+  /** Employee asks their supervisor to reopen this locked entry. */
+  @Post(':id/edit-request')
+  @RequirePermissions('scrum:update')
+  requestEdit(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Body() dto: CreateScrumEditRequestDto,
+  ) {
+    return this.svc.requestEdit(u, id, dto);
+  }
+
+  /** The caller's own latest request for this entry — drives the button state. */
+  @Get(':id/edit-request')
+  @RequirePermissions('scrum:read')
+  myEditRequest(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.myEditRequest(u, id);
   }
 
   @Get(':id')

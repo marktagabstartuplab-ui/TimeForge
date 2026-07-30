@@ -2,7 +2,12 @@ import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Po
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ScrumService, ScrumBlockersQuery, ScrumMgmtQuery } from './scrum.service';
 import { AuthPrincipal, CurrentUser } from '../../common/decorators';
-import { CommentScrumEntryDto, ScrumQuery, UnlockScrumEntryDto } from './dto';
+import {
+  CommentScrumEntryDto,
+  DeclineScrumEditRequestDto,
+  ScrumQuery,
+  UnlockScrumEntryDto,
+} from './dto';
 
 /**
  * Daily Scrum Management dashboard — Supervisor (team scope) / Admin (org scope).
@@ -62,6 +67,27 @@ export class ScrumDashboardController {
   @ApiOperation({ summary: 'Find team scrum entries' })
   findTeamScrums(@CurrentUser() u: AuthPrincipal, @Query() query: ScrumQuery & { search?: string }) {
     return this.svc.findTeamScrums(u, query);
+  }
+
+  /**
+   * Pending reopen requests awaiting this supervisor. Declared before `:id` —
+   * Nest matches in declaration order and the UUID pipe would reject this path.
+   */
+  @Get('edit-requests')
+  @ApiOperation({ summary: 'Pending Daily Scrum reopen requests (Supervisor / Admin)' })
+  editRequests(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.listEditRequests(u);
+  }
+
+  @Post('edit-requests/:requestId/decline')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Decline a Daily Scrum reopen request (Supervisor / Admin)' })
+  declineEditRequest(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('requestId', ParseUUIDPipe) requestId: string,
+    @Body() dto: DeclineScrumEditRequestDto,
+  ) {
+    return this.svc.declineEditRequest(u, requestId, dto);
   }
 
   @Get(':id')
