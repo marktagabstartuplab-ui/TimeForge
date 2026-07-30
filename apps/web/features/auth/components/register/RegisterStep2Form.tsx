@@ -44,7 +44,6 @@ export function RegisterStep2Form({ onSubmit, onBack }: Props) {
       password: "",
       confirmPassword: "",
       requestedRole: "EMPLOYEE",
-      workCategory: "",
     },
   });
 
@@ -117,57 +116,43 @@ export function RegisterStep2Form({ onSubmit, onBack }: Props) {
           <FieldError message={errors.confirmPassword?.message} />
         </div>
 
-        <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-          <div>
-            <FieldLabel htmlFor="requestedRole">Requested Role</FieldLabel>
-            <Controller
-              control={control}
-              name="requestedRole"
-              render={({ field }) => (
-                <Select
-                  value={field.value}
-                  onValueChange={field.onChange}
-                  items={REQUESTABLE_ROLES.map((r) => ({ value: r.value, label: r.label }))}
-                >
-                  <SelectTrigger
-                    id="requestedRole"
-                    aria-label="Requested Role"
-                    aria-invalid={Boolean(errors.requestedRole)}
-                    className="h-11 w-full rounded-lg border-[#c3c6d2]"
-                  >
-                    <SelectValue placeholder="Select..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {REQUESTABLE_ROLES.map((r) => (
-                      <SelectItem key={r.value} value={r.value}>
-                        {r.label}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              )}
-            />
-            {errors.requestedRole ? (
-              <FieldError message={errors.requestedRole.message} />
-            ) : (
-              <p className="mt-1 text-xs text-brand-muted/80">An admin confirms your role on approval.</p>
-            )}
-          </div>
-
-          <div>
-            <FieldLabel htmlFor="workCategory">Work Category</FieldLabel>
-            <Select disabled>
-              <SelectTrigger
-                id="workCategory"
-                aria-label="Work Category"
-                className="h-11 w-full rounded-[10px] border-[#c3c6d2]"
+        {/* Work Category used to sit beside this, permanently disabled and
+            captioned "Set later by your admin" (BUG-AU) — a control nobody
+            could use. Admins assign it after approval. */}
+        <div>
+          <FieldLabel htmlFor="requestedRole">Requested Role</FieldLabel>
+          <Controller
+            control={control}
+            name="requestedRole"
+            render={({ field }) => (
+              <Select
+                value={field.value}
+                onValueChange={field.onChange}
+                items={REQUESTABLE_ROLES.map((r) => ({ value: r.value, label: r.label }))}
               >
-                <SelectValue placeholder="Select..." />
-              </SelectTrigger>
-              <SelectContent />
-            </Select>
-            <p className="mt-1 text-xs text-brand-muted/80">Set later by your admin.</p>
-          </div>
+                <SelectTrigger
+                  id="requestedRole"
+                  aria-label="Requested Role"
+                  aria-invalid={Boolean(errors.requestedRole)}
+                  className="h-11 w-full rounded-lg border-[#c3c6d2]"
+                >
+                  <SelectValue placeholder="Select..." />
+                </SelectTrigger>
+                <SelectContent>
+                  {REQUESTABLE_ROLES.map((r) => (
+                    <SelectItem key={r.value} value={r.value}>
+                      {r.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          />
+          {errors.requestedRole ? (
+            <FieldError message={errors.requestedRole.message} />
+          ) : (
+            <p className="mt-1 text-xs text-brand-muted/80">An admin confirms your role on approval.</p>
+          )}
         </div>
 
         <SubmitButton loading={submitting} loadingText="Setting up…">
