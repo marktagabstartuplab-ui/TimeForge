@@ -1,5 +1,5 @@
 import { Test, TestingModule } from '@nestjs/testing';
-import { ConflictException } from '@nestjs/common';
+import { ConflictException, ForbiddenException } from '@nestjs/common';
 import { ScrumService } from './scrum.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
@@ -170,6 +170,82 @@ describe('ScrumService — completed commitment lock-down', () => {
     );
     const [{ data }] = prisma.scrumEntry.update.mock.calls.at(-1)!;
     expect(data).not.toHaveProperty('version');
+  });
+
+  // BUG-AE — a locked (submitted) Daily Scrum is a read-only record. The entry
+  // PATCH had no lock check at all, so the free-text plan fields could still be
+  // rewritten by a direct API call after submission.
+  describe('BUG-AE — locked entry is read-only', () => {
+    const lockedEntry = {
+      id: 'entry-1',
+      userId: 'user-1',
+      tenantId: 'tenant-1',
+      organizationId: 'org-1',
+      isLocked: true,
+      version: 4,
+      yesterday: 'Shipped the report',
+      today: 'Call 50 leads',
+      blockers: null,
+      notes: null,
+      progress: 100,
+      status: 'COMPLETED',
+    };
+
+    it('rejects a plan edit of a locked entry with 403', async () => {
+      prisma.scrumEntry.findFirst.mockResolvedValue(lockedEntry);
+
+      await expect(
+        service.update(principal, 'entry-1', { yesterday: 'Rewritten', version: 4 } as any),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.scrumEntry.update).not.toHaveBeenCalled();
+    });
+
+    // The refusal must not depend on holding a current version token — a locked
+    // record is refused outright, not "retry with a fresher version".
+    it('rejects a locked-entry edit even on a stale version', async () => {
+      prisma.scrumEntry.findFirst.mockResolvedValue(lockedEntry);
+
+      await expect(
+        service.update(principal, 'entry-1', { notes: 'Sneaky', version: 1 } as any),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.scrumEntry.update).not.toHaveBeenCalled();
+    });
+
+    // EodReviewModal appends its "EOD Review — …" line to `today` after the day
+    // locks; blocking that would make a fully-completed day unable to file EOD.
+    it('still allows the End of Day review fields on a locked entry', async () => {
+      prisma.scrumEntry.findFirst.mockResolvedValue(lockedEntry);
+      prisma.scrumEntry.update.mockResolvedValue({ ...lockedEntry, version: 5 });
+
+      await service.update(principal, 'entry-1', {
+        today: 'Call 50 leads\n\nEOD Review — all done',
+        blockers: 'None',
+        version: 4,
+      } as any);
+
+      expect(prisma.scrumEntry.update).toHaveBeenCalled();
+    });
+
+    it('leaves a non-locked entry fully editable', async () => {
+      prisma.scrumEntry.findFirst.mockResolvedValue({ ...lockedEntry, isLocked: false });
+      prisma.scrumEntry.update.mockResolvedValue({ ...lockedEntry, isLocked: false, version: 5 });
+
+      await service.update(principal, 'entry-1', { yesterday: 'Rewritten', version: 4 } as any);
+
+      expect(prisma.scrumEntry.update).toHaveBeenCalled();
+    });
+
+    it('rejects planning a new task on a locked entry with 403', async () => {
+      prisma.scrumEntry.findFirst.mockResolvedValue(lockedEntry);
+
+      await expect(
+        service.createTask(principal, 'entry-1', {
+          title: 'Extra work',
+          expectedOutput: 'out',
+          measurement: 'm',
+        } as any),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
   });
 
   it('unlockEntry reopens the day\'s completed commitments', async () => {
