@@ -193,7 +193,9 @@ export function TeamScrumSubmissionsContent({
                     className="flex h-8 items-center gap-1.5 rounded-[6px] bg-brand px-3 text-xs font-bold text-white hover:bg-[#1467d6]"
                   >
                     <LockOpen className="h-3.5 w-3.5" aria-hidden="true" />
-                    Unlock
+                    {/* Approves the request; on a day that never locked there is
+                        nothing to unlock, only permission to grant (BUG-AP follow-up). */}
+                    Approve
                   </button>
                   <button
                     type="button"

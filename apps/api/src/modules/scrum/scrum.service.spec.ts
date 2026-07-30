@@ -392,13 +392,17 @@ describe('ScrumService — locked-entry edit requests', () => {
     service = module.get(ScrumService);
   });
 
-  it('refuses an edit request on an entry that is not locked', async () => {
+  // BUG-AP follow-up: an unlocked day is exactly where an employee is stuck — the card
+  // carries no Edit/Delete, and the day only locks once everything is complete.
+  it('accepts an edit request on an entry that is not locked', async () => {
     prisma.scrumEntry.findFirst.mockResolvedValue({ ...lockedEntry, isLocked: false });
+    prisma.scrumEditRequest.findFirst.mockResolvedValue(null);
+    prisma.scrumEditRequest.create.mockResolvedValue({ id: 'req-1', status: 'PENDING' });
+    prisma.user.findFirst.mockResolvedValue({ supervisorId: 'sup-1' });
 
-    await expect(
-      service.requestEdit(principal, 'entry-1', { reason: 'Wrong numbers' } as any),
-    ).rejects.toBeInstanceOf(ConflictException);
-    expect(prisma.scrumEditRequest.create).not.toHaveBeenCalled();
+    await service.requestEdit(principal, 'entry-1', { reason: 'Wrong numbers' } as any);
+
+    expect(prisma.scrumEditRequest.create).toHaveBeenCalled();
   });
 
   it('creates a pending request and notifies the supervisor', async () => {
@@ -446,6 +450,33 @@ describe('ScrumService — locked-entry edit requests', () => {
         data: expect.objectContaining({ status: 'APPROVED', resolvedById: 'user-1' }),
       }),
     );
+  });
+
+  // The same supervisor action approves a request on a day that never locked —
+  // it just has no unlock to perform (BUG-AP follow-up).
+  it('approves an open request on an unlocked entry without touching the entry', async () => {
+    const supervisor = { ...principal, permissions: ['scrum:read_org'] } as unknown as AuthPrincipal;
+    prisma.scrumEntry.findFirst.mockResolvedValue({ ...lockedEntry, userId: 'user-2', isLocked: false });
+    prisma.scrumEditRequest.findFirst.mockResolvedValue({ id: 'req-1', status: 'PENDING' });
+    prisma.user.findFirst.mockResolvedValue({ departmentId: 'dept-1' });
+
+    await service.unlockEntry(supervisor, 'entry-1', { reason: 'Go ahead and fix it' } as any);
+
+    expect(prisma.scrumEntry.update).not.toHaveBeenCalled();
+    expect(prisma.scrumTask.updateMany).not.toHaveBeenCalled();
+    expect(prisma.scrumEditRequest.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({ data: expect.objectContaining({ status: 'APPROVED' }) }),
+    );
+  });
+
+  it('refuses an unlock on an entry that is neither locked nor requested', async () => {
+    const supervisor = { ...principal, permissions: ['scrum:read_org'] } as unknown as AuthPrincipal;
+    prisma.scrumEntry.findFirst.mockResolvedValue({ ...lockedEntry, userId: 'user-2', isLocked: false });
+    prisma.scrumEditRequest.findFirst.mockResolvedValue(null);
+
+    await expect(
+      service.unlockEntry(supervisor, 'entry-1', { reason: 'Nothing to do here' } as any),
+    ).rejects.toBeInstanceOf(ConflictException);
   });
 
   it('refuses to decline a request outside the supervisor\'s scope', async () => {
