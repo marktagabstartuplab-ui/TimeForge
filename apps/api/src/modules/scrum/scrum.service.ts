@@ -60,6 +60,25 @@ function isEodReportOnly(dto: UpdateScrumTaskDto): boolean {
   return touched.length > 0 && touched.every((key) => EOD_REPORT_FIELDS.has(key));
 }
 
+/**
+ * Same idea as EOD_REPORT_FIELDS, one level up: the fields the End of Day review
+ * writes on the *entry* itself (it appends its "EOD Review — …" line to `today`
+ * and records the day's final blockers). Everything else on a locked entry —
+ * yesterday, notes, progress, status — is plan/self-report data that must not
+ * change after submission.
+ */
+const EOD_ENTRY_FIELDS: ReadonlySet<string> = new Set(['today', 'blockers', 'version']);
+
+function isEodEntryReportOnly(dto: UpdateScrumEntryDto): boolean {
+  const values = dto as unknown as Record<string, unknown>;
+  const touched = Object.keys(dto).filter((key) => values[key] !== undefined);
+  return touched.length > 0 && touched.every((key) => EOD_ENTRY_FIELDS.has(key));
+}
+
+/** Refusal message shared by every locked-record guard. */
+const LOCKED_MESSAGE =
+  "Today's scrum plan is locked. Ask your supervisor to unlock the day to change it.";
+
 @Injectable()
 export class ScrumService {
   constructor(
@@ -163,6 +182,12 @@ export class ScrumService {
    */
   async update(p: AuthPrincipal, id: string, dto: UpdateScrumEntryDto): Promise<ScrumEntry> {
     const entry = await this.ownEntry(p, id);
+    // A submitted (locked) day is a read-only record. Checked before the version
+    // token so a locked entry is refused outright rather than inviting a retry
+    // with a fresher version. The EOD review's own fields still pass through.
+    if (entry.isLocked && !isEodEntryReportOnly(dto)) {
+      throw new ForbiddenException(LOCKED_MESSAGE);
+    }
     if (entry.version !== dto.version) throw new ConflictException('Version mismatch');
 
     return this.prisma.scrumEntry.update({
@@ -345,7 +370,7 @@ export class ScrumService {
 
   async createTask(p: AuthPrincipal, entryId: string, dto: CreateScrumTaskDto): Promise<ScrumTask> {
     const entry = await this.ownEntry(p, entryId);
-    if (entry.isLocked) throw new ConflictException('Today\'s scrum plan is locked');
+    if (entry.isLocked) throw new ForbiddenException(LOCKED_MESSAGE);
     await this.validateProjectRef(p, dto.projectId);
     const kpiFields = await this.resolveKpiTemplateFields(p, dto.kpiTemplateId);
 
@@ -465,7 +490,7 @@ export class ScrumService {
 
   async createBlocker(p: AuthPrincipal, entryId: string, dto: CreateScrumBlockerDto): Promise<ScrumBlocker> {
     const entry = await this.ownEntry(p, entryId);
-    if (entry.isLocked) throw new ConflictException('Today\'s scrum plan is locked');
+    if (entry.isLocked) throw new ForbiddenException(LOCKED_MESSAGE);
 
     const blocker = await this.prisma.scrumBlocker.create({
       data: {
@@ -1162,7 +1187,7 @@ export class ScrumService {
 
   private async assertEntryUnlocked(scrumEntryId: string): Promise<void> {
     const entry = await this.prisma.scrumEntry.findFirst({ where: { id: scrumEntryId } });
-    if (entry?.isLocked) throw new ConflictException("Today's scrum plan is locked");
+    if (entry?.isLocked) throw new ForbiddenException(LOCKED_MESSAGE);
   }
 
   private async validateProjectRef(p: AuthPrincipal, projectId?: string): Promise<void> {
