@@ -24,7 +24,7 @@ const LEAVE_TYPE_LABELS: Record<string, string> = {
   PERSONAL: "Personal Leave",
 };
 
-function statusTone(status: string): { label: string; tone: BadgeTone } {
+export function leaveRequestStatusTone(status: string): { label: string; tone: BadgeTone } {
   switch (status) {
     case "PENDING":
       return { label: "Pending", tone: "warning" };
@@ -161,7 +161,7 @@ export function LeaveRequestDetailModal({ requestId, onClose }: LeaveRequestDeta
                     {request.user ? `${request.user.firstName} ${request.user.lastName}` : "Your request"}
                     {request.user?.department?.name ? ` · ${request.user.department.name}` : ""}
                   </p>
-                  <StatusBadge {...statusTone(request.status)} />
+                  <StatusBadge {...leaveRequestStatusTone(request.status)} />
                 </div>
 
                 <dl className="grid grid-cols-2 gap-x-6 gap-y-3 rounded-[12px] bg-[#f6f3f4] p-4">

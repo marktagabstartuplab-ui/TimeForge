@@ -7,6 +7,7 @@ import { getDashboardSummary } from "../api/dashboard.service";
 import { getMe, getTeamPresence } from "@/features/account/api/account.service";
 import { TeamStatusList } from "@/features/account/components/TeamStatusList";
 import { getLeaveBalances } from "@/features/leave/api/leave.service";
+import { MyLeaveRequestsCard } from "@/features/leave/components/MyLeaveRequestsCard";
 import { StatCard } from "@/components/shared/StatCard";
 import { SectionCard } from "@/components/shared/SectionCard";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -113,6 +114,8 @@ export function DashboardContent() {
           <AiInternAdvisoryCard userId={me.id} />
         )}
       </div>
+
+      <MyLeaveRequestsCard />
 
       <RecentActivityCard />
     </div>
