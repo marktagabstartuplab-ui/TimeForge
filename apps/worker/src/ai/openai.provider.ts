@@ -150,12 +150,24 @@ export class OpenAiProvider {
     return start !== -1 && end > start ? unfenced.slice(start, end + 1) : unfenced;
   }
 
+  /**
+   * Some features ask the model for structured data in a field (STANDUP_DRAFT
+   * returns an array of suggested commitments in "recommendation"). A bare
+   * String() on an array or object yields "[object Object]", so re-serialise
+   * those instead of stringifying them — the field stays text end to end, and
+   * the client JSON.parses it back.
+   */
+  private asText(value: unknown, fallback: string): string {
+    if (value === undefined || value === null) return fallback;
+    return typeof value === 'object' ? JSON.stringify(value) : String(value);
+  }
+
   private parseStructured(raw: string): Pick<AiCompletion, 'summary' | 'recommendation' | 'confidence'> {
     try {
       const parsed = JSON.parse(this.extractJson(raw)) as Record<string, unknown>;
       return {
-        summary:        String(parsed['summary']        ?? raw.slice(0, 500)),
-        recommendation: String(parsed['recommendation'] ?? 'See summary.'),
+        summary:        this.asText(parsed['summary'],        raw.slice(0, 500)),
+        recommendation: this.asText(parsed['recommendation'], 'See summary.'),
         confidence:     Math.min(1, Math.max(0, Number(parsed['confidence'] ?? 0.8))),
       };
     } catch {
