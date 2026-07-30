@@ -139,7 +139,7 @@ export class LeaveService {
         title: 'New leave request',
         message: `${requester.firstName} ${requester.lastName} requested ${days} day(s) of ${dto.type.toLowerCase()} leave.`,
         priority: 'NORMAL',
-        actionUrl: '/supervisor/leave',
+        actionUrl: `/supervisor/leave?leaveRequest=${request.id}`,
         actionLabel: 'Review Request',
       });
     }
@@ -227,7 +227,31 @@ export class LeaveService {
     };
   }
 
-  async findOne(p: AuthPrincipal, id: string): Promise<LeaveRequest> {
+  /**
+   * Single leave request with everything the detail modal renders: requester,
+   * reviewer (approver) and their decision note. Callers that only need the
+   * bare row use `findOneRaw`.
+   */
+  async findOne(p: AuthPrincipal, id: string) {
+    const request = await this.prisma.leaveRequest.findFirst({
+      where: { id, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+      include: {
+        user: {
+          select: {
+            id: true, firstName: true, lastName: true, email: true, departmentId: true,
+            avatarKey: true, department: { select: { name: true } },
+          },
+        },
+        reviewer: { select: { id: true, firstName: true, lastName: true } },
+      },
+    });
+    if (!request) throw new NotFoundException('Leave request not found');
+    await this.assertCanView(p, request);
+    const avatarUrls = await this.storage.signedUrlsByKey([request.user.avatarKey]);
+    return { ...request, user: withAvatarUrl(request.user, avatarUrls) };
+  }
+
+  private async findOneRaw(p: AuthPrincipal, id: string): Promise<LeaveRequest> {
     const request = await this.prisma.leaveRequest.findFirst({
       where: { id, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
     });
@@ -286,7 +310,7 @@ export class LeaveService {
 
   /** Signed download URL — visible to anyone who can view the request (owner or reviewer). */
   async getAttachmentSignedUrl(p: AuthPrincipal, id: string): Promise<{ url: string }> {
-    const request = await this.findOne(p, id); // enforces assertCanView
+    const request = await this.findOneRaw(p, id); // enforces assertCanView
     if (!request.attachmentKey) throw new NotFoundException('This request has no attachment');
     const url = await this.storage.signedUrl(request.attachmentKey);
     return { url };
@@ -411,7 +435,7 @@ export class LeaveService {
         title: 'Employee returned to work early',
         message: `${requester?.firstName ?? 'Employee'} ${requester?.lastName ?? ''} has confirmed their return to work and ended their leave.`,
         priority: 'NORMAL',
-        actionUrl: '/supervisor/leave',
+        actionUrl: `/supervisor/leave?leaveRequest=${id}`,
         actionLabel: 'View Leave Log',
       });
     }
@@ -507,7 +531,7 @@ export class LeaveService {
           ? `Your ${request.type.toLowerCase()} leave request has been approved.`
           : `Your leave request was rejected: ${dto.remark}`,
       priority: dto.action === 'APPROVE' ? 'NORMAL' : 'HIGH',
-      actionUrl: '/dashboard',
+      actionUrl: `/dashboard?leaveRequest=${id}`,
       actionLabel: 'View Details',
     });
 

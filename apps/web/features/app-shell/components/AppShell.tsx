@@ -7,6 +7,7 @@ import { refresh as refreshSession } from "@/features/auth/api/auth.service";
 import { getMe } from "@/features/account/api/account.service";
 import { ProfileAccountModal } from "@/features/account/components/ProfileAccountModal";
 import { NotificationCenterModal } from "@/features/notifications/components/NotificationCenterModal";
+import { LeaveRequestDeepLink } from "@/features/leave/components/LeaveRequestDeepLink";
 import { setAccessToken } from "@/lib/api/client";
 import { PermissionGuard } from "@/features/auth/components/PermissionGuard";
 import { getRequiredPermission } from "@/features/auth/route-permissions";
@@ -83,6 +84,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
       </div>
       <ProfileAccountModal />
       <NotificationCenterModal />
+      <LeaveRequestDeepLink />
     </div>
   );
 }
