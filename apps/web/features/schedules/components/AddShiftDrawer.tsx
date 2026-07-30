@@ -89,6 +89,16 @@ function clearLocalDraft() {
   }
 }
 
+/** Upper bound on a weekly repeat — a year of shifts in one submit is already
+ *  far past any real rota, and each week multiplies the shifts created. */
+const MAX_REPEAT_WEEKS = 52;
+
+/** Coerces the Duration field to a usable positive integer (BUG-AR). */
+function clampRepeatWeeks(weeks: number): number {
+  if (!Number.isFinite(weeks)) return 1;
+  return Math.min(MAX_REPEAT_WEEKS, Math.max(1, Math.floor(weeks)));
+}
+
 interface AddShiftDrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -237,7 +247,7 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
   const save = useMutation({
     mutationFn: async (publish: boolean) => {
       const checkedDates = getWeekdayDatesInWeek(date, selectedWeekdays);
-      const totalWeeks = repeatWeekly ? repeatWeeks : 1;
+      const totalWeeks = repeatWeekly ? clampRepeatWeeks(repeatWeeks) : 1;
       const results = [];
 
       for (const baseDateStr of checkedDates) {
@@ -273,7 +283,7 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
     },
     onSuccess: (_, publish) => {
       const checkedDates = getWeekdayDatesInWeek(date, selectedWeekdays);
-      const totalShifts = checkedDates.length * (repeatWeekly ? repeatWeeks : 1);
+      const totalShifts = checkedDates.length * (repeatWeekly ? clampRepeatWeeks(repeatWeeks) : 1);
       onToast({
         message: totalShifts > 1
           ? `${publish ? "Shifts published" : "Drafts saved"} (${totalShifts} shifts generated).`
@@ -446,22 +456,34 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
 
               {repeatWeekly && (
                 <div className="flex items-center gap-3">
-                  <span className="text-xs font-semibold text-[#5c5f6c] shrink-0">Duration:</span>
-                  <Select value={String(repeatWeeks)} onValueChange={(v) => setRepeatWeeks(Number(v))}>
-                    <SelectTrigger className="h-9 w-32 rounded-[8px] border-[#c3c6d2] bg-white text-xs px-3">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent>
-                      <SelectItem value="2">2 Weeks</SelectItem>
-                      <SelectItem value="3">3 Weeks</SelectItem>
-                      <SelectItem value="4">4 Weeks</SelectItem>
-                      <SelectItem value="6">6 Weeks</SelectItem>
-                      <SelectItem value="8">8 Weeks</SelectItem>
-                      <SelectItem value="12">12 Weeks</SelectItem>
-                    </SelectContent>
-                  </Select>
+                  <label htmlFor="shift-repeat-weeks" className="text-xs font-semibold text-[#5c5f6c] shrink-0">
+                    Duration:
+                  </label>
+                  {/* A dropdown of 2/3/4/6/8/12 couldn't express a 5- or
+                      10-week run (BUG-AR). Free number entry instead; the
+                      generation logic below is unchanged, it just reads a
+                      value the supervisor can actually pick. */}
+                  <div className="flex items-center gap-1.5">
+                    <input
+                      id="shift-repeat-weeks"
+                      type="number"
+                      min={1}
+                      max={MAX_REPEAT_WEEKS}
+                      step={1}
+                      value={Number.isNaN(repeatWeeks) ? "" : repeatWeeks}
+                      onChange={(e) => {
+                        // Keep the field usable while typing — an empty box is
+                        // held as NaN rather than snapped to 1 under the cursor.
+                        const next = e.target.valueAsNumber;
+                        setRepeatWeeks(Number.isNaN(next) ? NaN : Math.floor(next));
+                      }}
+                      onBlur={() => setRepeatWeeks((w) => clampRepeatWeeks(w))}
+                      className="h-9 w-20 rounded-[8px] border border-[#c3c6d2] bg-white px-3 text-xs text-brand-ink focus:border-brand focus:outline-none"
+                    />
+                    <span className="text-xs text-[#5c5f6c]">weeks</span>
+                  </div>
                   <span className="text-[11px] text-[#5c5f6c]">
-                    Creates {repeatWeeks} consecutive weekly shifts.
+                    Creates {clampRepeatWeeks(repeatWeeks)} consecutive weekly shifts.
                   </span>
                 </div>
               )}

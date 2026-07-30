@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { 
   Wallet, 
@@ -12,7 +12,8 @@ import {
   Check, 
   FileText,
   FileSpreadsheet,
-  Loader2
+  Loader2,
+  Percent
 } from "lucide-react";
 import { PieChart, Pie, Cell, ResponsiveContainer } from "recharts";
 import { cn } from "@/lib/utils";
@@ -27,7 +28,10 @@ import {
   getPayrollDashboard, 
   getPayrollDistribution, 
   runPayrollAction, 
-  exportPayroll 
+  exportPayroll,
+  getOvertimeSetting,
+  updateOvertimeMultiplier,
+  DEFAULT_OVERTIME_MULTIPLIER
 } from "../api/payroll-oversight.service";
 
 // Harmonious colors for donut chart
@@ -74,6 +78,39 @@ export function PayrollOversightContent() {
     onError: (err: any) => {
       setToast({ message: err?.message || "Action failed.", tone: "error" });
     }
+  });
+
+  // Overtime rate config (BUG-AQ)
+  const { data: overtimeSetting, isLoading: isOvertimeLoading } = useQuery({
+    queryKey: ["organization", "settings", "payroll.overtime"],
+    queryFn: getOvertimeSetting,
+  });
+
+  const savedMultiplier = overtimeSetting?.multiplier ?? DEFAULT_OVERTIME_MULTIPLIER;
+  const [multiplierDraft, setMultiplierDraft] = useState<string>("");
+
+  // Seed the input once the stored value lands, and re-seed after a save so
+  // the field reflects what the server actually kept.
+  useEffect(() => {
+    setMultiplierDraft(String(savedMultiplier));
+  }, [savedMultiplier]);
+
+  const parsedMultiplier = (() => {
+    const n = Number(multiplierDraft);
+    if (multiplierDraft.trim() === "" || !Number.isFinite(n) || n < 1 || n > 3) return null;
+    return n;
+  })();
+  const multiplierChanged = parsedMultiplier !== null && parsedMultiplier !== savedMultiplier;
+
+  const overtimeMutation = useMutation({
+    mutationFn: () => updateOvertimeMultiplier(parsedMultiplier!, overtimeSetting ?? {}),
+    onSuccess: () => {
+      setToast({ message: "Overtime rate updated. New payroll runs will use it.", tone: "success" });
+      queryClient.invalidateQueries({ queryKey: ["organization", "settings", "payroll.overtime"] });
+    },
+    onError: (err: any) => {
+      setToast({ message: err?.message || "Could not update the overtime rate.", tone: "error" });
+    },
   });
 
   const handleExport = async () => {
@@ -195,6 +232,62 @@ export function PayrollOversightContent() {
             {isDashboardLoading ? "..." : `${totals?.payEfficiency.value ?? 100.0}%`}
           </p>
         </div>
+      </div>
+
+      {/* Overtime rate (BUG-AQ). The premium used to be hardcoded at 1.25x in
+          the payroll service, so an org on a different labour-law or contract
+          rate had no way to express it. */}
+      <div className="rounded-[16px] border border-[#c3c6d2]/50 bg-white p-6 shadow-[0px_1px_2px_rgba(0,0,0,0.05)]">
+        <div className="flex flex-wrap items-start justify-between gap-4">
+          <div className="min-w-0">
+            <h2 className="flex items-center gap-2 text-lg font-bold text-brand-navy">
+              <Percent className="h-4 w-4 text-[#0052cc]" aria-hidden="true" />
+              Overtime Rate
+            </h2>
+            <p className="mt-1 text-sm text-brand-muted">
+              Premium applied to overtime hours. 1.25 = 125% of the hourly rate (the Philippine
+              Labor Code minimum). Applies to payroll generated from now on — already-generated
+              runs keep the rate they were calculated with.
+            </p>
+          </div>
+
+          <div className="flex items-end gap-3">
+            <div>
+              <Label htmlFor="overtime-multiplier" className="text-xs font-semibold text-brand-muted">
+                Multiplier
+              </Label>
+              <div className="mt-1 flex items-center gap-2">
+                <input
+                  id="overtime-multiplier"
+                  type="number"
+                  min={1}
+                  max={3}
+                  step={0.05}
+                  value={multiplierDraft}
+                  onChange={(e) => setMultiplierDraft(e.target.value)}
+                  disabled={isOvertimeLoading}
+                  className="h-10 w-24 rounded-[8px] border border-[#c3c6d2] bg-white px-3 text-sm text-brand-ink focus:border-[#0052cc] focus:outline-none disabled:opacity-60"
+                />
+                <span className="text-sm text-brand-muted">
+                  {parsedMultiplier !== null ? `= ${(parsedMultiplier * 100).toFixed(0)}%` : "—"}
+                </span>
+              </div>
+            </div>
+            <Button
+              onClick={() => overtimeMutation.mutate()}
+              disabled={!multiplierChanged || parsedMultiplier === null || overtimeMutation.isPending}
+              className="h-10 bg-[#0052cc] hover:bg-[#004bb3] text-white"
+            >
+              {overtimeMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : "Save"}
+            </Button>
+          </div>
+        </div>
+
+        {multiplierDraft !== "" && parsedMultiplier === null ? (
+          <p className="mt-3 text-xs font-semibold text-red-600">
+            Enter a number between 1 and 3 (e.g. 1.25 for a 25% premium).
+          </p>
+        ) : null}
       </div>
 
       {/* Main Sections */}

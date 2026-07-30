@@ -16,6 +16,11 @@ import { AuthPrincipal } from '../../common/decorators';
 import { DepartmentsService } from '../departments/departments.service';
 import { ProjectsService } from '../projects/projects.service';
 import { UpdateOrgDto, CreateHolidayDto, ExportOrgStructureDto } from './dto';
+import {
+  MAX_OVERTIME_MULTIPLIER,
+  MIN_OVERTIME_MULTIPLIER,
+  OVERTIME_SETTING_KEY,
+} from '../../common/payroll/overtime-rate.service';
 
 export const ORGANIZATION_EXPORT_QUEUE = 'organization-export';
 
@@ -93,6 +98,25 @@ export class OrganizationService {
     const type = typeHint ?? KNOWN_SETTING_TYPES[key] ?? 'json';
     if (type === 'scalar' && typeof value !== 'string' && typeof value !== 'number') {
       throw new UnprocessableEntityException(`Setting '${key}' expects a scalar value`);
+    }
+    // The overtime multiplier prices real money (BUG-AQ) — a typo'd 25 (meant
+    // as "25%") would pay 25x, and the read side silently falls back to the
+    // default, so reject it here rather than storing a value that never applies.
+    if (key === OVERTIME_SETTING_KEY) {
+      const multiplier = (value as { multiplier?: unknown } | null)?.multiplier;
+      if (multiplier !== undefined && multiplier !== null) {
+        const parsed = typeof multiplier === 'string' ? Number(multiplier) : multiplier;
+        if (
+          typeof parsed !== 'number' ||
+          !Number.isFinite(parsed) ||
+          parsed < MIN_OVERTIME_MULTIPLIER ||
+          parsed > MAX_OVERTIME_MULTIPLIER
+        ) {
+          throw new UnprocessableEntityException(
+            `Overtime multiplier must be a number between ${MIN_OVERTIME_MULTIPLIER} and ${MAX_OVERTIME_MULTIPLIER}`,
+          );
+        }
+      }
     }
     // Not a native Prisma .upsert(): the unique constraint backing this lookup is a
     // partial index (WHERE deleted_at IS NULL, see migration 20260710000000_soft_delete_partial_unique_indexes)

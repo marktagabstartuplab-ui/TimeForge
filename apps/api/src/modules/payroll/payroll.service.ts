@@ -18,6 +18,7 @@ import { AuthPrincipal } from '../../common/decorators';
 import { registerPdfFonts, PDF_FONT, PDF_FONT_BOLD } from '../../common/pdf/pdf-fonts';
 import { PERMISSIONS, orgDayKey } from '@timeforge/shared';
 import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
+import { OvertimeRateService } from '../../common/payroll/overtime-rate.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CacheService } from '../../infra/cache.service';
 import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery } from './dto';
@@ -44,6 +45,7 @@ export class PayrollService {
     private readonly notifications: NotificationsService,
     private readonly cache: CacheService,
     private readonly timeZones: OrgTimeZoneService,
+    private readonly overtimeRates: OvertimeRateService,
     @InjectQueue('payroll-export') private readonly exportQueue: Queue<PayrollExportJobData>,
   ) {}
 
@@ -101,6 +103,7 @@ export class PayrollService {
       estimatedPay: Decimal | number | null;
     },
     userHourlyRate: Decimal | number | null,
+    overtimeMultiplier: number,
   ) {
     const approved = Number(item.approvedHours);
     const overtime = Number(item.overtimeHours);
@@ -111,7 +114,7 @@ export class PayrollService {
     const rate = snapshottedRate > 0 ? snapshottedRate : currentRate;
 
     const regPay = regular * rate;
-    const otPay = overtime * rate * 1.25;
+    const otPay = overtime * rate * overtimeMultiplier;
     const gross = regPay + otPay;
 
     return { rate, regular, overtime, regPay, otPay, gross };
@@ -122,6 +125,7 @@ export class PayrollService {
     userId: string,
     rate: number,
     actorId: string,
+    overtimeMultiplier: number,
   ) {
     const lineItems = await this.prisma.payrollLineItem.findMany({
       where: {
@@ -139,7 +143,7 @@ export class PayrollService {
         const approved = Number(li.approvedHours);
         const overtime = Number(li.overtimeHours);
         const regular = Math.max(0, approved - overtime);
-        const estimatedPay = regular * rate + overtime * rate * 1.25;
+        const estimatedPay = regular * rate + overtime * rate * overtimeMultiplier;
 
         return this.prisma.payrollLineItem.update({
           where: { id: li.id },
@@ -372,6 +376,9 @@ export class PayrollService {
     // before UTC midnight) across two days, understating each and hiding the
     // daily overtime threshold below.
     const timeZone = await this.timeZones.forPrincipal(p);
+    // Read once per run so every line item in a report is priced identically,
+    // even if an admin edits the rate mid-generation (BUG-AQ).
+    const overtimeMultiplier = await this.overtimeRates.forPrincipal(p);
     const userDailyMinutes = new Map<string, Map<string, number>>();
     for (const entry of approvedEntries) {
       if (!entry.durationMinutes) continue;
@@ -444,8 +451,10 @@ export class PayrollService {
         const pendingHours = new Decimal(pendingMins).div(60);
         const rejectedHours = new Decimal(rejectedMins).div(60);
 
-        // Estimated pay: regular x rate + overtime x rate x 1.25
-        const estimatedPay = regularHours.mul(rate).add(overtimeHours.mul(rate).mul(1.25));
+        // Estimated pay: regular x rate + overtime x rate x the org's OT multiplier
+        const estimatedPay = regularHours
+          .mul(rate)
+          .add(overtimeHours.mul(rate).mul(overtimeMultiplier));
 
         totalEstimatedPay = totalEstimatedPay.add(estimatedPay);
 
@@ -879,9 +888,11 @@ export class PayrollService {
     doc.moveTo(40, tableLineY).lineTo(doc.page.width - 40, tableLineY).stroke();
     doc.moveDown(0.4);
 
+    const overtimeMultiplier = await this.overtimeRates.forPrincipal(p);
     const { rate, regular, overtime, regPay, otPay, gross } = this.resolvePayslipEarnings(
       item,
       item.user.hourlyRate,
+      overtimeMultiplier,
     );
 
     const drawTableRow = (desc: string, rateVal: string, amount: string) => {
@@ -893,7 +904,7 @@ export class PayrollService {
     };
 
     drawTableRow('Regular Hours', `${regular.toFixed(2)} hrs @ ₱${rate.toFixed(2)}/hr`, `₱${regPay.toFixed(2)}`);
-    drawTableRow('Overtime Hours', `${overtime.toFixed(2)} hrs @ ₱${(rate * 1.25).toFixed(2)}/hr`, `₱${otPay.toFixed(2)}`);
+    drawTableRow('Overtime Hours', `${overtime.toFixed(2)} hrs @ ₱${(rate * overtimeMultiplier).toFixed(2)}/hr`, `₱${otPay.toFixed(2)}`);
 
     doc.moveDown(0.5);
     const totalLineY = doc.y;
@@ -1003,7 +1014,14 @@ export class PayrollService {
       },
     }).catch(() => {});
 
-    await this.recalculateOpenLineItemsForUser(p.tenantId, userId, rate, p.userId).catch((err: Error) =>
+    const overtimeMultiplier = await this.overtimeRates.forPrincipal(p);
+    await this.recalculateOpenLineItemsForUser(
+      p.tenantId,
+      userId,
+      rate,
+      p.userId,
+      overtimeMultiplier,
+    ).catch((err: Error) =>
       this.logger.warn(`Failed to backfill payroll line items after rate update: ${err.message}`),
     );
 

@@ -6,6 +6,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CacheService } from '../../infra/cache.service';
 import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
+import { OvertimeRateService } from '../../common/payroll/overtime-rate.service';
 import { AuthPrincipal } from '../../common/decorators';
 
 /**
@@ -45,7 +46,7 @@ describe('PayrollService.generateReport — daily overtime uses local days', () 
     },
   ];
 
-  async function generateWith(timeZone: string) {
+  async function generateWith(timeZone: string, overtimeMultiplier = 1.25) {
     const lineItems: Record<string, unknown>[] = [];
     const tx = {
       payrollReport: {
@@ -97,6 +98,10 @@ describe('PayrollService.generateReport — daily overtime uses local days', () 
         { provide: NotificationsService, useValue: { create: jest.fn(), createMany: jest.fn() } },
         { provide: CacheService, useValue: { get: jest.fn(), set: jest.fn(), del: jest.fn() } },
         { provide: OrgTimeZoneService, useValue: { forPrincipal: jest.fn().mockResolvedValue(timeZone) } },
+        {
+          provide: OvertimeRateService,
+          useValue: { forPrincipal: jest.fn().mockResolvedValue(overtimeMultiplier) },
+        },
         { provide: getQueueToken('payroll-export'), useValue: { add: jest.fn() } },
       ],
     }).compile();
@@ -113,6 +118,16 @@ describe('PayrollService.generateReport — daily overtime uses local days', () 
     expect(Number(item.approvedHours)).toBe(10);
     // 8h × ₱100 + 2h × ₱100 × 1.25 = ₱1050
     expect(Number(item.estimatedPay)).toBe(1050);
+  });
+
+  // BUG-AQ — the premium used to be a hardcoded 1.25 in the pay formula, so an
+  // organization on a different labour-law or contract rate could not express it.
+  it('prices overtime with the organization-configured multiplier', async () => {
+    const item = await generateWith('Asia/Manila', 1.5);
+
+    // 8h × ₱100 + 2h × ₱100 × 1.5 = ₱1100
+    expect(Number(item.overtimeHours)).toBe(2);
+    expect(Number(item.estimatedPay)).toBe(1100);
   });
 
   it('regression: UTC day boundaries hid the overtime entirely', async () => {
