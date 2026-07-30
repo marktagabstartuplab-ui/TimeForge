@@ -140,6 +140,7 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
 
   const watchTask = watch("task");
   const watchWorkDescription = watch("workDescription");
+  const watchDeliverables = watch("deliverables");
 
   const save = useMutation({
     mutationFn: async (values: WorkDetailsValues) => {
@@ -361,8 +362,9 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
                   <label htmlFor="wd-task" className="text-sm font-medium text-brand-navy">Task</label>
                   <AiImproveTaskButton
                     text={watchTask || ""}
-                    onImprove={(val) => setValue("task", val)}
+                    onImprove={(val) => setValue("task", val, { shouldDirty: true })}
                     userId={user?.id ?? ""}
+                    maxChars={200}
                   />
                 </div>
                 {/* Commitments planned in "Plan New Task" above, offered as
@@ -444,8 +446,9 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
                 <label htmlFor="wd-workDescription" className="text-sm font-medium text-brand-navy">Work Description</label>
                 <AiImproveTaskButton
                   text={watchWorkDescription || ""}
-                  onImprove={(val) => setValue("workDescription", val)}
+                  onImprove={(val) => setValue("workDescription", val, { shouldDirty: true })}
                   userId={user?.id ?? ""}
+                  maxChars={4500}
                 />
               </div>
               <Textarea
@@ -459,7 +462,16 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
             </div>
 
             <div>
-              <FieldLabel htmlFor="wd-deliverables">Deliverables</FieldLabel>
+              <div className="flex items-center justify-between mb-1.5">
+                <label htmlFor="wd-deliverables" className="text-sm font-medium text-brand-navy">Deliverables</label>
+                <AiImproveTaskButton
+                  text={watchDeliverables || ""}
+                  onImprove={(val) => setValue("deliverables", val, { shouldDirty: true })}
+                  userId={user?.id ?? ""}
+                  mode="deliverables"
+                  maxChars={5000}
+                />
+              </div>
               <Textarea
                 id="wd-deliverables"
                 rows={3}

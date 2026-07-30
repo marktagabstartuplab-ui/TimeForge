@@ -7,6 +7,20 @@ interface AiImproveTaskButtonProps {
   onImprove: (improvedText: string) => void;
   userId: string;
   disabled?: boolean;
+  /** Prompt variant for the handler — e.g. "deliverables". Omit for a plain rewrite. */
+  mode?: string;
+  /** Character budget of the target field. Sent to the model as a hard constraint
+   *  and enforced client-side, so an over-long generation can never land the form
+   *  in a state the zod schema rejects (BUG-AM). */
+  maxChars?: number;
+}
+
+/** Trim to `limit` chars on a word boundary rather than mid-word. */
+function clamp(value: string, limit: number): string {
+  if (value.length <= limit) return value;
+  const cut = value.slice(0, limit);
+  const lastSpace = cut.lastIndexOf(" ");
+  return (lastSpace > limit * 0.6 ? cut.slice(0, lastSpace) : cut).trimEnd();
 }
 
 export function AiImproveTaskButton({
@@ -14,6 +28,8 @@ export function AiImproveTaskButton({
   onImprove,
   userId,
   disabled = false,
+  mode,
+  maxChars,
 }: AiImproveTaskButtonProps) {
   const [loading, setLoading] = useState(false);
 
@@ -21,9 +37,13 @@ export function AiImproveTaskButton({
     if (!text.trim() || !userId) return;
     setLoading(true);
     try {
-      const result = await runAndPollAiJob("IMPROVE_DESCRIPTION", "user", userId, { text });
+      const result = await runAndPollAiJob("IMPROVE_DESCRIPTION", "user", userId, {
+        text,
+        ...(mode ? { mode } : {}),
+        ...(maxChars ? { maxChars } : {}),
+      });
       if (result?.recommendation) {
-        onImprove(result.recommendation);
+        onImprove(maxChars ? clamp(result.recommendation, maxChars) : result.recommendation);
       }
     } catch (error) {
       console.error("AI description improvement failed", error);

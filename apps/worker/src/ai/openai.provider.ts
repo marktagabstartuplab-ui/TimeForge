@@ -135,9 +135,24 @@ export class OpenAiProvider {
 
   // ─── Parse structured JSON from model ─────────────────────────────────────
 
+  /**
+   * Models frequently wrap the JSON in a ```json fence, or emit a line of
+   * chat before it. Bare JSON.parse() throws on both, and the old catch then
+   * replaced the field with the literal string "See summary." — which is what
+   * the user ends up pasting into their form. Strip the fence and fall back to
+   * the outermost {...} block before giving up.
+   */
+  private extractJson(raw: string): string {
+    const unfenced = raw.trim().replace(/^```(?:json)?\s*/i, '').replace(/```$/, '').trim();
+    if (unfenced.startsWith('{')) return unfenced;
+    const start = unfenced.indexOf('{');
+    const end   = unfenced.lastIndexOf('}');
+    return start !== -1 && end > start ? unfenced.slice(start, end + 1) : unfenced;
+  }
+
   private parseStructured(raw: string): Pick<AiCompletion, 'summary' | 'recommendation' | 'confidence'> {
     try {
-      const parsed = JSON.parse(raw) as Record<string, unknown>;
+      const parsed = JSON.parse(this.extractJson(raw)) as Record<string, unknown>;
       return {
         summary:        String(parsed['summary']        ?? raw.slice(0, 500)),
         recommendation: String(parsed['recommendation'] ?? 'See summary.'),
