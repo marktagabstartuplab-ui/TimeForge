@@ -367,9 +367,11 @@ export class ScrumService {
     dto: CreateScrumEditRequestDto,
   ): Promise<ScrumEditRequest> {
     const entry = await this.ownEntry(p, entryId);
-    if (!entry.isLocked) {
-      throw new ConflictException('This scrum entry is not locked — you can still edit it');
-    }
+
+    // Deliberately allowed on an unlocked day too (BUG-AP follow-up). The day only locks
+    // automatically once every commitment is COMPLETED, so between planning and
+    // completion an employee has no way to correct a mistyped commitment —
+    // asking the supervisor is that path, same as the locked case.
 
     const reason = dto.reason?.trim() ?? '';
     if (reason.length < 5) {
@@ -400,7 +402,7 @@ export class ScrumService {
     await this.notifySupervisorOf(p.userId, p.tenantId, p.organizationId, {
       type: 'SCRUM_ENTRY_LOCKED',
       title: 'Daily Scrum edit requested',
-      message: `An employee asked to reopen their locked scrum for ${entry.entryDate.toISOString().slice(0, 10)}. Reason: ${reason}`,
+      message: `An employee asked to ${entry.isLocked ? 'reopen their locked scrum' : 'edit their commitments'} for ${entry.entryDate.toISOString().slice(0, 10)}. Reason: ${reason}`,
       actionUrl: '/team-scrum',
       actionLabel: 'Review request',
     });
@@ -507,7 +509,13 @@ export class ScrumService {
 
     await this.assertCanUnlock(p, entry.userId);
 
-    if (!entry.isLocked) {
+    // An unlocked entry can still carry an open edit request (BUG-AP follow-up) — that is
+    // the employee asking for permission to change commitments on a day that
+    // never auto-locked. Approving it is this same action, minus the unlock.
+    const pending = await this.prisma.scrumEditRequest.findFirst({
+      where: { scrumEntryId: id, status: 'PENDING', deletedAt: null },
+    });
+    if (!entry.isLocked && !pending) {
       throw new ConflictException('This scrum entry is not locked');
     }
 
@@ -528,21 +536,24 @@ export class ScrumService {
     // cosmetic: each task stays COMPLETED (so still immutable), and the first
     // recalcEntryProgress would immediately re-lock the entry at 100%. The
     // reported actuals (actualCompleted etc.) are deliberately preserved.
-    await this.prisma.scrumTask.updateMany({
-      where: { scrumEntryId: id, taskStatus: 'COMPLETED', deletedAt: null },
-      data: { taskStatus: 'IN_PROGRESS', completedAt: null, updatedBy: p.userId },
-    });
+    let updated = entry;
+    if (entry.isLocked) {
+      await this.prisma.scrumTask.updateMany({
+        where: { scrumEntryId: id, taskStatus: 'COMPLETED', deletedAt: null },
+        data: { taskStatus: 'IN_PROGRESS', completedAt: null, updatedBy: p.userId },
+      });
 
-    const updated = await this.prisma.scrumEntry.update({
-      where: { id },
-      data: {
-        isLocked: false,
-        status: 'IN_PROGRESS',
-        progress: 0,
-        updatedBy: p.userId,
-        version: { increment: 1 },
-      },
-    });
+      updated = await this.prisma.scrumEntry.update({
+        where: { id },
+        data: {
+          isLocked: false,
+          status: 'IN_PROGRESS',
+          progress: 0,
+          updatedBy: p.userId,
+          version: { increment: 1 },
+        },
+      });
+    }
 
     await this.prisma.auditLog.create({
       data: {
@@ -552,7 +563,7 @@ export class ScrumService {
         entityType: 'ScrumEntry',
         entityId: id,
         metadata: {
-          event: 'SCRUM_ENTRY_UNLOCKED',
+          event: entry.isLocked ? 'SCRUM_ENTRY_UNLOCKED' : 'SCRUM_EDIT_APPROVED',
           reason,
           employeeId: entry.userId,
           departmentId: owner?.departmentId ?? null,
@@ -582,8 +593,10 @@ export class ScrumService {
       senderId: p.userId,
       type: 'ANNOUNCEMENT',
       category: 'DAILY_SCRUM',
-      title: "Today's Commitment unlocked",
-      message: `Your supervisor unlocked today's commitment so you can edit it again. Reason: ${reason}`,
+      title: entry.isLocked ? "Today's Commitment unlocked" : 'Edit request approved',
+      message: entry.isLocked
+        ? `Your supervisor unlocked today's commitment so you can edit it again. Reason: ${reason}`
+        : `Your supervisor approved your request to edit today's commitments. Reason: ${reason}`,
       actionUrl: `/time-tracking?scrum=${id}`,
       actionLabel: 'Edit Scrum',
     });

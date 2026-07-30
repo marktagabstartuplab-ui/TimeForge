@@ -39,7 +39,6 @@ import { FieldLabel } from "@/features/auth/components/fields";
 import { FieldError, FormBanner } from "@/features/auth/components/FormMessages";
 import type { ToastState } from "@/components/shared/Toast";
 import {
-  completeScrumTask,
   createScrumBlocker,
   createScrumEntry,
   createScrumTask,
@@ -122,9 +121,11 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
   const [savedAt, setSavedAt] = useState<string | null>(null);
   // Values staged by the submit handler, awaiting the confirmation dialog.
   const [pendingSave, setPendingSave] = useState<DailyScrumValues | null>(null);
-  // "Request Edit" dialog for a locked day, and its reason draft.
+  // "Request Edit" dialog, and its reason draft.
   const [editRequestOpen, setEditRequestOpen] = useState(false);
   const [editRequestReason, setEditRequestReason] = useState("");
+  // Commitment staged for deletion, awaiting confirmation.
+  const [deleteTarget, setDeleteTarget] = useState<ScrumTask | null>(null);
 
   // Plan New Task Form States
   const [taskDesc, setTaskDesc] = useState("");
@@ -187,11 +188,13 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
     enabled: Boolean(entry),
   });
 
-  // Only meaningful once the day is locked, so it isn't fetched before then.
+  // Fetched for any existing entry, not just a locked one (BUG-AP follow-up) — an
+  // unlocked day can carry a request too, and its APPROVED state is what
+  // re-opens the commitment rows for editing.
   const { data: editRequest } = useQuery({
     queryKey: ["scrum-edit-request", entry?.id],
     queryFn: () => getMyScrumEditRequest(entry!.id),
-    enabled: Boolean(entry?.isLocked),
+    enabled: Boolean(entry),
   });
 
   const requestEdit = useMutation({
@@ -212,6 +215,12 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
   // Only a fully COMPLETED day is locked (server-computed from task completion).
   const completed = entry?.status === "COMPLETED";
   const locked = entry?.isLocked ?? completed;
+
+  // The supervisor has granted this day's edit request, so the commitment rows
+  // get their Edit/Delete back (BUG-AP follow-up). Without this, a typo caught at 9am has
+  // no path to a fix: the card carries no actions and the day won't lock until
+  // every commitment is complete.
+  const editApproved = !locked && editRequest?.status === "APPROVED";
 
   // Quick Select → planner. Recent tasks fill the description/project; a
   // carried-over commitment brings its whole plan (output, criteria, KPI,
@@ -374,27 +383,16 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
     onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Could not update task", tone: "error" }),
   });
 
-  const completeTask = useMutation({
-    mutationFn: (task: ScrumTask) => completeScrumTask(task.id, task.version),
-    onSuccess: () => {
-      invalidateEntry();
-      onToast({ message: "Task marked as completed." });
-    },
-    onError: (err) => {
-      // A stale version token is unrecoverable unless the list is refetched —
-      // without this, every further click replays the same dead version and
-      // 409s forever. Refreshing here means the next click carries a live
-      // version and succeeds.
-      if (err instanceof ApiError && err.status === 409) invalidateEntry();
-      onToast({ message: err instanceof ApiError ? err.message : "Could not complete task", tone: "error" });
-    },
-  });
-
+  // completeTask was dropped with the card's Complete button (BUG-AP) —
+  // commitments are closed in the EOD Review, which drives task status through
+  // updateScrumTask directly. Delete came back behind the supervisor's approval
+  // (BUG-AP follow-up): removing a commitment planned by mistake is the other half of the
+  // correction the employee asked for.
   const removeTask = useMutation({
     mutationFn: (task: ScrumTask) => deleteScrumTask(task.id, task.version),
     onSuccess: () => {
       invalidateEntry();
-      onToast({ message: "Task removed." });
+      onToast({ message: "Commitment removed." });
     },
     onError: (err) => onToast({ message: err instanceof ApiError ? err.message : "Could not remove task", tone: "error" }),
   });
@@ -444,28 +442,21 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
     resetTaskForm();
   };
 
-  const handleEditTaskClick = (item: ScrumTask) => {
-    if (locked) return;
-    setEditingTaskId(item.id);
-    setTaskDesc(item.title);
-    setTaskOutput(item.expectedOutput);
-    setTaskCriteria(item.measurement);
-    setTaskKpi(item.kpi ?? "");
-    setTaskTarget(item.plannedTarget ?? "");
-    setTaskKpiTemplateId(item.kpiTemplateId ?? "");
-    setUseCustomKpi(!item.kpiTemplateId && Boolean(item.kpi || item.plannedTarget));
-    setTaskProj(item.projectId ?? "");
-    taskListRef.current?.scrollIntoView({ behavior: "smooth", block: "start" });
-  };
-
-  const handleDeleteTask = (item: ScrumTask) => {
-    if (locked) return;
-    removeTask.mutate(item);
-  };
-
-  const handleMarkTaskComplete = (item: ScrumTask) => {
-    if (locked) return;
-    completeTask.mutate(item);
+  /** Loads a planned commitment back into the planner form (BUG-AP follow-up). */
+  const beginEditTask = (task: ScrumTask) => {
+    setEditingTaskId(task.id);
+    setTaskDesc(task.title);
+    setTaskOutput(task.expectedOutput ?? "");
+    setTaskCriteria(task.measurement ?? "");
+    setTaskKpiTemplateId(task.kpiTemplateId ?? "");
+    setTaskKpi(task.kpi ?? "");
+    setUseCustomKpi(!task.kpiTemplateId);
+    setTaskTarget(task.plannedTarget ?? "");
+    setTaskProj(task.projectId ?? "");
+    // The stored target is the employee's own number — don't let the
+    // "suggest the admin master target" effect overwrite it on load.
+    keepPrefilledTarget.current = true;
+    setTimeout(() => plannerRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 100);
   };
 
   // Blocker Handlers
@@ -772,54 +763,41 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
                 </div>
               </div>
 
-              {/* Inline Actual Completed input — available on non-locked tasks */}
-              {!locked && item.kpi && (
-                <ActualCompletedInline
-                  task={item}
-                  onSaved={() => {
-                    invalidateEntry();
-                    onToast({ message: "Actual completed saved." });
-                  }}
-                  onError={(msg) => onToast({ message: msg, tone: "error" })}
-                />
-              )}
+              {/* Actuals are reported once, in the EOD Review (BUG-AO). The
+                  inline input here duplicated that capture; the value above is
+                  the read-only result of it. */}
 
               <div className="flex items-center justify-between border-t border-[#c3c6d2]/20 pt-2 text-xs">
                 <span className="text-brand-muted">
                   Project: <strong className="text-brand-ink font-semibold">{projects?.find(p => p.id === item.projectId)?.name || "General work"}</strong>
                 </span>
 
-                {/* A completed commitment is a submitted record — read-only until a
-                    supervisor unlocks the day. Only the un-completed ones stay editable. */}
+                {/* Commitments are planned here and closed in the EOD Review, so
+                    this view carries no Edit/Complete/Delete actions (BUG-AP).
+                    The completed state is still shown — it is the outcome of the
+                    review, not something actionable from here. */}
                 {item.taskStatus === "COMPLETED" ? (
                   <span className="flex items-center gap-1 text-[11px] font-semibold text-brand-muted">
                     <Lock className="h-3 w-3" aria-hidden="true" />
                     Completed — locked
                   </span>
-                ) : !locked ? (
-                  <div className="flex items-center gap-2">
+                ) : editApproved ? (
+                  /* Supervisor-approved correction window (BUG-AP follow-up). */
+                  <div className="flex items-center gap-3">
                     <button
                       type="button"
-                      onClick={() => handleMarkTaskComplete(item)}
-                      className="flex h-7 items-center gap-1 rounded-[6px] bg-[#16a34a] px-3 py-1 text-xs font-bold text-white hover:bg-[#15803d] transition-colors"
+                      onClick={() => beginEditTask(item)}
+                      className="flex items-center gap-1 text-[11px] font-bold text-brand hover:underline"
                     >
-                      <Check className="h-3 w-3" />
-                      Complete
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleEditTaskClick(item)}
-                      className="flex h-7 items-center gap-1 rounded-[6px] border border-[#c3c6d2] px-2.5 py-1 text-xs font-bold text-brand-navy hover:bg-[#f6f3f4]"
-                    >
-                      <Edit3 className="h-3.5 w-3.5" />
+                      <Edit3 className="h-3 w-3" aria-hidden="true" />
                       Edit
                     </button>
                     <button
                       type="button"
-                      onClick={() => handleDeleteTask(item)}
-                      className="flex h-7 items-center gap-1 rounded-[6px] border border-red-200 px-2.5 py-1 text-xs font-bold text-red-600 hover:bg-red-50"
+                      onClick={() => setDeleteTarget(item)}
+                      className="flex items-center gap-1 text-[11px] font-bold text-red-600 hover:underline"
                     >
-                      <Trash2 className="h-3.5 w-3.5" />
+                      <Trash2 className="h-3 w-3" aria-hidden="true" />
                       Delete
                     </button>
                   </div>
@@ -833,6 +811,39 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
             </p>
           )}
         </div>
+
+        {/* A day that hasn't locked yet still has no way to fix a mistyped
+            commitment (BUG-AP follow-up) — the supervisor is the gate for that, exactly
+            as for a locked day, so the same request path is offered here. */}
+        {!locked && entry && tasks.length > 0 ? (
+          editApproved ? (
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-[#16a34a]">
+              <LockOpen className="h-3.5 w-3.5" aria-hidden="true" />
+              Your supervisor approved this edit — you can change or remove today&apos;s commitments.
+            </p>
+          ) : editRequest?.status === "PENDING" ? (
+            <p className="flex items-center gap-1.5 text-xs font-semibold text-amber-700">
+              <Clock3 className="h-3.5 w-3.5" aria-hidden="true" />
+              Edit request sent — waiting for your supervisor.
+            </p>
+          ) : (
+            <div className="flex flex-wrap items-center gap-2">
+              <button
+                type="button"
+                onClick={() => setEditRequestOpen(true)}
+                className="flex h-8 items-center gap-1.5 rounded-[8px] border border-[#c3c6d2]/60 bg-white px-3 text-xs font-bold text-brand-navy transition-colors hover:bg-[#f6f3f4]"
+              >
+                <LockOpen className="h-3.5 w-3.5" aria-hidden="true" />
+                {editRequest?.status === "DECLINED" ? "Request edit again" : "Request Edit"}
+              </button>
+              <span className="text-xs text-brand-muted">
+                {editRequest?.status === "DECLINED"
+                  ? `Edit request declined${editRequest.resolutionNote ? `: ${editRequest.resolutionNote}` : ""}`
+                  : "Need to correct or remove a commitment? Ask your supervisor."}
+              </span>
+            </div>
+          )
+        ) : null}
       </div>
 
       {/* Plan New Task Form (Section 3) */}
@@ -1300,6 +1311,25 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
         onConfirm={confirmSave}
       />
 
+      <ConfirmationDialog
+        open={deleteTarget !== null}
+        onOpenChange={(open) => {
+          if (!open) setDeleteTarget(null);
+        }}
+        title="Remove this commitment?"
+        description={
+          deleteTarget
+            ? `"${deleteTarget.title}" will be removed from today's plan. This can't be undone.`
+            : ""
+        }
+        confirmLabel="Yes, remove it"
+        pending={removeTask.isPending}
+        onConfirm={() => {
+          if (deleteTarget) removeTask.mutate(deleteTarget);
+          setDeleteTarget(null);
+        }}
+      />
+
       {/* Reopen request for a locked day (BUG-AH). The reason is what the
           supervisor decides on, so it is required — same 5-char floor the
           backend enforces. */}
@@ -1308,8 +1338,8 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
           <div className="flex flex-col gap-2 px-6 pt-6">
             <DialogTitle className="text-xl font-bold text-brand-navy">Request edit access</DialogTitle>
             <DialogDescription>
-              Your supervisor will be notified and can reopen this day for you. Tell them what needs
-              correcting.
+              Your supervisor will be notified and can {locked ? "reopen this day" : "approve edits to today's commitments"} for you. Tell
+              them what needs correcting.
             </DialogDescription>
           </div>
           <div className="px-6 pt-4">
@@ -1344,71 +1374,3 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
   );
 }
 
-/** Compact inline input for reporting actual completed value on a KPI-linked task. */
-function ActualCompletedInline({
-  task,
-  onSaved,
-  onError,
-}: {
-  task: ScrumTask;
-  onSaved: () => void;
-  onError: (msg: string) => void;
-}) {
-  const [value, setValue] = useState(task.actualCompleted ?? "");
-  const [saving, setSaving] = useState(false);
-
-  // Keep in sync if the task refreshes from the server
-  useEffect(() => {
-    setValue(task.actualCompleted ?? "");
-  }, [task.actualCompleted]);
-
-  const isDirty = value !== (task.actualCompleted ?? "");
-
-  const handleSave = async () => {
-    if (!isDirty) return;
-    setSaving(true);
-    try {
-      await updateScrumTask(task.id, {
-        actualCompleted: value || undefined,
-        version: task.version,
-      });
-      onSaved();
-    } catch (err) {
-      onError(err instanceof ApiError ? err.message : "Could not save actual completed");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  return (
-    <div className="flex items-center gap-2 bg-[#f6f3f4]/40 rounded-[8px] px-3 py-2 border border-[#c3c6d2]/20">
-      <label htmlFor={`actual-${task.id}`} className="text-[10px] font-bold text-brand-navy whitespace-nowrap uppercase tracking-[0.5px]">
-        Actual Completed:
-      </label>
-      <input
-        id={`actual-${task.id}`}
-        type="text"
-        value={value}
-        onChange={(e) => setValue(e.target.value)}
-        placeholder="e.g. 8, 10 hrs"
-        className="h-8 flex-1 min-w-0 rounded-[6px] border border-[#c3c6d2] bg-white px-2 text-xs focus:outline-none focus:border-brand"
-      />
-      {isDirty && (
-        <button
-          type="button"
-          disabled={saving}
-          onClick={handleSave}
-          className="flex h-7 items-center gap-1 rounded-[6px] bg-brand px-2.5 text-[10px] font-bold text-white hover:bg-[#1467d6] transition-colors disabled:opacity-60"
-        >
-          {saving ? <Loader2 className="h-3 w-3 animate-spin" /> : <Save className="h-3 w-3" />}
-          Save
-        </button>
-      )}
-      {task.plannedTarget && (
-        <span className="text-[10px] text-brand-muted whitespace-nowrap" title="Your planned target for this task">
-          / {task.plannedTarget}
-        </span>
-      )}
-    </div>
-  );
-}
