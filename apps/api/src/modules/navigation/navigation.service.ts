@@ -39,7 +39,9 @@ const MENU_CATALOG: MenuItemDef[] = [
   { id: 'payroll',      label: 'Payroll',      icon: 'wallet',       route: '/payslips',           section: 'FINANCE_REPORTS',  permission: 'payroll:read_self',         badge: 'pendingPayroll' },
   { id: 'hr-ai-insights', label: 'AI Insights', icon: 'sparkles', route: '/admin/ai-insights', section: 'FINANCE_REPORTS', permission: 'dashboard:read_org' },
   { id: 'attendance-reports', label: 'Attendance Reports', icon: 'clipboard-check', route: '/admin/attendance-reports', section: 'FINANCE_REPORTS', permission: 'attendance:read_org' },
-  { id: 'reports',      label: 'Reports',      icon: 'bar-chart-3',  route: '/reports',            section: 'FINANCE_REPORTS',  permission: 'dashboard:read_team' },
+  // "Reports" sat alongside Attendance/Productivity/Performance Reports and read
+  // as the parent of all of them (BUG-AT). Route and permission unchanged.
+  { id: 'reports',      label: 'Administrative Reports', icon: 'bar-chart-3',  route: '/reports',   section: 'FINANCE_REPORTS',  permission: 'dashboard:read_team' },
   { id: 'productivity-report', label: 'Productivity Report', icon: 'file-text', route: '/reports/productivity', section: 'FINANCE_REPORTS', permission: 'dashboard:read_team' },
   { id: 'performance',  label: 'Performance Report',  icon: 'bar-chart-3',  route: '/performance',        section: 'FINANCE_REPORTS',  permission: 'dashboard:read_self' },
   // ── FINANCE WORKSPACE (entry points) ──
