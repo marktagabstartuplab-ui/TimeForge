@@ -217,21 +217,32 @@ export function TimeTrackingContent() {
     allTasksCompleted ||
     scrumIsLocked ||
     Boolean(editableEntry?.task?.trim() && editableEntry?.description?.trim());
-  const canReviewDay = hasScrumPlan && entries.length > 0 && hasWorkDetails;
+  // A submitted review is finished. Both EOD entry points used to stay live
+  // afterwards — and submitting locks the scrum, which *satisfies* the
+  // hasWorkDetails gate above, so the button got easier to press once the day
+  // was already closed. Re-submitting overwrites the recorded accomplishments,
+  // blockers and actuals. The submit stamps an "EOD Review —" line into the
+  // entry's `today` (the modal itself splits on it), so that line is the
+  // durable "already reviewed" marker across reloads; `dayClosed` covers the
+  // moment between submit and refetch.
+  const alreadyReviewed = dayClosed || Boolean(scrumEntry?.today?.includes("EOD Review —"));
+  const canReviewDay = hasScrumPlan && entries.length > 0 && hasWorkDetails && !alreadyReviewed;
   const reviewBlockedReason = canReviewDay
     ? null
-    : [
-        !hasScrumPlan ? "save today's Daily Scrum commitments" : null,
-        hasScrumPlan && entries.length === 0 ? "clock in and log some work" : null,
-        entries.length > 0 && !hasWorkDetails
-          ? "complete and save Work Details (task & description)"
-          : null,
-      ]
-        .filter((r): r is string => Boolean(r))
-        .reduce((sentence, part, i, arr) => {
-          if (i === 0) return `Please ${part}`;
-          return i === arr.length - 1 ? `${sentence}, and ${part}` : `${sentence}, ${part}`;
-        }, "") + " before ending your day."
+    : alreadyReviewed
+      ? "You've already submitted today's end of day review."
+      : [
+          !hasScrumPlan ? "save today's Daily Scrum commitments" : null,
+          hasScrumPlan && entries.length === 0 ? "clock in and log some work" : null,
+          entries.length > 0 && !hasWorkDetails
+            ? "complete and save Work Details (task & description)"
+            : null,
+        ]
+          .filter((r): r is string => Boolean(r))
+          .reduce((sentence, part, i, arr) => {
+            if (i === 0) return `Please ${part}`;
+            return i === arr.length - 1 ? `${sentence}, and ${part}` : `${sentence}, ${part}`;
+          }, "") + " before ending your day."
 
   const departmentName = useMemo(() => {
     const id = meQuery.data?.departmentId;
@@ -288,12 +299,14 @@ export function TimeTrackingContent() {
             className="flex h-11 items-center gap-2 rounded-[10px] border border-[#c3c6d2]/60 bg-white px-5 text-sm font-bold text-brand-navy transition-colors hover:bg-[#f6f3f4] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
           >
             <SunsetIcon className="h-[18px] w-[18px] text-brand" aria-hidden="true" />
-            End of Day Review
+            {alreadyReviewed ? "Day Reviewed" : "End of Day Review"}
           </button>
         }
       />
 
-      {dayClosed ? (
+      {/* Survives a reload now — keyed on the entry's stored EOD marker, not
+          just this session's submit. */}
+      {alreadyReviewed ? (
         <p
           role="status"
           className="rounded-[12px] border border-[#16a34a]/30 bg-[#f0fdf4] px-4 py-3 text-sm font-medium text-[#16a34a]"
