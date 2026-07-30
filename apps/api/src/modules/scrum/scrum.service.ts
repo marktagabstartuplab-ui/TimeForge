@@ -75,6 +75,9 @@ function isEodEntryReportOnly(dto: UpdateScrumEntryDto): boolean {
   return touched.length > 0 && touched.every((key) => EOD_ENTRY_FIELDS.has(key));
 }
 
+/** How far back carry-over looks for a day with uncompleted "continue tomorrow" tasks. */
+const CARRY_OVER_LOOKBACK_DAYS = 7;
+
 /** Refusal message shared by every locked-record guard. */
 const LOCKED_MESSAGE =
   "Today's scrum plan is locked. Ask your supervisor to unlock the day to change it.";
@@ -125,6 +128,82 @@ export class ScrumService {
     if (!entry) throw new NotFoundException('Scrum entry not found');
     await this.assertCanView(p, entry.userId);
     return entry;
+  }
+
+  /**
+   * Tasks the employee said they would continue ("Will you continue this
+   * tomorrow?" = Yes in a previous End of Day review) and that are still not
+   * completed. Feeds the "Continued Tasks" section of Quick Select so the plan
+   * carries across days instead of being retyped.
+   *
+   * Sourced from the most recent prior day that has any such task (not strictly
+   * yesterday — weekends and leave would otherwise drop the carry-over), within
+   * a short lookback so a long-abandoned task doesn't resurface forever. Tasks
+   * already re-planned today (same title) are filtered out, so the section
+   * empties itself as they're added.
+   */
+  async carryOverTasks(
+    p: AuthPrincipal,
+  ): Promise<{ sourceEntryId: string | null; sourceDate: string | null; tasks: ScrumTask[] }> {
+    const today = await this.todayDate(p);
+    const lookbackFrom = new Date(today.getTime() - CARRY_OVER_LOOKBACK_DAYS * 86_400_000);
+
+    const candidates = await this.prisma.scrumTask.findMany({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        employeeId: p.userId,
+        deletedAt: null,
+        continueTomorrow: true,
+        taskStatus: { not: 'COMPLETED' },
+        scrumEntry: {
+          deletedAt: null,
+          userId: p.userId,
+          entryDate: { gte: lookbackFrom, lt: today },
+        },
+      },
+      include: { scrumEntry: { select: { id: true, entryDate: true } } },
+      orderBy: [{ scrumEntry: { entryDate: 'desc' } }, { createdAt: 'asc' }],
+    });
+    if (candidates.length === 0) return { sourceEntryId: null, sourceDate: null, tasks: [] };
+
+    // Keep only the latest source day — mixing several days' leftovers would
+    // present the same task twice under different dates.
+    const source = candidates[0].scrumEntry;
+    const fromLatestDay = candidates.filter((t) => t.scrumEntryId === source.id);
+
+    const todayEntry = await this.prisma.scrumEntry.findFirst({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        userId: p.userId,
+        entryDate: today,
+        deletedAt: null,
+      },
+      select: { id: true },
+    });
+    const alreadyPlanned = todayEntry
+      ? new Set(
+          (
+            await this.prisma.scrumTask.findMany({
+              where: { scrumEntryId: todayEntry.id, deletedAt: null },
+              select: { title: true },
+            })
+          ).map((t) => t.title.trim().toLowerCase()),
+        )
+      : new Set<string>();
+
+    const tasks = fromLatestDay
+      .filter((t) => !alreadyPlanned.has(t.title.trim().toLowerCase()))
+      // eslint-disable-next-line @typescript-eslint/no-unused-vars
+      .map(({ scrumEntry: _entry, ...task }) => task);
+
+    if (tasks.length === 0) return { sourceEntryId: null, sourceDate: null, tasks: [] };
+    return {
+      sourceEntryId: source.id,
+      sourceDate: source.entryDate.toISOString().slice(0, 10),
+      tasks,
+    };
   }
 
   // ── Writes ──────────────────────────────────────────────────────────────────

@@ -403,6 +403,9 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
       queryClient.invalidateQueries({ queryKey: ["time-entries"] });
       queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
       queryClient.invalidateQueries({ queryKey: ["scrum-tasks"] });
+      // "Continue tomorrow" answers just written here are what Quick Select's
+      // Continued Tasks section reads.
+      queryClient.invalidateQueries({ queryKey: ["scrum-carry-over"] });
       queryClient.invalidateQueries({ queryKey: ["work-session", "current"] });
       onOpenChange(false);
       onSubmitted?.();
