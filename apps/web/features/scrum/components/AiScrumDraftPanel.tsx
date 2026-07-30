@@ -2,13 +2,31 @@ import { useState } from "react";
 import { Sparkles, Loader2, ClipboardCheck } from "lucide-react";
 import { runAndPollAiJob } from "@/features/scrum-management/api/ai-insight.service";
 
+/**
+ * The subset of a planned commitment the draft prompt consumes (BUG-AK).
+ * Deliberately a plain shape rather than `ScrumTask` — this is a wire payload,
+ * and the worker reads exactly these keys.
+ */
+export interface ScrumDraftCommitment {
+  title: string;
+  status: string;
+  expectedOutput?: string;
+  measurement?: string;
+  kpi?: string;
+  plannedTarget?: string;
+  actualCompleted?: string;
+  projectName?: string;
+}
+
 interface AiScrumDraftPanelProps {
   userId: string;
+  /** Today's Commitments — sent to the AI so the draft names real tasks. */
+  commitments?: ScrumDraftCommitment[];
   onApply: (draft: { yesterday: string; today: string; blockers: string }) => void;
   disabled?: boolean;
 }
 
-export function AiScrumDraftPanel({ userId, onApply, disabled = false }: AiScrumDraftPanelProps) {
+export function AiScrumDraftPanel({ userId, commitments = [], onApply, disabled = false }: AiScrumDraftPanelProps) {
   const [loading, setLoading] = useState(false);
   const [draft, setDraft] = useState<{ yesterday: string; today: string; blockers: string } | null>(null);
 
@@ -16,7 +34,7 @@ export function AiScrumDraftPanel({ userId, onApply, disabled = false }: AiScrum
     if (!userId) return;
     setLoading(true);
     try {
-      const result = await runAndPollAiJob("STANDUP_DRAFT", "user", userId);
+      const result = await runAndPollAiJob("STANDUP_DRAFT", "user", userId, { commitments });
       if (result?.summary) {
         // Parse "Yesterday", "Today", and "Blockers" from LLM output
         const text = result.summary;

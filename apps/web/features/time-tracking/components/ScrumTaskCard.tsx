@@ -662,6 +662,19 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
       {!locked && (
         <AiScrumDraftPanel
           userId={user?.id ?? ""}
+          // Today's Commitments drive the draft's "Today" section — without
+          // them the model had only time-entry text to work from and returned
+          // something generic (BUG-AK).
+          commitments={tasks.map((t) => ({
+            title: t.title,
+            status: t.taskStatus,
+            expectedOutput: t.expectedOutput,
+            measurement: t.measurement,
+            kpi: t.kpi ?? undefined,
+            plannedTarget: t.plannedTarget ?? undefined,
+            actualCompleted: t.actualCompleted ?? undefined,
+            projectName: projects?.find((p) => p.id === t.projectId)?.name,
+          }))}
           onApply={(draft) => {
             setValue("yesterday", draft.yesterday);
             setValue("notes", draft.blockers !== "No blockers identified." ? `Blockers Identified: ${draft.blockers}` : "");
