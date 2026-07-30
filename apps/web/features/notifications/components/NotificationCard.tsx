@@ -1,9 +1,11 @@
 "use client";
 
+import Link from "next/link";
 import { Bell, Archive, Trash2 } from "lucide-react";
 import { StatusBadge } from "@/components/shared/StatusBadge";
 import type { AppNotification } from "../api/notifications.service";
 import { CATEGORY_ICONS, CATEGORY_LABELS, formatRelativeTime } from "../lib/notification-copy";
+import { useNotificationCenterStore } from "../store/notification-center.store";
 
 interface NotificationCardProps {
   notification: AppNotification;
@@ -14,6 +16,21 @@ interface NotificationCardProps {
 
 export function NotificationCard({ notification: n, onMarkRead, onArchive, onDelete }: NotificationCardProps) {
   const Icon = CATEGORY_ICONS[n.category] ?? Bell;
+  const closeCenter = useNotificationCenterStore((s) => s.close);
+
+  // actionUrls are in-app paths. A plain <a> triggers a full page load, which
+  // tears down the in-memory session and leaves the shell stuck on its
+  // session-restore screen — the destination never renders. Route internal
+  // links through <Link> so navigation stays client-side; only fall back to <a>
+  // for an absolute URL pointing somewhere else.
+  const isInternal = Boolean(n.actionUrl?.startsWith("/"));
+
+  function handleActionClick() {
+    if (!n.isRead) onMarkRead(n.id);
+    // The overlay sits above the page it just navigated to, hiding anything the
+    // link was meant to reveal (e.g. a deep-linked detail modal).
+    closeCenter();
+  }
 
   return (
     <li
@@ -40,13 +57,23 @@ export function NotificationCard({ notification: n, onMarkRead, onArchive, onDel
           <span>{formatRelativeTime(n.createdAt)}</span>
           <span className="text-brand-muted/60">{CATEGORY_LABELS[n.category]}</span>
           {n.actionUrl && n.actionLabel ? (
-            <a
-              href={n.actionUrl}
-              onClick={() => !n.isRead && onMarkRead(n.id)}
-              className="font-semibold text-brand hover:underline"
-            >
-              {n.actionLabel}
-            </a>
+            isInternal ? (
+              <Link
+                href={n.actionUrl}
+                onClick={handleActionClick}
+                className="font-semibold text-brand hover:underline"
+              >
+                {n.actionLabel}
+              </Link>
+            ) : (
+              <a
+                href={n.actionUrl}
+                onClick={handleActionClick}
+                className="font-semibold text-brand hover:underline"
+              >
+                {n.actionLabel}
+              </a>
+            )
           ) : null}
           {!n.isRead ? (
             <button type="button" onClick={() => onMarkRead(n.id)} className="font-medium text-brand-muted hover:text-brand-navy">

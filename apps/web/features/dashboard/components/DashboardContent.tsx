@@ -94,7 +94,9 @@ export function DashboardContent() {
         />
       </div>
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
+      {/* items-start: without it both cards stretch to the row's height, and
+          Team Status (a long roster) left a large void under the short chart. */}
+      <div className="grid grid-cols-1 items-start gap-4 lg:grid-cols-3">
         <SectionCard title="Weekly Tracked Hours" className="lg:col-span-2">
           {weekEntriesQuery.isLoading ? (
             <Skeleton className="h-48" />
@@ -108,14 +110,14 @@ export function DashboardContent() {
         </SectionCard>
       </div>
 
+      <MyLeaveRequestsCard />
+
       <div className={`grid grid-cols-1 gap-4 ${me?.employmentType === "INTERN" ? "md:grid-cols-2" : ""}`}>
         <AiGoalCopilotCard userId={me?.id ?? ""} />
         {me?.employmentType === "INTERN" && (
           <AiInternAdvisoryCard userId={me.id} />
         )}
       </div>
-
-      <MyLeaveRequestsCard />
 
       <RecentActivityCard />
     </div>
