@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import * as nodemailer from 'nodemailer';
+import { EMAIL_LOGO_ATTACHMENTS } from './email-logo';
+import { renderEmailHtml } from './email-template';
 
 type MailStrategy = 'edge' | 'smtp' | 'mock';
 
@@ -87,11 +89,17 @@ export class MailerService {
     }
   }
 
+  /**
+   * Callers pass a plain-text body; it is sent as the text/plain part and also
+   * wrapped in the branded HTML template as the text/html part, so every
+   * transactional email is multipart without call sites changing.
+   */
   async send(to: string, subject: string, body: string): Promise<void> {
+    const html = renderEmailHtml(subject, body);
     if (this.strategy === 'edge') {
-      await this.sendViaEdgeFunction(to, subject, body);
+      await this.sendViaEdgeFunction(to, subject, body, html);
     } else if (this.strategy === 'smtp') {
-      await this.sendViaSMTP(to, subject, body);
+      await this.sendViaSMTP(to, subject, body, html);
     } else {
       this.mockLog(to, subject, body);
     }
@@ -99,7 +107,12 @@ export class MailerService {
 
   // ─── Strategy 1: Supabase Edge Function ──────────────────────────────────
 
-  private async sendViaEdgeFunction(to: string, subject: string, body: string): Promise<void> {
+  private async sendViaEdgeFunction(
+    to: string,
+    subject: string,
+    body: string,
+    html: string,
+  ): Promise<void> {
     this.logger.log(`[EdgeFn] Sending email to ${to}: "${subject}"`);
     const response = await fetch(this.edgeFunctionUrl!, {
       method: 'POST',
@@ -107,7 +120,9 @@ export class MailerService {
         'Content-Type': 'application/json',
         Authorization: `Bearer ${this.serviceRoleKey}`,
       },
-      body: JSON.stringify({ to, subject, body }),
+      // `html` and `attachments` are optional on the edge function — an older
+      // deployed revision ignores them and still sends the text part.
+      body: JSON.stringify({ to, subject, body, html, attachments: EMAIL_LOGO_ATTACHMENTS }),
     });
 
     if (!response.ok) {
@@ -121,10 +136,23 @@ export class MailerService {
 
   // ─── Strategy 2: Direct Gmail SMTP ───────────────────────────────────────
 
-  private async sendViaSMTP(to: string, subject: string, body: string): Promise<void> {
-    const smtpFrom = this.config.get<{ from: string }>('smtp')?.from ?? 'TimeForge Team';
+  private async sendViaSMTP(
+    to: string,
+    subject: string,
+    body: string,
+    html: string,
+  ): Promise<void> {
+    const smtpFrom = this.config.get<{ from: string }>('smtp')?.from ?? 'HeroTime Team';
     this.logger.log(`[SMTP] Sending email to ${to}: "${subject}"`);
-    const info = await this.transporter!.sendMail({ from: smtpFrom, to, subject, text: body });
+    const info = await this.transporter!.sendMail({
+      from: smtpFrom,
+      to,
+      subject,
+      text: body,
+      html,
+      // Inline brand mark referenced by `cid:` in the HTML header.
+      attachments: EMAIL_LOGO_ATTACHMENTS,
+    });
     this.logger.log(`[SMTP] Delivered to ${to}. MessageId: ${info.messageId}`);
   }
 

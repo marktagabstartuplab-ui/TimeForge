@@ -387,16 +387,16 @@ export class UsersService {
     void this.mailer
       .send(
         dto.email,
-        "You've Been Invited to TimeForge",
+        "You've Been Invited to HeroTime",
         [
           `Hello ${fullName},`,
           '',
-          'An administrator has created a TimeForge account for you.',
+          'An administrator has created a HeroTime account for you.',
           '',
-          'Visit your organization\'s TimeForge sign-in page and use "Forgot password?" with this email address to set your password and get started.',
+          'Visit your organization\'s HeroTime sign-in page and use "Forgot password?" with this email address to set your password and get started.',
           '',
           'Best regards,',
-          'The TimeForge Team',
+          'The HeroTime Team',
         ].join('\n'),
       )
       .catch((err: unknown) => console.error('[UsersService] Invite email failed silently:', err));
@@ -612,18 +612,18 @@ export class UsersService {
       void this.mailer
         .send(
           existing.email,
-          'Your TimeForge Account Has Been Approved',
+          'Your HeroTime Account Has Been Approved',
           [
             `Hello ${fullName},`,
             '',
-            'Great news! Your TimeForge account has been reviewed and approved by an administrator.',
+            'Great news! Your HeroTime account has been reviewed and approved by an administrator.',
             '',
-            'You can now sign in to TimeForge using the email address and password you registered with.',
+            'You can now sign in to HeroTime using the email address and password you registered with.',
             '',
             'If you have any questions, please reach out to your HR or system administrator.',
             '',
             'Best regards,',
-            'The TimeForge Team',
+            'The HeroTime Team',
           ].join('\n'),
         )
         .catch((err: unknown) =>
@@ -800,20 +800,20 @@ export class UsersService {
     void this.mailer
       .send(
         existing.email,
-        'Your TimeForge Account Has Been Approved',
+        'Your HeroTime Account Has Been Approved',
         [
           `Hello ${fullName},`,
           '',
-          'Great news! Your TimeForge account has been reviewed and approved by an administrator.',
+          'Great news! Your HeroTime account has been reviewed and approved by an administrator.',
           '',
-          'You can now sign in to TimeForge using the email address and password you registered with:',
+          'You can now sign in to HeroTime using the email address and password you registered with:',
           '',
           loginUrl,
           '',
           'If you have any questions, please reach out to your HR or system administrator.',
           '',
           'Best regards,',
-          'The TimeForge Team',
+          'The HeroTime Team',
         ].join('\n'),
       )
       .catch((err: unknown) => console.error('[UsersService] Approval email failed silently:', err));
@@ -860,17 +860,17 @@ export class UsersService {
     void this.mailer
       .send(
         existing.email,
-        'Your TimeForge Registration Update',
+        'Your HeroTime Registration Update',
         [
           `Hello ${fullName},`,
           '',
-          'Thank you for your interest in TimeForge. After review, your registration was not approved at this time.',
+          'Thank you for your interest in HeroTime. After review, your registration was not approved at this time.',
           ...(dto.reason ? ['', `Reason: ${dto.reason}`] : []),
           '',
           'If you believe this is a mistake, please contact your administrator.',
           '',
           'Best regards,',
-          'The TimeForge Team',
+          'The HeroTime Team',
         ].join('\n'),
       )
       .catch((err: unknown) => console.error('[UsersService] Rejection email failed silently:', err));

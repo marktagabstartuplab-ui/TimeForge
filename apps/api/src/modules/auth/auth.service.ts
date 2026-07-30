@@ -339,11 +339,11 @@ export class AuthService {
     void this.mailer
       .send(
         email,
-        'Welcome to TimeForge – Registration Received',
+        'Welcome to HeroTime – Registration Received',
         [
           `Hello ${fullName},`,
           '',
-          'Thank you for registering with TimeForge!',
+          'Thank you for registering with HeroTime!',
           '',
           'Your account has been created successfully and is currently pending administrator approval.',
           'Please check your email for a verification link and click it to verify your address.',
@@ -352,7 +352,7 @@ export class AuthService {
           'If you did not create this account, please ignore this email.',
           '',
           'Best regards,',
-          'The TimeForge Team',
+          'The HeroTime Team',
         ].join('\n'),
       )
       .catch((err: unknown) =>
@@ -415,7 +415,7 @@ export class AuthService {
     void this.mailer
       .send(
         normalized,
-        'Reset Your TimeForge Password',
+        'Reset Your HeroTime Password',
         [
           'You requested a password reset.',
           '',
@@ -425,7 +425,7 @@ export class AuthService {
           '',
           'If you did not request this, please ignore this email.',
           '',
-          'The TimeForge Team',
+          'The HeroTime Team',
         ].join('\n'),
       )
       .catch((err: unknown) =>
@@ -487,14 +487,14 @@ export class AuthService {
 
     const verifyUrl = `${this.config.get<string>('corsOrigins')?.split(',')[0] ?? 'http://localhost:3001'}/verify-email?token=${token}`;
     void this.mailer
-      .send(email, 'Verify Your TimeForge Email', [
-        'Welcome to TimeForge!',
+      .send(email, 'Verify Your HeroTime Email', [
+        'Welcome to HeroTime!',
         '',
         `Please verify your email address by clicking the link below. This link expires in 48 hours:`,
         '',
         verifyUrl,
         '',
-        'The TimeForge Team',
+        'The HeroTime Team',
       ].join('\n'))
       .catch((err: unknown) =>
         console.error('[AuthService] Verification email failed:', err),

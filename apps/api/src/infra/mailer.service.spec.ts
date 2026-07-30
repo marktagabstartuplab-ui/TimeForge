@@ -81,6 +81,37 @@ describe('MailerService transport selection', () => {
     expect(sendMail).not.toHaveBeenCalled();
   });
 
+  it('sends both a text and a branded html part (SMTP)', async () => {
+    const mailer = new MailerService(makeConfig({ driver: 'smtp', smtp: true }));
+    await mailer.send('to@x.com', 'Subject', 'Body');
+
+    const sent = sendMail.mock.calls[0][0] as {
+      text: string;
+      html: string;
+      attachments: Array<{ cid: string }>;
+    };
+    expect(sent.text).toBe('Body');
+    expect(sent.html).toContain('<!DOCTYPE html>');
+    // the brand mark must ride along, or the header <img src="cid:..."> breaks
+    expect(sent.attachments[0].cid).toBe('herotime-logo');
+    expect(sent.html).toContain('cid:herotime-logo');
+  });
+
+  it('includes the html part in the edge function payload', async () => {
+    const mailer = new MailerService(makeConfig({ driver: 'edge', edge: true }));
+    await mailer.send('to@x.com', 'Subject', 'Body');
+
+    const init = fetchMock.mock.calls[0][1] as { body: string };
+    const payload = JSON.parse(init.body) as {
+      body: string;
+      html: string;
+      attachments: Array<{ cid: string }>;
+    };
+    expect(payload.body).toBe('Body');
+    expect(payload.html).toContain('<!DOCTYPE html>');
+    expect(payload.attachments[0].cid).toBe('herotime-logo');
+  });
+
   it('nothing configured: mock (no send attempted)', async () => {
     const mailer = new MailerService(makeConfig({ driver: 'auto', edge: false, smtp: false }));
     await mailer.send('to@x.com', 'Subject', 'Body');
