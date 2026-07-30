@@ -271,3 +271,83 @@ describe('ScrumService — completed commitment lock-down', () => {
     );
   });
 });
+
+describe('ScrumService — carry-over of continued commitments', () => {
+  let service: ScrumService;
+  let prisma: any;
+
+  const continued = {
+    ...baseTask,
+    id: 'task-9',
+    scrumEntryId: 'entry-yesterday',
+    title: 'Call 50 leads',
+    taskStatus: 'IN_PROGRESS',
+    continueTomorrow: true,
+    actualCompleted: '30',
+    scrumEntry: { id: 'entry-yesterday', entryDate: new Date('2026-07-29T00:00:00.000Z') },
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      scrumTask: { findMany: jest.fn() },
+      scrumEntry: { findFirst: jest.fn() },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ScrumService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: NotificationsService, useValue: { create: jest.fn() } },
+        { provide: DepartmentScopeService, useValue: {} },
+        { provide: StorageService, useValue: {} },
+        {
+          provide: OrgTimeZoneService,
+          useValue: { forPrincipal: jest.fn().mockResolvedValue('Asia/Manila') },
+        },
+      ],
+    }).compile();
+
+    service = module.get(ScrumService);
+  });
+
+  it('returns the previous day\'s uncompleted "continue tomorrow" commitments', async () => {
+    prisma.scrumTask.findMany.mockResolvedValueOnce([continued]);
+    prisma.scrumEntry.findFirst.mockResolvedValue(null);
+
+    const result = await service.carryOverTasks(principal);
+
+    expect(result.sourceDate).toBe('2026-07-29');
+    expect(result.tasks.map((t) => t.id)).toEqual(['task-9']);
+    // The joined entry is stripped — callers get plain ScrumTask rows.
+    expect(result.tasks[0]).not.toHaveProperty('scrumEntry');
+    expect(prisma.scrumTask.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          continueTomorrow: true,
+          taskStatus: { not: 'COMPLETED' },
+        }),
+      }),
+    );
+  });
+
+  it('drops a commitment that has already been re-planned today', async () => {
+    prisma.scrumTask.findMany
+      .mockResolvedValueOnce([continued])
+      .mockResolvedValueOnce([{ title: ' call 50 LEADS ' }]);
+    prisma.scrumEntry.findFirst.mockResolvedValue({ id: 'entry-today' });
+
+    const result = await service.carryOverTasks(principal);
+
+    expect(result.tasks).toEqual([]);
+    expect(result.sourceEntryId).toBeNull();
+  });
+
+  it('returns an empty carry-over when nothing was marked to continue', async () => {
+    prisma.scrumTask.findMany.mockResolvedValueOnce([]);
+
+    const result = await service.carryOverTasks(principal);
+
+    expect(result).toEqual({ sourceEntryId: null, sourceDate: null, tasks: [] });
+    expect(prisma.scrumEntry.findFirst).not.toHaveBeenCalled();
+  });
+});

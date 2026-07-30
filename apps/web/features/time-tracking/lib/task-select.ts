@@ -22,6 +22,26 @@ export interface WorkTask {
   lastUsedAt: string;
 }
 
+/**
+ * A one-click prefill of the Daily Scrum "Plan New Task" form, produced by
+ * Quick Select (recent/pinned tasks and carried-over commitments).
+ *
+ * `seq` increments on every pick so clicking the *same* card twice still
+ * re-applies — a plain object identity check would silently no-op.
+ */
+export interface ScrumPlanPrefill {
+  seq: number;
+  title: string;
+  expectedOutput?: string;
+  measurement?: string;
+  kpi?: string;
+  kpiTemplateId?: string;
+  plannedTarget?: string;
+  projectId?: string;
+  /** YYYY-MM-DD of the day this commitment was carried over from, when applicable. */
+  carriedOverFrom?: string;
+}
+
 /** First line = task title; the rest = long-form description. */
 export function splitDescription(description: string | null): { task: string; details: string } {
   if (!description) return { task: "", details: "" };

@@ -34,6 +34,17 @@ export class ScrumController {
     return this.svc.findAll(u, query);
   }
 
+  /**
+   * Uncompleted tasks the caller marked "continue tomorrow" in a previous EOD
+   * review. Declared before `:id` — Nest matches in declaration order, and the
+   * UUID pipe there would otherwise reject this path.
+   */
+  @Get('carry-over')
+  @RequirePermissions('scrum:read')
+  carryOver(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.carryOverTasks(u);
+  }
+
   @Get(':id')
   @RequirePermissions('scrum:read')
   findOne(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {

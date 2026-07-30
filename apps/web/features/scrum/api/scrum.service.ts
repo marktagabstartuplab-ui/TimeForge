@@ -144,6 +144,21 @@ export async function listScrumEntries(params: { from?: string; to?: string; lim
   return data;
 }
 
+/** Uncompleted tasks carried over from a previous day's EOD ("continue tomorrow" = Yes). */
+export interface ScrumCarryOver {
+  sourceEntryId: string | null;
+  /** YYYY-MM-DD of the day these tasks were planned on. */
+  sourceDate: string | null;
+  tasks: ScrumTask[];
+}
+
+export async function getScrumCarryOver(): Promise<ScrumCarryOver> {
+  const { data } = await apiClient.get<ScrumCarryOver>("/scrum-entries/carry-over", {
+    params: { _t: Date.now() },
+  });
+  return data;
+}
+
 export async function getScrumEntry(id: string): Promise<ScrumEntry> {
   const { data } = await apiClient.get<ScrumEntry>(`/scrum-entries/${id}`, {
     params: { _t: Date.now() }

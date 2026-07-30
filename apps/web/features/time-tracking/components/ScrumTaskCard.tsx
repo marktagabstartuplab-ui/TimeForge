@@ -50,6 +50,7 @@ import { listProjects } from "../api/catalog.service";
 import { getMyKpiSummary } from "@/features/reports/api/kpi.service";
 import { runAndPollAiJob } from "@/features/scrum-management/api/ai-insight.service";
 import { dailyScrumSchema, type DailyScrumValues } from "../schemas/time-entry.schema";
+import { type ScrumPlanPrefill } from "../lib/task-select";
 import { formatClockTime, toIsoDate } from "@/lib/time";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
@@ -94,10 +95,12 @@ function readDraft(): TextDraft | null {
 interface ScrumTaskCardProps {
   entry: ScrumEntry | null;
   loading: boolean;
+  /** One-click fill of the planner form, from Quick Select. */
+  prefill: ScrumPlanPrefill | null;
   onToast: (toast: ToastState) => void;
 }
 
-export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
+export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCardProps) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const [serverError, setServerError] = useState<string | null>(null);
@@ -126,6 +129,12 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
   // Refs for smooth scroll
   const taskListRef = useRef<HTMLDivElement>(null);
   const newTaskRef = useRef<HTMLDivElement>(null);
+  const plannerRef = useRef<HTMLDivElement>(null);
+
+  // A carried-over commitment brings its own planned target — don't let the
+  // "suggest the admin master target" effect below overwrite it. Cleared as
+  // soon as the employee picks a different KPI themselves.
+  const keepPrefilledTarget = useRef(false);
 
   const { data: projects } = useQuery({ queryKey: ["catalog", "projects"], queryFn: listProjects });
   const { data: kpiSummary = [] } = useQuery({ queryKey: ["kpi", "my-summary"], queryFn: getMyKpiSummary });
@@ -140,6 +149,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
   // When a configured KPI is selected, pre-fill the planned target with the
   // admin's master target as a suggestion — the employee can then change it.
   useEffect(() => {
+    if (keepPrefilledTarget.current) return;
     if (!useCustomKpi && selectedKpi && !editingTaskId) {
       setTaskTarget(`${selectedKpi.target}${selectedKpi.unit ? ` ${selectedKpi.unit}` : ""}`);
     }
@@ -160,6 +170,31 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
   // Only a fully COMPLETED day is locked (server-computed from task completion).
   const completed = entry?.status === "COMPLETED";
   const locked = entry?.isLocked ?? completed;
+
+  // Quick Select → planner. Recent tasks fill the description/project; a
+  // carried-over commitment brings its whole plan (output, criteria, KPI,
+  // target) so continuing yesterday's work is a single click. Keyed on `seq`
+  // so re-picking the same card re-applies.
+  useEffect(() => {
+    if (!prefill || locked) return;
+    setEditingTaskId(null);
+    setTaskDesc(prefill.title);
+    setTaskOutput(prefill.expectedOutput ?? "");
+    setTaskCriteria(prefill.measurement ?? "");
+    setTaskProj(prefill.projectId ?? "");
+    keepPrefilledTarget.current = Boolean(prefill.plannedTarget);
+    setTaskTarget(prefill.plannedTarget ?? "");
+    if (prefill.kpiTemplateId) {
+      setUseCustomKpi(false);
+      setTaskKpiTemplateId(prefill.kpiTemplateId);
+      setTaskKpi("");
+    } else if (prefill.kpi) {
+      setUseCustomKpi(true);
+      setTaskKpiTemplateId("");
+      setTaskKpi(prefill.kpi);
+    }
+    plannerRef.current?.scrollIntoView({ behavior: "smooth", block: "center" });
+  }, [prefill?.seq]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const {
     register,
@@ -226,6 +261,9 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
   const invalidateEntry = () => {
     queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
     queryClient.invalidateQueries({ queryKey: ["scrum-tasks", entry?.id] });
+    // A carried-over commitment drops out of Quick Select once it's re-planned
+    // today (the server filters by title), so the list has to be re-read.
+    queryClient.invalidateQueries({ queryKey: ["scrum-carry-over"] });
   };
 
   /** Ensures today's ScrumEntry exists before planning a task/blocker against it. */
@@ -343,6 +381,7 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
     setUseCustomKpi(false);
     setTaskProj("");
     setEditingTaskId(null);
+    keepPrefilledTarget.current = false;
   };
 
   const handleAddOrEditTask = () => {
@@ -691,10 +730,15 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
 
       {/* Plan New Task Form (Section 3) */}
       {!locked && (
-        <div className="p-4 rounded-[12px] border border-[#c3c6d2]/40 bg-[#f6f3f4]/10 space-y-4">
+        <div ref={plannerRef} className="p-4 rounded-[12px] border border-[#c3c6d2]/40 bg-[#f6f3f4]/10 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-sm font-bold text-brand-navy uppercase tracking-[0.5px]">
               {editingTaskId ? "Edit Commitment Task" : "Plan New Task"}
+              {!editingTaskId && prefill?.carriedOverFrom ? (
+                <span className="ml-2 rounded-full bg-[#f59e0b]/15 px-2 py-0.5 text-[10px] font-bold normal-case tracking-normal text-[#b45309]">
+                  Continued from {prefill.carriedOverFrom}
+                </span>
+              ) : null}
             </h4>
             <button
               type="button"
@@ -769,7 +813,10 @@ export function ScrumTaskCard({ entry, loading, onToast }: ScrumTaskCardProps) {
                     <select
                       id="new-task-kpi-template"
                       value={taskKpiTemplateId}
-                      onChange={(e) => setTaskKpiTemplateId(e.target.value)}
+                      onChange={(e) => {
+                        keepPrefilledTarget.current = false;
+                        setTaskKpiTemplateId(e.target.value);
+                      }}
                       className="h-11 w-full rounded-[10px] border border-[#c3c6d2] bg-white px-3 text-sm focus:outline-none focus:border-brand"
                     >
                       <option value="">

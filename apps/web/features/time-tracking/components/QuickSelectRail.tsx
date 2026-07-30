@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { History, Pin, Sparkles, Star } from "lucide-react";
+import { ArrowRightCircle, History, Pin, Sparkles, Star } from "lucide-react";
 import { Skeleton } from "@/components/ui/skeleton";
 import type { ToastState } from "@/components/shared/Toast";
+import type { ScrumTask } from "@/features/scrum/api/scrum.service";
 import { listProjects } from "../api/catalog.service";
 import { readPinnedKeys, togglePinnedKey, type WorkTask } from "../lib/task-select";
 import { formatMinutes } from "@/lib/time";
@@ -16,7 +17,42 @@ interface QuickSelectRailProps {
   loading: boolean;
   /** One click populates Work Details (and seeds the next Clock In). */
   onSelect: (task: WorkTask) => void;
+  /** Uncompleted commitments the user said they'd continue, from a previous EOD. */
+  carryOver: ScrumTask[];
+  /** YYYY-MM-DD the carried-over commitments came from. */
+  carryOverDate: string | null;
+  /** One click loads the commitment into the Daily Scrum planner. */
+  onSelectCarryOver: (task: ScrumTask) => void;
   onToast: (toast: ToastState) => void;
+}
+
+/** "Jul 29" — the source day of a carried-over commitment. */
+function shortDate(isoDate: string): string {
+  const parsed = new Date(`${isoDate}T00:00:00`);
+  return Number.isNaN(parsed.getTime())
+    ? isoDate
+    : parsed.toLocaleDateString("en-US", { month: "short", day: "numeric" });
+}
+
+/** A commitment carried over from a previous day's End of Day review. */
+function CarryOverCard({ task, onPick }: { task: ScrumTask; onPick: (task: ScrumTask) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(task)}
+      aria-label={`Add continued task ${task.title} to today's commitments`}
+      className="block w-full rounded-[12px] border border-[#f59e0b]/50 bg-[#fffbeb] p-3.5 text-left transition-colors hover:border-[#f59e0b]"
+    >
+      <p className="text-sm font-bold text-brand-ink">{task.title}</p>
+      {task.expectedOutput ? (
+        <p className="mt-0.5 line-clamp-2 text-[11px] text-brand-muted">{task.expectedOutput}</p>
+      ) : null}
+      <span className="mt-2 inline-flex items-center gap-1 rounded-full bg-[#f59e0b]/15 px-2 py-0.5 text-[10px] font-bold uppercase tracking-[0.5px] text-[#b45309]">
+        <ArrowRightCircle className="h-3 w-3" aria-hidden="true" />
+        {task.plannedTarget ? `Target ${task.plannedTarget}` : "Continue today"}
+      </span>
+    </button>
+  );
 }
 
 interface TaskCardProps {
@@ -84,7 +120,15 @@ function TaskCard({ task, highlight, pinned, projectLabel, onPick, onTogglePin }
  * stored in localStorage. Favorite Projects = most-tracked projects in the
  * queried range (real data, read-only).
  */
-export function QuickSelectRail({ tasks, loading, onSelect, onToast }: QuickSelectRailProps) {
+export function QuickSelectRail({
+  tasks,
+  loading,
+  onSelect,
+  carryOver,
+  carryOverDate,
+  onSelectCarryOver,
+  onToast,
+}: QuickSelectRailProps) {
   // AppShell renders client-side only (session-gated), so reading
   // localStorage in the initializer is hydration-safe.
   const [pinnedKeys, setPinnedKeys] = useState<string[]>(() => readPinnedKeys());
@@ -111,7 +155,12 @@ export function QuickSelectRail({ tasks, loading, onSelect, onToast }: QuickSele
 
   const pick = (task: WorkTask) => {
     onSelect(task);
-    onToast({ message: `"${task.title}" loaded into Work Details.` });
+    onToast({ message: `"${task.title}" loaded into your Daily Scrum planner.` });
+  };
+
+  const pickCarryOver = (task: ScrumTask) => {
+    onSelectCarryOver(task);
+    onToast({ message: `"${task.title}" loaded into your Daily Scrum planner.` });
   };
 
   const togglePin = (key: string) => setPinnedKeys(togglePinnedKey(key));
@@ -135,6 +184,26 @@ export function QuickSelectRail({ tasks, loading, onSelect, onToast }: QuickSele
           <p className="text-xs text-brand-muted">Resume recently used tasks</p>
         </div>
       </div>
+
+      {/* Continued Tasks — carried over from the previous EOD review. Rendered
+          above (and independently of) the recent-task sections so the workflow
+          survives a day with no tracked time. */}
+      {carryOver.length > 0 ? (
+        <div className="mt-4 rounded-[12px] border border-[#f59e0b]/30 bg-[#f59e0b]/5 p-3">
+          <SectionLabel icon={<ArrowRightCircle className="h-3 w-3" aria-hidden="true" />}>
+            Continued Tasks
+          </SectionLabel>
+          <p className="-mt-1 mb-2 text-[11px] text-brand-muted">
+            You marked these to continue{carryOverDate ? ` from ${shortDate(carryOverDate)}` : ""}.
+            Click one to add it to today&apos;s commitments.
+          </p>
+          <div className="flex flex-col gap-2">
+            {carryOver.map((t) => (
+              <CarryOverCard key={t.id} task={t} onPick={pickCarryOver} />
+            ))}
+          </div>
+        </div>
+      ) : null}
 
       {loading ? (
         <div className="mt-4 flex flex-col gap-3">

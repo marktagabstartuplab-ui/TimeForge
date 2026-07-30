@@ -10,11 +10,17 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { Toast, type ToastState } from "@/components/shared/Toast";
 import { listTimeEntries, listAllTimeEntries } from "../api/time-entries.service";
 import { getCurrentWorkSession } from "../api/work-sessions.service";
-import { listScrumEntries, getScrumEntry, listScrumTasks } from "@/features/scrum/api/scrum.service";
+import {
+  listScrumEntries,
+  getScrumEntry,
+  listScrumTasks,
+  getScrumCarryOver,
+  type ScrumTask,
+} from "@/features/scrum/api/scrum.service";
 import { getMe } from "@/features/account/api/account.service";
 import { fetchDepartments } from "@/features/auth/api/auth.service";
 import { summarizeDay } from "../lib/day-summary";
-import { deriveTasks, type WorkTask } from "../lib/task-select";
+import { deriveTasks, type ScrumPlanPrefill, type WorkTask } from "../lib/task-select";
 import { CurrentSessionCard } from "./CurrentSessionCard";
 import { ScrumTaskCard } from "./ScrumTaskCard";
 import { WorkDetailsCard } from "./WorkDetailsCard";
@@ -38,6 +44,10 @@ export function TimeTrackingContent() {
   const [eodOpen, setEodOpen] = useState(false);
   const [dayClosed, setDayClosed] = useState(false);
   const [selectedTask, setSelectedTask] = useState<WorkTask | null>(null);
+  // Quick Select also drives the Daily Scrum planner. Kept separate from
+  // `selectedTask` because carried-over commitments are ScrumTasks, not
+  // time-entry-derived WorkTasks, and they carry their own KPI/target fields.
+  const [planPrefill, setPlanPrefill] = useState<ScrumPlanPrefill | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
   const today = useMemo(() => new Date(), []);
   const week = useMemo(() => weekWindow(today), [today]);
@@ -231,7 +241,38 @@ export function TimeTrackingContent() {
   // Distinct recent tasks (this week) for Quick Select.
   const tasks = useMemo(() => deriveTasks(weekEntries), [weekEntries]);
 
+  // Commitments the user said they'd continue in a previous EOD review.
+  const carryOverQuery = useQuery({
+    queryKey: ["scrum-carry-over"],
+    queryFn: getScrumCarryOver,
+    refetchOnMount: "always",
+  });
+
   const onToast = useCallback((t: ToastState) => setToast(t), []);
+
+  // Every pick bumps `seq` so re-clicking the same card re-applies the prefill.
+  const handleSelectTask = useCallback((task: WorkTask) => {
+    setSelectedTask(task);
+    setPlanPrefill((prev) => ({
+      seq: (prev?.seq ?? 0) + 1,
+      title: task.title,
+      projectId: task.projectId ?? undefined,
+    }));
+  }, []);
+
+  const handleSelectCarryOver = useCallback((task: ScrumTask) => {
+    setPlanPrefill((prev) => ({
+      seq: (prev?.seq ?? 0) + 1,
+      title: task.title,
+      expectedOutput: task.expectedOutput,
+      measurement: task.measurement,
+      kpi: task.kpi ?? undefined,
+      kpiTemplateId: task.kpiTemplateId ?? undefined,
+      plannedTarget: task.plannedTarget ?? undefined,
+      projectId: task.projectId ?? undefined,
+      carriedOverFrom: carryOverQuery.data?.sourceDate ?? undefined,
+    }));
+  }, [carryOverQuery.data]);
 
   return (
     <div className="flex flex-col gap-6">
@@ -296,6 +337,7 @@ export function TimeTrackingContent() {
             <ScrumTaskCard
               entry={scrumEntry}
               loading={scrumQuery.isLoading}
+              prefill={planPrefill}
               onToast={onToast}
             />
 
@@ -318,7 +360,10 @@ export function TimeTrackingContent() {
             <QuickSelectRail
               tasks={tasks}
               loading={weekQuery.isLoading}
-              onSelect={setSelectedTask}
+              onSelect={handleSelectTask}
+              carryOver={carryOverQuery.data?.tasks ?? []}
+              carryOverDate={carryOverQuery.data?.sourceDate ?? null}
+              onSelectCarryOver={handleSelectCarryOver}
               onToast={onToast}
             />
             <TodayProgressCard
