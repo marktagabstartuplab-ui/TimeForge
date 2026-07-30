@@ -16,6 +16,16 @@ interface EmailPayload {
   to: string;
   subject: string;
   body: string;
+  /** Optional branded HTML part rendered by the API's email template. */
+  html?: string;
+  /** Optional inline attachments (the brand mark, referenced by `cid:`). */
+  attachments?: Array<{
+    filename: string;
+    content: string;
+    encoding: string;
+    contentType: string;
+    cid: string;
+  }>;
 }
 
 serve(async (req: Request) => {
@@ -34,7 +44,7 @@ serve(async (req: Request) => {
 
   try {
     const payload: EmailPayload = await req.json();
-    const { to, subject, body } = payload;
+    const { to, subject, body, html, attachments } = payload;
 
     if (!to || !subject || !body) {
       return new Response(
@@ -47,7 +57,7 @@ serve(async (req: Request) => {
     const smtpPort = parseInt(Deno.env.get("SMTP_PORT") ?? "587", 10);
     const smtpUser = Deno.env.get("SMTP_USER");
     const smtpPass = Deno.env.get("SMTP_PASS");
-    const smtpFrom = Deno.env.get("SMTP_FROM") ?? `TimeForge Team <${smtpUser}>`;
+    const smtpFrom = Deno.env.get("SMTP_FROM") ?? `HeroTime Team <${smtpUser}>`;
 
     if (!smtpUser || !smtpPass) {
       console.error("[send-email] SMTP_USER or SMTP_PASS secret is not set.");
@@ -70,6 +80,8 @@ serve(async (req: Request) => {
       to,
       subject,
       text: body,
+      ...(html ? { html } : {}),
+      ...(attachments?.length ? { attachments } : {}),
     });
 
     console.log(`[send-email] Delivered to ${to}. MessageId: ${info.messageId}`);

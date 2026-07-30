@@ -32,7 +32,7 @@ const schema = z
     SMTP_PORT: z.coerce.number().default(587),
     SMTP_USER: z.string().optional(),
     SMTP_PASS: z.string().optional(),
-    SMTP_FROM: z.string().default('TimeForge Team <no-reply@timeforge.com>'),
+    SMTP_FROM: z.string().default('HeroTime Team <no-reply@timeforge.com>'),
     ARGON2_MEMORY_COST: z.coerce.number().positive().default(65536),
     // Rate limiting
     RATE_LIMIT_TTL: z.coerce.number().positive().default(60),
