@@ -8,7 +8,6 @@ import { getSidebarNavigation } from "../api/navigation.service";
 import type { SidebarMenuItem } from "../api/navigation.service";
 import { SidebarHeader } from "./SidebarHeader";
 import { SidebarNavSection } from "./SidebarNavSection";
-import { SidebarBottomSection } from "./SidebarBottomSection";
 import { SidebarMobileDrawer } from "./SidebarMobileDrawer";
 
 /** The canonical section ordering. */
@@ -78,11 +77,6 @@ export function AdminSidebar() {
             />
           ))}
         </nav>
-
-        {/* Bottom: Notifications + Settings + Sign Out */}
-        <div className="shrink-0">
-          <SidebarBottomSection />
-        </div>
       </aside>
 
       {/* Mobile drawer (< lg) */}

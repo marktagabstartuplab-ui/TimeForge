@@ -6,7 +6,6 @@ import { AnimatePresence, motion } from "framer-motion";
 import { Logo } from "@/components/brand/Logo";
 import { useSidebarStore } from "../store/sidebar.store";
 import { SidebarNavSection } from "./SidebarNavSection";
-import { SidebarBottomSection } from "./SidebarBottomSection";
 import { OrganizationSwitcher } from "./OrganizationSwitcher";
 import type { SidebarResponse, SidebarMenuItem } from "../api/navigation.service";
 
@@ -114,11 +113,6 @@ export function SidebarMobileDrawer({ sidebarData, sections, homeHref = "/dashbo
                 />
               ))}
             </nav>
-
-            {/* Bottom */}
-            <div className="shrink-0 pb-4">
-              <SidebarBottomSection />
-            </div>
           </motion.div>
         </>
       ) : null}
