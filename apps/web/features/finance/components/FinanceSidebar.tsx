@@ -5,7 +5,6 @@ import { cn } from "@/lib/utils";
 import { useSidebarStore } from "@/features/app-shell/store/sidebar.store";
 import { SidebarHeader } from "@/features/app-shell/components/SidebarHeader";
 import { SidebarNavSection } from "@/features/app-shell/components/SidebarNavSection";
-import { SidebarBottomSection } from "@/features/app-shell/components/SidebarBottomSection";
 import { SidebarMobileDrawer } from "@/features/app-shell/components/SidebarMobileDrawer";
 import { getSidebarNavigation, type SidebarMenuItem, type SidebarOrganization } from "@/features/app-shell/api/navigation.service";
 import { BRAND_NAME } from "@/lib/constants";
@@ -51,10 +50,6 @@ export function FinanceSidebar() {
             />
           ))}
         </nav>
-
-        <div className="shrink-0">
-          <SidebarBottomSection />
-        </div>
       </aside>
 
       <SidebarMobileDrawer

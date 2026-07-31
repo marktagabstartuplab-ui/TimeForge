@@ -7,7 +7,6 @@ import {
   PanelLeftClose,
   PanelLeftOpen,
   HelpCircle,
-  Settings,
 } from "lucide-react";
 import { Logo } from "@/components/brand/Logo";
 import { useAuth } from "@/providers/auth-provider";
@@ -185,13 +184,6 @@ export function AppSidebar({ open, onClose }: AppSidebarProps) {
                   Contact Support
                 </Link>
               </div>
-              <Link
-                href="/settings"
-                className="flex h-10 items-center gap-3 px-2 text-sm font-medium text-brand-muted hover:text-brand-navy"
-              >
-                <Settings className="h-5 w-5" aria-hidden="true" />
-                Settings
-              </Link>
             </div>
           ) : (
             <div className="flex flex-col items-center gap-4 px-2">
@@ -208,21 +200,6 @@ export function AppSidebar({ open, onClose }: AppSidebarProps) {
                 />
                 <TooltipContent side="right" sideOffset={8}>
                   Contact Support
-                </TooltipContent>
-              </Tooltip>
-              <Tooltip>
-                <TooltipTrigger
-                  render={
-                    <Link
-                      href="/settings"
-                      className="flex h-10 w-10 items-center justify-center rounded-md text-brand-muted hover:text-brand-navy transition-colors"
-                    >
-                      <Settings className="h-5 w-5" aria-hidden="true" />
-                    </Link>
-                  }
-                />
-                <TooltipContent side="right" sideOffset={8}>
-                  Settings
                 </TooltipContent>
               </Tooltip>
             </div>
