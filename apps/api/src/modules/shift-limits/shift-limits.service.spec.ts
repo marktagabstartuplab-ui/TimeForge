@@ -127,6 +127,19 @@ describe('ShiftLimitsService', () => {
       expect((await service.status(makeSession(), at12h20)).state).toBe('EXPIRED');
     });
 
+    it('reports the EXTENDED limit, not the org default, after an override', async () => {
+      // Caught in the browser: the UI read "SHIFT LIMIT — 12H … 42M LEFT" while
+      // showing 12h18m elapsed, because the config value was reported instead of
+      // the session's actual deadline.
+      const extended = makeSession({ maxClockOutAt: new Date(CLOCK_IN.getTime() + 13 * HOUR) });
+      const status = await service.status(extended, new Date(CLOCK_IN.getTime() + 12.2 * HOUR));
+
+      expect(status.maxShiftMinutes).toBe(13 * 60);
+      expect(status.elapsedMinutes).toBeLessThan(status.maxShiftMinutes!);
+      expect(status.remainingMinutes).toBe(48);
+      expect(status.state).toBe('WARNING');
+    });
+
     it('treats a session with no configuration as unlimited', async () => {
       const status = await service.status(
         makeSession({ shiftConfigurationId: null, maxClockOutAt: null }),

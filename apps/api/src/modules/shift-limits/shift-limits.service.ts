@@ -35,7 +35,11 @@ export interface ShiftLimitStatus {
   state: ShiftLimitState;
   /** Minutes elapsed since clock-in (wall clock, breaks included). */
   elapsedMinutes: number;
-  /** Configured cap in minutes, null when unlimited. */
+  /**
+   * The cap in force for THIS session, in minutes — `maxClockOutAt - clockIn`,
+   * so an approved override is reflected here. Not the org default. Null when
+   * unlimited.
+   */
   maxShiftMinutes: number | null;
   /** Minutes remaining until the hard cap; negative once past it. Null when unlimited. */
   remainingMinutes: number | null;
@@ -168,10 +172,17 @@ export class ShiftLimitsService {
       orderBy: { violationAt: 'desc' },
     });
 
+    // The limit *for this session*, derived from its (possibly extended) deadline
+    // rather than the org default. Reporting the config value made an extended
+    // shift contradict itself in the UI — "SHIFT LIMIT — 12H … 42M LEFT" shown
+    // against 12h18m elapsed — and recorded the wrong minutes on the
+    // REACHED_LIMIT row for any deadline an override had moved.
+    const effectiveLimitMinutes = Math.round((deadline.getTime() - session.clockIn.getTime()) / 60_000);
+
     return {
       state,
       elapsedMinutes,
-      maxShiftMinutes: config.maxShiftMinutes,
+      maxShiftMinutes: effectiveLimitMinutes,
       remainingMinutes,
       maxClockOutAt: deadline,
       pendingOverrideId: pending?.id ?? null,
