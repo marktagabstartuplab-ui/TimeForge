@@ -21,6 +21,9 @@ import { ApiError } from "@/lib/api/client";
 import { bugReportSchema, BUG_SEVERITIES, type BugReportValues } from "../schemas/bug.schema";
 import { createBug, uploadBugAttachment, type BugSeverity } from "../api/bugs.service";
 
+// Base UI's SelectValue renders the raw value unless Root is given an items map.
+const SEVERITY_ITEMS = BUG_SEVERITIES.map((s) => ({ value: s.value as string, label: s.label }));
+
 /**
  * Report form. The bug row is created first, then any picked files are uploaded
  * against its id — attachments need a bug to hang off, same "attach after
@@ -136,7 +139,7 @@ export function BugForm() {
                 control={control}
                 name="severity"
                 render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
+                  <Select value={field.value} onValueChange={field.onChange} items={SEVERITY_ITEMS}>
                     <SelectTrigger
                       id="bug-severity"
                       aria-label="Severity"

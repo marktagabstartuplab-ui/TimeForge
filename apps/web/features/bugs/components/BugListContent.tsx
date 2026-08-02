@@ -25,8 +25,22 @@ import { BugCard } from "./BugCard";
 
 const ALL = "ALL";
 
+// Base UI's SelectValue renders the raw value unless Select.Root is given an
+// items map, so every Select needs one or the trigger reads "ALL"/"P3".
+const STATUS_ITEMS = [
+  { value: ALL, label: "All statuses" },
+  ...BUG_STATUSES.map((s) => ({ value: s.value as string, label: s.label })),
+];
+const PRIORITY_ITEMS = [
+  { value: ALL, label: "All priorities" },
+  ...BUG_PRIORITIES.map((p) => ({ value: p.value as string, label: p.label })),
+];
+
 export function BugListContent() {
   const canReadOrg = useCan("bug:read_org");
+  // Supervisors hold bug:read_team, so the service returns their department's
+  // reports — the heading has to say so rather than claim "yours only".
+  const canReadTeam = useCan("bug:read_team");
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState<string>(ALL);
   const [priority, setPriority] = useState<string>(ALL);
@@ -52,11 +66,13 @@ export function BugListContent() {
 
   const header = (
     <PageHeader
-      title={canReadOrg ? "Submitted Issues" : "My Bug Reports"}
+      title={canReadOrg ? "Submitted Issues" : canReadTeam ? "Team Issues" : "My Bug Reports"}
       subtitle={
         canReadOrg
           ? "Every bug reported across the organization."
-          : "Bugs you have reported or that are assigned to you."
+          : canReadTeam
+            ? "Bugs reported by your department, plus anything assigned to you."
+            : "Bugs you have reported or that are assigned to you."
       }
       action={
         <Link
@@ -104,7 +120,11 @@ export function BugListContent() {
             placeholder="Search title, description or page…"
             className="h-11"
           />
-          <Select value={status} onValueChange={(v) => setStatus(v ?? ALL)}>
+          <Select
+            value={status}
+            onValueChange={(v) => setStatus(v ?? ALL)}
+            items={STATUS_ITEMS}
+          >
             <SelectTrigger
               aria-label="Filter by status"
               className="h-11 w-full rounded-[10px] border-[#c3c6d2] bg-white px-3.5 text-[15px]"
@@ -120,7 +140,11 @@ export function BugListContent() {
               ))}
             </SelectContent>
           </Select>
-          <Select value={priority} onValueChange={(v) => setPriority(v ?? ALL)}>
+          <Select
+            value={priority}
+            onValueChange={(v) => setPriority(v ?? ALL)}
+            items={PRIORITY_ITEMS}
+          >
             <SelectTrigger
               aria-label="Filter by priority"
               className="h-11 w-full rounded-[10px] border-[#c3c6d2] bg-white px-3.5 text-[15px]"

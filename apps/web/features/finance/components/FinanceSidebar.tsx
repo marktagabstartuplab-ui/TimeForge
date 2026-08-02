@@ -16,6 +16,13 @@ const FINANCE_NAV_ITEMS: SidebarMenuItem[] = [
   { id: "finance-ai", label: "AI Insights", icon: "sparkles", route: "/finance/ai-insights", section: "FINANCE", badgeCount: 0, permission: "dashboard:read_org", visible: true },
 ];
 
+// Finance runs in its own shell with hardcoded nav, so items added to the server
+// menu catalog never reach it. Finance holds bug:create like every other role —
+// without this entry they'd have the permission and no way to use it.
+const FINANCE_SUPPORT_ITEMS: SidebarMenuItem[] = [
+  { id: "report-bug", label: "Report a Bug", icon: "bug", route: "/bugs/create", section: "SUPPORT", badgeCount: 0, permission: "bug:create", visible: true },
+];
+
 export function FinanceSidebar() {
   const isCollapsed = useSidebarStore((s) => s.isCollapsed);
   const [org, setOrg] = useState<SidebarOrganization | null>(null);
@@ -26,7 +33,13 @@ export function FinanceSidebar() {
       .catch(() => setOrg({ id: "", name: "Finance", logoUrl: null }));
   }, []);
 
-  const sections = useMemo(() => [{ section: "FINANCE", items: FINANCE_NAV_ITEMS }], []);
+  const sections = useMemo(
+    () => [
+      { section: "FINANCE", items: FINANCE_NAV_ITEMS },
+      { section: "SUPPORT", items: FINANCE_SUPPORT_ITEMS },
+    ],
+    [],
+  );
   const orgData = org ?? { id: "", name: "Finance", logoUrl: null };
 
   return (
