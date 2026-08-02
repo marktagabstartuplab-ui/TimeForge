@@ -40,6 +40,9 @@ export interface BugActivityEntry {
   changedBy: string;
   createdAt: string;
   actor?: BugUser | null;
+  /** Display-ready values — ASSIGNED rows resolve user ids to names server-side. */
+  oldLabel: string | null;
+  newLabel: string | null;
 }
 
 export interface Bug {

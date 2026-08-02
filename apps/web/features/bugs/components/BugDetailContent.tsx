@@ -39,6 +39,63 @@ import { CommentThread } from "./CommentThread";
 
 const UNASSIGNED = "UNASSIGNED";
 
+// Base UI's SelectValue renders the raw value unless Select.Root is given an
+// items map — without these the triage panel shows "OPEN"/"P3" and, worst of
+// all, the assignee's raw UUID instead of their name.
+const STATUS_ITEMS = BUG_STATUSES.map((s) => ({ value: s.value as string, label: s.label }));
+const PRIORITY_ITEMS = BUG_PRIORITIES.map((p) => ({ value: p.value as string, label: p.label }));
+const SEVERITY_ITEMS = BUG_SEVERITIES.map((s) => ({ value: s.value as string, label: s.label }));
+
+interface AssigneeOption {
+  id: string;
+  firstName: string;
+  lastName: string;
+}
+
+/** Options for the assignment picker — must mirror the rendered SelectItems. */
+function buildAssigneeItems(
+  employees: AssigneeOption[],
+  currentUserId: string | undefined,
+  assignedTo: string | null,
+  assignee: AssigneeOption | null,
+): { value: string; label: string }[] {
+  const items = [{ value: UNASSIGNED, label: "Unassigned" }];
+  if (currentUserId) items.push({ value: currentUserId, label: "Assign to me" });
+  for (const e of employees) {
+    if (e.id === currentUserId) continue;
+    items.push({ value: e.id, label: `${e.firstName} ${e.lastName}` });
+  }
+  // The current assignee may sit outside the fetched page of employees —
+  // without this the trigger would show their id instead of their name.
+  if (assignedTo && !items.some((i) => i.value === assignedTo)) {
+    items.push({
+      value: assignedTo,
+      label: assignee ? `${assignee.firstName} ${assignee.lastName}` : "Assigned user",
+    });
+  }
+  return items;
+}
+
+const ACTION_LABELS: Record<string, string> = {
+  REPORTED: "Reported",
+  STATUS_CHANGED: "Status",
+  PRIORITY_CHANGED: "Priority",
+  SEVERITY_CHANGED: "Severity",
+  ASSIGNED: "Assignee",
+  COMMENTED: "Commented",
+  ATTACHMENT_ADDED: "Attachment added",
+};
+
+/** Enum values are stored raw; show the same wording the pickers use. */
+const VALUE_LABELS: Record<string, string> = Object.fromEntries(
+  [...BUG_STATUSES, ...BUG_PRIORITIES, ...BUG_SEVERITIES].map((o) => [o.value, o.label]),
+);
+
+function valueLabel(v: string | null): string {
+  if (!v) return "—";
+  return VALUE_LABELS[v] ?? v;
+}
+
 function formatDateTime(iso: string): string {
   return new Date(iso).toLocaleString("en-US", {
     month: "short",
@@ -114,6 +171,16 @@ export function BugDetailContent({ bugId }: { bugId: string }) {
       });
     },
   });
+
+  // Must mirror the SelectItem list below exactly, or the trigger falls back to
+  // rendering the raw user id. Left unmemoized on purpose — the React Compiler
+  // handles it, and a manual useMemo here trips its dependency check.
+  const assigneeItems = buildAssigneeItems(
+    employees?.data ?? [],
+    user?.id,
+    bug?.assignedTo ?? null,
+    bug?.assignee ?? null,
+  );
 
   const openAttachment = async (attachmentId: string) => {
     try {
@@ -248,6 +315,7 @@ export function BugDetailContent({ bugId }: { bugId: string }) {
                   <Select
                     value={bug.status}
                     onValueChange={(v) => triageMutation.mutate({ status: v as BugStatus })}
+                    items={STATUS_ITEMS}
                   >
                     <SelectTrigger
                       aria-label="Bug status"
@@ -272,6 +340,7 @@ export function BugDetailContent({ bugId }: { bugId: string }) {
                   <Select
                     value={bug.priority}
                     onValueChange={(v) => triageMutation.mutate({ priority: v as BugPriority })}
+                    items={PRIORITY_ITEMS}
                   >
                     <SelectTrigger
                       aria-label="Bug priority"
@@ -296,6 +365,7 @@ export function BugDetailContent({ bugId }: { bugId: string }) {
                   <Select
                     value={bug.severity}
                     onValueChange={(v) => triageMutation.mutate({ severity: v as BugSeverity })}
+                    items={SEVERITY_ITEMS}
                   >
                     <SelectTrigger
                       aria-label="Bug severity"
@@ -322,6 +392,7 @@ export function BugDetailContent({ bugId }: { bugId: string }) {
                     onValueChange={(v) =>
                       triageMutation.mutate({ assignedTo: v === UNASSIGNED ? null : v })
                     }
+                    items={assigneeItems}
                   >
                     <SelectTrigger
                       aria-label="Assign bug"
@@ -352,9 +423,9 @@ export function BugDetailContent({ bugId }: { bugId: string }) {
                 {activity.map((a) => (
                   <li key={a.id} className="border-l-2 border-[#c3c6d2]/60 pl-3">
                     <p className="text-xs font-semibold text-brand-ink">
-                      {a.action.replace(/_/g, " ").toLowerCase()}
-                      {a.oldValue || a.newValue
-                        ? `: ${a.oldValue ?? "—"} → ${a.newValue ?? "—"}`
+                      {ACTION_LABELS[a.action] ?? a.action.replace(/_/g, " ").toLowerCase()}
+                      {a.oldLabel || a.newLabel
+                        ? `: ${valueLabel(a.oldLabel)} → ${valueLabel(a.newLabel)}`
                         : ""}
                     </p>
                     <p className="text-[11px] text-brand-muted">

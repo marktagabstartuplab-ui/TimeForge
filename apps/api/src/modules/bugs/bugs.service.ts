@@ -219,11 +219,36 @@ export class BugsService {
 
   async getActivity(p: AuthPrincipal, id: string) {
     await this.findOneRaw(p, id); // enforces visibility
-    return this.prisma.bugActivityLog.findMany({
+    const entries = await this.prisma.bugActivityLog.findMany({
       where: { tenantId: p.tenantId, bugId: id },
       include: { actor: REPORTER_SELECT },
       orderBy: { createdAt: 'desc' },
     });
+
+    // ASSIGNED rows store user ids — accurate for audit, unreadable in the UI.
+    // Resolve them to names here so the timeline never renders a raw UUID.
+    const userIds = new Set<string>();
+    for (const e of entries) {
+      if (e.action !== 'ASSIGNED') continue;
+      if (e.oldValue) userIds.add(e.oldValue);
+      if (e.newValue) userIds.add(e.newValue);
+    }
+    if (userIds.size === 0) {
+      return entries.map((e) => ({ ...e, oldLabel: e.oldValue, newLabel: e.newValue }));
+    }
+
+    const users = await this.prisma.user.findMany({
+      where: { id: { in: [...userIds] }, tenantId: p.tenantId },
+      select: { id: true, firstName: true, lastName: true },
+    });
+    const nameById = new Map(users.map((u) => [u.id, `${u.firstName} ${u.lastName}`]));
+    const label = (v: string | null) => (v ? (nameById.get(v) ?? 'Unknown user') : null);
+
+    return entries.map((e) =>
+      e.action === 'ASSIGNED'
+        ? { ...e, oldLabel: label(e.oldValue), newLabel: label(e.newValue) }
+        : { ...e, oldLabel: e.oldValue, newLabel: e.newValue },
+    );
   }
 
   /** Counters for the triage dashboard, within the caller's visible scope. */
