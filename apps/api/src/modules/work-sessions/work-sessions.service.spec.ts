@@ -2,6 +2,7 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { WorkSessionsService } from './work-sessions.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
+import { ShiftLimitsService } from '../shift-limits/shift-limits.service';
 import { AuthPrincipal } from '../../common/decorators';
 
 describe('WorkSessionsService — workDate is the organization\'s local day', () => {
@@ -32,6 +33,17 @@ describe('WorkSessionsService — workDate is the organization\'s local day', ()
           useValue: { workSession, timeEntry, sessionEvent: { create: jest.fn() }, auditLog: { create: jest.fn() } },
         },
         { provide: OrgTimeZoneService, useValue: { forPrincipal: jest.fn().mockResolvedValue('Asia/Manila') } },
+        {
+          // This suite is about workDate only — no shift configuration, so clock-in
+          // leaves the session unlimited and the limit logic stays out of the way.
+          provide: ShiftLimitsService,
+          useValue: {
+            defaultConfig: jest.fn().mockResolvedValue(null),
+            deadlineFor: jest.fn(),
+            evaluateAndNotify: jest.fn(),
+            autoClockOut: jest.fn(),
+          },
+        },
       ],
     }).compile();
 

@@ -10,6 +10,9 @@ import {
   startBreak,
 } from "../api/work-sessions.service";
 import { listClients, listProjects } from "../api/catalog.service";
+import { ShiftStatusBar } from "./ShiftStatusBar";
+import { ShiftWarningAlert } from "./ShiftWarningAlert";
+import { OverrideRequestModal } from "./OverrideRequestModal";
 import { type WorkTask } from "../lib/task-select";
 import { formatStopwatch, formatClockTime, formatMinutes } from "@/lib/time";
 
@@ -61,6 +64,7 @@ export function CurrentSessionCard({
   const queryClient = useQueryClient();
   const [now, setNow] = useState(() => Date.now());
   const [error, setError] = useState<string | null>(null);
+  const [overrideOpen, setOverrideOpen] = useState(false);
 
   const { data: projects } = useQuery({ queryKey: ["catalog", "projects"], queryFn: listProjects });
   const { data: clients } = useQuery({ queryKey: ["catalog", "clients"], queryFn: listClients });
@@ -68,10 +72,17 @@ export function CurrentSessionCard({
   const { data: workSession } = useQuery({
     queryKey: ["work-session", "current"],
     queryFn: getCurrentWorkSession,
-    refetchInterval: 30_000,
+    // Poll harder once the shift limit is in play — the server enforces the cut-off
+    // on read, so a tighter interval is what makes the auto-clock-out show up
+    // promptly rather than up to 30s late.
+    refetchInterval: (query) => {
+      const state = query.state.data?.shiftLimit?.state;
+      return state === "WARNING" || state === "LIMIT_REACHED" || state === "EXPIRED" ? 10_000 : 30_000;
+    },
   });
 
   const session = workSession?.session ?? null;
+  const shiftLimit = workSession?.shiftLimit ?? null;
   const onBreak = workSession?.onBreak ?? false;
   const running = Boolean(session?.isActive && !onBreak);
   // Day is complete when today's session was explicitly closed via EOD
@@ -306,7 +317,17 @@ export function CurrentSessionCard({
             {reviewBlockedReason}
           </p>
         ) : null}
+
+        {/* Shift limit (FEAT-2) — only for an active, limit-enforced session. */}
+        {(running || onBreak) && shiftLimit ? (
+          <div className="w-full">
+            <ShiftStatusBar status={shiftLimit} />
+            <ShiftWarningAlert status={shiftLimit} onRequestOverride={() => setOverrideOpen(true)} />
+          </div>
+        ) : null}
       </div>
+
+      <OverrideRequestModal open={overrideOpen} onOpenChange={setOverrideOpen} />
 
       {/* Live session context — only while a session or break is active. */}
       {running || onBreak ? (

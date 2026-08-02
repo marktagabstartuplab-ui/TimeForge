@@ -16,11 +16,27 @@ export interface WorkSession {
   version: number;
 }
 
+export type ShiftLimitState = "UNLIMITED" | "OK" | "WARNING" | "LIMIT_REACHED" | "EXPIRED";
+
+export interface ShiftLimitStatus {
+  state: ShiftLimitState;
+  /** Minutes since clock-in, wall clock (breaks included). */
+  elapsedMinutes: number;
+  maxShiftMinutes: number | null;
+  /** Negative once past the deadline. */
+  remainingMinutes: number | null;
+  maxClockOutAt: string | null;
+  pendingOverrideId: string | null;
+  requiresSupervisorOverride: boolean;
+}
+
 export interface WorkSessionSummary {
   session: WorkSession | null;
   onBreak: boolean;
   runningEntryId: string | null;
   workedMinutes: number;
+  /** Null when there is no active session or the org sets no shift limit. */
+  shiftLimit: ShiftLimitStatus | null;
 }
 
 export interface SessionEvent {

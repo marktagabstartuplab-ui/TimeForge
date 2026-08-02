@@ -237,6 +237,8 @@ model Organization {
   leaveBalances   LeaveBalance[]
   recurringIssues RecurringIssue[]
   bugs            Bug[]
+  shiftConfigurations   ShiftConfiguration[]
+  shiftLimitViolations  ShiftLimitViolation[]
 
   @@unique([tenantId, id])
   // Uniqueness on (tenantId, slug) is enforced by a partial unique index
@@ -346,6 +348,9 @@ model User {
   bugComments           BugComment[]
   bugActivity           BugActivityLog[]
   bugAttachments        BugAttachment[]
+  shiftViolations       ShiftLimitViolation[] @relation("ShiftViolationEmployee")
+  shiftViolationsActed  ShiftLimitViolation[] @relation("ShiftViolationSupervisor")
+  shiftOverridesGranted WorkSession[]         @relation("WorkSessionOverrideSupervisor")
 
   @@unique([tenantId, id])
   // Uniqueness on (tenantId, email) is enforced by a partial unique index
@@ -941,17 +946,130 @@ model WorkSession {
   breakCount             Int       @default(0) @map("break_count")
   breakMinutes           Int       @default(0) @map("break_minutes")
   sessionDurationMinutes Int?      @map("session_duration_minutes")
+
+  // ── Shift limits (FEAT-2) ────────────────────────────────────────────────
+  /// Config snapshotted at clock-in. Null on sessions that predate the feature
+  /// or on orgs with no configuration — those are never limit-enforced.
+  shiftConfigurationId String?   @map("shift_configuration_id") @db.Uuid
+  /// Hard deadline: clockIn + maxShiftMinutes (+ grace). Extended in place when a
+  /// supervisor approves an override, so it is always the single source of truth
+  /// for "when does this session get force-closed".
+  maxClockOutAt        DateTime? @map("max_clock_out_at") @db.Timestamptz
+  isAutoClockedOut     Boolean   @default(false) @map("is_auto_clocked_out")
+  autoClockOutReason   String?   @map("auto_clock_out_reason")
+  /// Set when the session has crossed its limit and the org requires supervisor
+  /// sign-off, so the UI can surface the blocked state after the fact.
+  requiresOverride     Boolean   @default(false) @map("requires_override")
+  supervisorOverrideId String?   @map("supervisor_override_id") @db.Uuid
+  overrideApproved     Boolean?  @map("override_approved")
+  overrideApprovedAt   DateTime? @map("override_approved_at") @db.Timestamptz
+
   createdAt              DateTime  @default(now()) @map("created_at") @db.Timestamptz
   updatedAt              DateTime  @updatedAt @map("updated_at") @db.Timestamptz
   version                Int       @default(0)
 
-  user        User                @relation(fields: [userId], references: [id])
-  timeEntries TimeEntry[]
-  events      SessionEvent[]
-  attachments SessionAttachment[]
+  user               User                @relation(fields: [userId], references: [id])
+  supervisorOverride User?               @relation("WorkSessionOverrideSupervisor", fields: [supervisorOverrideId], references: [id])
+  shiftConfiguration ShiftConfiguration? @relation(fields: [shiftConfigurationId], references: [id])
+  timeEntries        TimeEntry[]
+  events             SessionEvent[]
+  attachments        SessionAttachment[]
+  shiftViolations    ShiftLimitViolation[]
 
   @@index([tenantId, userId, workDate])
+  @@index([isActive, maxClockOutAt])
   @@map("work_sessions")
+}
+
+// ─── Shift limits — FEAT-2 ───────────────────────────────────────────────────
+
+enum ShiftViolationType {
+  /// Session crossed its configured limit; not yet force-closed (grace period).
+  REACHED_LIMIT
+  /// Session was force-closed at the limit.
+  AUTO_CLOCKED_OUT
+  /// Employee asked a supervisor to extend the limit.
+  MANUAL_OVERRIDE
+
+  @@map("shift_violation_type")
+}
+
+enum ShiftSupervisorAction {
+  NO_ACTION
+  APPROVED
+  DENIED
+
+  @@map("shift_supervisor_action")
+}
+
+/// Per-organization maximum shift length. Durations are stored in minutes to
+/// match every other duration column in this schema (durationMinutes,
+/// breakMinutes, sessionDurationMinutes) and to keep arithmetic off Decimal.
+model ShiftConfiguration {
+  id                         String  @id @default(uuid()) @db.Uuid
+  tenantId                   String  @map("tenant_id") @db.Uuid
+  organizationId             String  @map("organization_id") @db.Uuid
+  shiftName                  String  @default("Standard") @map("shift_name")
+  maxShiftMinutes            Int     @default(720) @map("max_shift_minutes")
+  /// Minutes past the limit before the session is force-closed. The warning and
+  /// the REACHED_LIMIT violation fire at the limit; auto-clock-out fires at
+  /// limit + grace, and the recorded clock-out time is always the limit itself.
+  gracePeriodMinutes         Int     @default(0) @map("grace_period_minutes")
+  requiresSupervisorOverride Boolean @default(true) @map("requires_supervisor_override")
+  /// Minutes before the limit at which the employee is warned (default 60 → 11h).
+  warningLeadMinutes         Int     @default(60) @map("warning_lead_minutes")
+  /// Exactly one default per org is used at clock-in.
+  isDefault                  Boolean @default(true) @map("is_default")
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+  version   Int       @default(0)
+
+  organization Organization          @relation(fields: [tenantId, organizationId], references: [tenantId, id])
+  sessions     WorkSession[]
+  violations   ShiftLimitViolation[]
+
+  @@index([tenantId, organizationId, isDefault])
+  @@map("shift_configurations")
+}
+
+/// Immutable audit record of every shift-limit event. One row per event — a
+/// session that warns, gets an override request, is approved, then still runs
+/// out produces several rows.
+model ShiftLimitViolation {
+  id                       String                @id @default(uuid()) @db.Uuid
+  tenantId                 String                @map("tenant_id") @db.Uuid
+  organizationId           String                @map("organization_id") @db.Uuid
+  workSessionId            String                @map("work_session_id") @db.Uuid
+  employeeId               String                @map("employee_id") @db.Uuid
+  shiftConfigurationId     String?               @map("shift_configuration_id") @db.Uuid
+  violationType            ShiftViolationType    @map("violation_type")
+  violationAt              DateTime              @default(now()) @map("violation_at") @db.Timestamptz
+  minutesWorkedAtViolation Int                   @map("minutes_worked_at_violation")
+  /// Only set on MANUAL_OVERRIDE rows — what the employee asked for.
+  requestedExtensionMinutes Int?                 @map("requested_extension_minutes")
+  supervisorAction         ShiftSupervisorAction @default(NO_ACTION) @map("supervisor_action")
+  supervisorId             String?               @map("supervisor_id") @db.Uuid
+  supervisorActionAt       DateTime?             @map("supervisor_action_at") @db.Timestamptz
+  supervisorNote           String?               @map("supervisor_note")
+
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime @updatedAt @map("updated_at") @db.Timestamptz
+  version   Int      @default(0)
+
+  organization       Organization        @relation(fields: [tenantId, organizationId], references: [tenantId, id])
+  workSession        WorkSession         @relation(fields: [workSessionId], references: [id])
+  employee           User                @relation("ShiftViolationEmployee", fields: [employeeId], references: [id])
+  supervisor         User?               @relation("ShiftViolationSupervisor", fields: [supervisorId], references: [id])
+  shiftConfiguration ShiftConfiguration? @relation(fields: [shiftConfigurationId], references: [id])
+
+  @@index([tenantId, workSessionId])
+  @@index([tenantId, employeeId, violationAt])
+  @@index([tenantId, organizationId, supervisorAction])
+  @@map("shift_limit_violations")
 }
 
 model SessionEvent {
@@ -1297,6 +1415,11 @@ enum NotificationType {
   RECURRING_ISSUE_DETECTED
   /// A supervisor corrected the employee's submitted hours during review.
   TIME_ADJUSTED
+  /// Shift limits (FEAT-2).
+  SHIFT_LIMIT_WARNING
+  SHIFT_AUTO_CLOCKED_OUT
+  SHIFT_OVERRIDE_REQUESTED
+  SHIFT_OVERRIDE_DECISION
 
   @@map("notification_type")
 }

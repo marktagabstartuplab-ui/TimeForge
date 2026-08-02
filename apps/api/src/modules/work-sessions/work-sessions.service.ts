@@ -5,6 +5,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { ClockInDto } from './dto';
+import { ShiftLimitStatus, ShiftLimitsService } from '../shift-limits/shift-limits.service';
 
 export interface WorkSessionSummary {
   session: WorkSession | null;
@@ -12,6 +13,11 @@ export interface WorkSessionSummary {
   runningEntryId: string | null;
   /** Worked minutes for this session, excluding breaks — running segment counted up to now. */
   workedMinutes: number;
+  /**
+   * Shift-limit state for an *active* session, else null. Additive: existing
+   * clients that ignore this field are unaffected.
+   */
+  shiftLimit: ShiftLimitStatus | null;
 }
 
 @Injectable()
@@ -19,19 +25,35 @@ export class WorkSessionsService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly timeZones: OrgTimeZoneService,
+    private readonly shiftLimits: ShiftLimitsService,
   ) {}
 
   async current(p: AuthPrincipal): Promise<WorkSessionSummary> {
-    const active = await this.prisma.workSession.findFirst({
+    let active = await this.prisma.workSession.findFirst({
       where: { tenantId: p.tenantId, userId: p.userId, isActive: true },
     });
+
+    // Enforce the shift limit on read, so the UI reflects a breach immediately
+    // rather than waiting up to 5 minutes for the worker sweep. Both paths call
+    // the same idempotent service, so whichever runs first wins harmlessly.
+    let shiftLimit: ShiftLimitStatus | null = null;
+    if (active) {
+      shiftLimit = await this.shiftLimits.evaluateAndNotify(active);
+      if (shiftLimit.state === 'EXPIRED' && (await this.shiftLimits.autoClockOut(active))) {
+        active = await this.prisma.workSession.findUnique({ where: { id: active.id } });
+        shiftLimit = null;
+      }
+    }
+
     const session =
       active ??
       (await this.prisma.workSession.findFirst({
         where: { tenantId: p.tenantId, userId: p.userId, workDate: await this.today(p) },
         orderBy: { clockIn: 'desc' },
       }));
-    if (!session) return { session: null, onBreak: false, runningEntryId: null, workedMinutes: 0 };
+    if (!session) {
+      return { session: null, onBreak: false, runningEntryId: null, workedMinutes: 0, shiftLimit: null };
+    }
 
     const entries = await this.prisma.timeEntry.findMany({
       where: { workSessionId: session.id, deletedAt: null },
@@ -48,6 +70,7 @@ export class WorkSessionsService {
       onBreak: Boolean(session.currentBreakStartedAt),
       runningEntryId: running?.id ?? null,
       workedMinutes,
+      shiftLimit: session.isActive ? shiftLimit : null,
     };
   }
 
@@ -79,13 +102,19 @@ export class WorkSessionsService {
       );
     }
 
+    // Snapshot the shift configuration onto the session, so a later config change
+    // cannot retroactively move the deadline of a shift already in progress.
+    const clockIn = new Date();
+    const config = await this.shiftLimits.defaultConfig(p.tenantId, p.organizationId);
     const session = await this.prisma.workSession.create({
       data: {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
         userId: p.userId,
         workDate: todayStart,
-        clockIn: new Date(),
+        clockIn,
+        shiftConfigurationId: config?.id ?? null,
+        maxClockOutAt: config ? this.shiftLimits.deadlineFor(clockIn, config) : null,
       },
     });
     await this.prisma.timeEntry.create({

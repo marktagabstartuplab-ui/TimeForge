@@ -155,6 +155,19 @@ export const PERMISSIONS = {
   BUG_UPDATE: 'bug:update',
   BUG_DELETE: 'bug:delete',
   BUG_COMMENT: 'bug:comment',
+  // shift limits (FEAT-2)
+  /** Read the org's shift configuration — everyone, so the clock UI can show the cap. */
+  SHIFT_CONFIG_READ: 'shift_config:read',
+  /** Change max shift length / grace / warning lead. Admin only. */
+  SHIFT_CONFIG_UPDATE: 'shift_config:update',
+  /** Employee asks their supervisor to extend the current session's limit. */
+  SHIFT_OVERRIDE_REQUEST: 'shift_override:request',
+  /** Supervisor approves or denies an extension request. */
+  SHIFT_OVERRIDE_APPROVE: 'shift_override:approve',
+  /** Supervisor: violations for their direct reports. */
+  SHIFT_VIOLATION_READ_TEAM: 'shift_violation:read_team',
+  /** Admin/HR: every violation in the organization. */
+  SHIFT_VIOLATION_READ_ORG: 'shift_violation:read_org',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -202,6 +215,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.SCHEDULE_READ,
     P.LEAVE_REQUEST_CREATE, P.LEAVE_REQUEST_READ, P.LEAVE_REQUEST_CANCEL, P.LEAVE_BALANCE_READ,
     P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT,
+    P.SHIFT_CONFIG_READ, P.SHIFT_OVERRIDE_REQUEST,
   ],
   [Role.SUPERVISOR]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -222,6 +236,8 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.LEAVE_REQUEST_CREATE, P.LEAVE_REQUEST_READ, P.LEAVE_REQUEST_CANCEL, P.LEAVE_BALANCE_READ,
     P.LEAVE_REQUEST_READ_TEAM, P.LEAVE_REQUEST_DECIDE,
     P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT, P.BUG_READ_TEAM,
+    P.SHIFT_CONFIG_READ, P.SHIFT_OVERRIDE_REQUEST,
+    P.SHIFT_OVERRIDE_APPROVE, P.SHIFT_VIOLATION_READ_TEAM,
   ],
   [Role.HR]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -244,6 +260,11 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.LEAVE_REQUEST_READ, P.LEAVE_REQUEST_READ_ORG, P.LEAVE_REQUEST_DECIDE,
     P.LEAVE_BALANCE_READ, P.LEAVE_BALANCE_READ_ORG,
     P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT,
+    P.SHIFT_CONFIG_READ, P.SHIFT_CONFIG_UPDATE, P.SHIFT_VIOLATION_READ_ORG,
+    // The sidebar gates each entry on a single permission key, and READ_ORG is
+    // strictly broader than READ_TEAM in ShiftLimitsService — so HR carries both
+    // to get the nav entry while still being scoped org-wide.
+    P.SHIFT_VIOLATION_READ_TEAM,
   ],
   [Role.FINANCE]: [
     P.USER_READ_SELF, P.USER_READ,

@@ -16,6 +16,8 @@ import { ReportsExportProcessor } from './processors/reports-export.processor';
 import { FinanceAnalyticsProcessor } from './processors/finance-analytics.processor';
 import { FinanceAiProcessor } from './processors/finance-ai.processor';
 import { SessionRolloverProcessor } from './processors/session-rollover.processor';
+import { ShiftLimitProcessor } from './processors/shift-limit.processor';
+import { ShiftLimitsService } from '../../api/src/modules/shift-limits/shift-limits.service';
 import { RecurringIssueDetectionProcessor } from './processors/recurring-issue-detection.processor';
 import { OpenAiProvider } from './ai/openai.provider';
 import { StorageModule } from '../../api/src/modules/storage/storage.module';
@@ -54,6 +56,7 @@ import { InfraModule } from '../../api/src/infra/infra.module';
     BullModule.registerQueue({ name: 'finance-analytics' }),
     BullModule.registerQueue({ name: 'finance-ai' }),
     BullModule.registerQueue({ name: 'session-rollover' }),
+    BullModule.registerQueue({ name: 'shift-limit' }),
     BullModule.registerQueue({ name: 'recurring-issue-detection' }),
     PrismaModule,
     StorageModule,
@@ -71,6 +74,8 @@ import { InfraModule } from '../../api/src/infra/infra.module';
     FinanceAnalyticsProcessor,
     FinanceAiProcessor,
     SessionRolloverProcessor,
+    ShiftLimitProcessor,
+    ShiftLimitsService,
     RecurringIssueDetectionProcessor,
     OpenAiProvider,
   ],
