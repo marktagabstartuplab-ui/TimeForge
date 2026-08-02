@@ -33,6 +33,8 @@ export const TENANT_MODELS = new Set([
   'SessionEvent',
   'SessionAttachment',
   'Shift',
+  'ShiftConfiguration',
+  'ShiftLimitViolation',
   'Approval',
   'LeaveRequest',
   'LeaveBalance',

@@ -30,6 +30,7 @@ const MENU_CATALOG: MenuItemDef[] = [
   { id: 'kpi-dashboard', label: 'KPI Dashboard', icon: 'target',       route: '/kpi-dashboard',   section: 'MANAGEMENT',       permission: 'kpi_progress:read_team' },
   { id: 'supervisor-ai-insights', label: 'AI Insights', icon: 'sparkles', route: '/supervisor/ai-insights', section: 'MANAGEMENT', permission: 'ai:trigger_team' },
   { id: 'supervisor-leave', label: 'Leave Management', icon: 'calendar-clock', route: '/supervisor/leave', section: 'MANAGEMENT', permission: 'leave_request:decide' },
+  { id: 'shift-overrides', label: 'Shift Overrides', icon: 'shield-alert', route: '/supervisor/shift-overrides', section: 'MANAGEMENT', permission: 'shift_violation:read_team' },
   // ── MANAGEMENT ──
   { id: 'team',         label: 'My Team',      icon: 'users',        route: '/team',               section: 'MANAGEMENT',       permission: 'user:read' },
   { id: 'employees',    label: 'Employees',    icon: 'users',        route: '/admin/employees',    section: 'MANAGEMENT',       permission: 'user:read' },

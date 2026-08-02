@@ -19,6 +19,7 @@ import {
   ClipboardCheck,
   Sparkles,
   Shield,
+  ShieldAlert,
   Bug,
   ClipboardList,
   type LucideIcon,
@@ -44,6 +45,7 @@ const ICON_MAP: Record<string, LucideIcon> = {
   "clipboard-check": ClipboardCheck,
   "sparkles": Sparkles,
   "shield": Shield,
+  "shield-alert": ShieldAlert,
   "bug": Bug,
   "clipboard-list": ClipboardList,
 };

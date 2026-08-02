@@ -48,7 +48,9 @@ DECLARE
     -- Leave Management
     'leave_requests', 'leave_balances',
     -- Bug Tracking
-    'bugs', 'bug_attachments', 'bug_comments', 'bug_activity_log'
+    'bugs', 'bug_attachments', 'bug_comments', 'bug_activity_log',
+    -- Shift limits (FEAT-2)
+    'shift_configurations', 'shift_limit_violations'
   ];
 BEGIN
   FOREACH t IN ARRAY tenant_tables LOOP

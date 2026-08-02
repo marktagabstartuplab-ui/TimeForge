@@ -325,6 +325,27 @@ async function main() {
     }
   }
 
+  // Shift configuration (FEAT-2) — 12-hour cap, warn in the final hour.
+  const existingShiftConfig = await prisma.shiftConfiguration.findFirst({
+    where: { tenantId: tenant.id, organizationId: org.id, isDefault: true, deletedAt: null },
+  });
+  if (!existingShiftConfig) {
+    await prisma.shiftConfiguration.create({
+      data: {
+        tenantId: tenant.id,
+        organizationId: org.id,
+        shiftName: 'Standard',
+        maxShiftMinutes: 720,
+        gracePeriodMinutes: 0,
+        warningLeadMinutes: 60,
+        requiresSupervisorOverride: true,
+        isDefault: true,
+        createdBy: admin.id,
+        updatedBy: admin.id,
+      },
+    });
+  }
+
   console.log('✓ Seed complete (Phase 6).');
   console.log('  Tenant: demo   Org: demo-org (Asia/Manila)');
   console.log('  Login:  admin@demo.test / ChangeMe123!  (also employee@, intern@, supervisor@, hr@, finance@)');
