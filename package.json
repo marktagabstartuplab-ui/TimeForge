@@ -18,6 +18,7 @@
     "db:rls": "node scripts/apply-rls.js",
     "db:seed": "ts-node -r tsconfig-paths/register prisma/seed.ts",
     "db:sync-permissions": "ts-node -r tsconfig-paths/register scripts/sync-role-permissions.ts",
+    "db:grant-bug-permissions": "ts-node -r tsconfig-paths/register scripts/grant-bug-permissions.ts",
     "test": "jest"
   },
   "prisma": {

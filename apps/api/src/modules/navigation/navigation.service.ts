@@ -9,7 +9,7 @@ interface MenuItemDef {
   label: string;
   icon: string; // Lucide icon key (kebab-case)
   route: string;
-  section: 'WORKSPACE' | 'MANAGEMENT' | 'FINANCE_REPORTS' | 'FINANCE' | 'SYSTEM';
+  section: 'WORKSPACE' | 'MANAGEMENT' | 'FINANCE_REPORTS' | 'FINANCE' | 'SYSTEM' | 'SUPPORT';
   /** The `resource:action` permission that gates visibility. */
   permission: string;
   /** Optional: which badge counter to attach. */
@@ -54,6 +54,11 @@ const MENU_CATALOG: MenuItemDef[] = [
   { id: 'security-logs', label: 'Security Logs',  icon: 'shield',       route: '/admin/security',     section: 'SYSTEM', permission: 'audit:read_org' },
   { id: 'ai-config',    label: 'AI Settings',  icon: 'sparkles',     route: '/admin/ai-config',    section: 'SYSTEM',           permission: 'org:read' },
   { id: 'kpi-management', label: 'KPI Management', icon: 'target', route: '/admin/kpi-management', section: 'SYSTEM',         permission: 'kpi_template:update' },
+  // ── SUPPORT ──
+  // Every role can raise a bug; only triage-capable roles (bug:read_team /
+  // bug:read_org) get the queue view.
+  { id: 'report-bug',   label: 'Report a Bug',          icon: 'bug',           route: '/bugs/create', section: 'SUPPORT', permission: 'bug:create' },
+  { id: 'view-bugs',    label: 'View Submitted Issues', icon: 'clipboard-list', route: '/bugs',       section: 'SUPPORT', permission: 'bug:read_org' },
 ];
 
 // ─── Response shapes ────────────────────────────────────────────────────────────
@@ -125,7 +130,11 @@ export class NavigationService {
       // permission set (payroll_period:read, dashboard:read_org, user:read, org:read, etc.)
       // would otherwise leak unrelated WORKSPACE/MANAGEMENT/FINANCE_REPORTS/SYSTEM items in —
       // exclude everything outside the FINANCE section for Finance-only users.
-      if (user.roles.includes('FINANCE') && !isAdmin) return item.section === 'FINANCE';
+      // SUPPORT is the one cross-cutting section Finance keeps — every role can
+      // report a bug from their own workspace.
+      if (user.roles.includes('FINANCE') && !isAdmin) {
+        return item.section === 'FINANCE' || (item.section === 'SUPPORT' && permissions.includes(item.permission));
+      }
       // HR runs payroll processing (payroll_period:read), not the self-payslip view (payroll:read_self).
       if (item.id === 'payroll') return isAdmin || permissions.includes(item.permission) || permissions.includes('payroll_period:read');
       // The Finance workspace (its own dedicated shell/sidebar) is for the FINANCE role only —

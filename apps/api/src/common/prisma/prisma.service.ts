@@ -48,6 +48,10 @@ export const TENANT_MODELS = new Set([
   'SecurityLog',
   'SecurityAlert',
   'GeneratedReport',
+  'Bug',
+  'BugAttachment',
+  'BugComment',
+  'BugActivityLog',
 ]);
 
 const READ_ACTIONS = ['findMany', 'findFirst', 'count', 'aggregate', 'groupBy'];

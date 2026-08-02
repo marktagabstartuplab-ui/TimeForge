@@ -46,7 +46,9 @@ DECLARE
     -- Team Schedules
     'shifts',
     -- Leave Management
-    'leave_requests', 'leave_balances'
+    'leave_requests', 'leave_balances',
+    -- Bug Tracking
+    'bugs', 'bug_attachments', 'bug_comments', 'bug_activity_log'
   ];
 BEGIN
   FOREACH t IN ARRAY tenant_tables LOOP

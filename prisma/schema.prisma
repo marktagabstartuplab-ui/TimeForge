@@ -236,6 +236,7 @@ model Organization {
   leaveRequests   LeaveRequest[]
   leaveBalances   LeaveBalance[]
   recurringIssues RecurringIssue[]
+  bugs            Bug[]
 
   @@unique([tenantId, id])
   // Uniqueness on (tenantId, slug) is enforced by a partial unique index
@@ -340,6 +341,11 @@ model User {
   leaveRequests         LeaveRequest[]    @relation("LeaveRequestUser")
   leaveRequestsReviewed LeaveRequest[]    @relation("LeaveRequestReviewer")
   leaveBalances         LeaveBalance[]    @relation("LeaveBalanceUser")
+  bugsReported          Bug[]             @relation("BugReporter")
+  bugsAssigned          Bug[]             @relation("BugAssignee")
+  bugComments           BugComment[]
+  bugActivity           BugActivityLog[]
+  bugAttachments        BugAttachment[]
 
   @@unique([tenantId, id])
   // Uniqueness on (tenantId, email) is enforced by a partial unique index
@@ -1568,4 +1574,130 @@ model GeneratedReport {
   @@index([createdAt])
   @@index([tenantId, organizationId])
   @@map("generated_reports")
+}
+
+// ─── Bug Tracking ────────────────────────────────────────────────────────────
+// Employees report bugs from any screen; Admins triage (status/priority/severity/
+// assignment). Comments and attachments are open to anyone who can view the bug;
+// every triage change is appended to BugActivityLog.
+
+enum BugStatus {
+  OPEN
+  IN_PROGRESS
+  FIXED
+  CLOSED
+  BLOCKED
+
+  @@map("bug_status")
+}
+
+enum BugPriority {
+  CRITICAL
+  HIGH
+  MEDIUM
+  LOW
+
+  @@map("bug_priority")
+}
+
+/// Impact classification, independent of scheduling priority.
+enum BugSeverity {
+  P0
+  P1
+  P2
+  P3
+  P4
+
+  @@map("bug_severity")
+}
+
+model Bug {
+  id             String      @id @default(uuid()) @db.Uuid
+  tenantId       String      @map("tenant_id") @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
+
+  title          String      @db.VarChar(200)
+  issue          String
+  whoAffected    String      @map("who_affected")
+  whatISee       String      @map("what_i_see")
+  expected       String
+  errorMessage   String?     @map("error_message")
+  whereItHappens String      @map("where_it_happens") @db.VarChar(255)
+
+  status         BugStatus   @default(OPEN)
+  priority       BugPriority @default(MEDIUM)
+  severity       BugSeverity @default(P3)
+
+  reportedBy     String      @map("reported_by") @db.Uuid
+  assignedTo     String?     @map("assigned_to") @db.Uuid
+
+  createdAt      DateTime    @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime    @updatedAt @map("updated_at") @db.Timestamptz
+  resolvedAt     DateTime?   @map("resolved_at") @db.Timestamptz
+  deletedAt      DateTime?   @map("deleted_at") @db.Timestamptz
+  version        Int         @default(0)
+
+  organization Organization     @relation(fields: [tenantId, organizationId], references: [tenantId, id])
+  reporter     User             @relation("BugReporter", fields: [reportedBy], references: [id])
+  assignee     User?            @relation("BugAssignee", fields: [assignedTo], references: [id])
+  attachments  BugAttachment[]
+  comments     BugComment[]
+  activity     BugActivityLog[]
+
+  @@index([tenantId, organizationId, status])
+  @@index([tenantId, organizationId, reportedBy])
+  @@index([tenantId, organizationId, assignedTo])
+  @@index([tenantId, organizationId, createdAt])
+  @@map("bugs")
+}
+
+model BugAttachment {
+  id         String   @id @default(uuid()) @db.Uuid
+  tenantId   String   @map("tenant_id") @db.Uuid
+  bugId      String   @map("bug_id") @db.Uuid
+  /// Object-storage key — a signed URL is minted on read, never persisted.
+  storageKey String   @map("storage_key")
+  fileName   String   @map("file_name") @db.VarChar(255)
+  fileSize   Int      @map("file_size")
+  mimeType   String?  @map("mime_type") @db.VarChar(255)
+  uploadedBy String   @map("uploaded_by") @db.Uuid
+  createdAt  DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  bug      Bug  @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  uploader User @relation(fields: [uploadedBy], references: [id])
+
+  @@index([tenantId, bugId])
+  @@map("bug_attachments")
+}
+
+model BugComment {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  bugId     String   @map("bug_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  comment   String
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  bug  Bug  @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  user User @relation(fields: [userId], references: [id])
+
+  @@index([tenantId, bugId, createdAt])
+  @@map("bug_comments")
+}
+
+model BugActivityLog {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  bugId     String   @map("bug_id") @db.Uuid
+  action    String   @db.VarChar(100)
+  oldValue  String?  @map("old_value") @db.VarChar(255)
+  newValue  String?  @map("new_value") @db.VarChar(255)
+  changedBy String   @map("changed_by") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  bug   Bug  @relation(fields: [bugId], references: [id], onDelete: Cascade)
+  actor User @relation(fields: [changedBy], references: [id])
+
+  @@index([tenantId, bugId, createdAt])
+  @@map("bug_activity_log")
 }

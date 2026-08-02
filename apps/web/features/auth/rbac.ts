@@ -22,6 +22,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "schedule:read",
     "leave_request:create", "leave_request:read", "leave_request:cancel", "leave_balance:read",
     "schedule:read",
+    "bug:create", "bug:read", "bug:comment",
   ],
   SUPERVISOR: [
     "user:read",
@@ -38,6 +39,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "ai:trigger_self", "ai:trigger_team", "ai:read",
     "leave_request:create", "leave_request:read", "leave_request:cancel", "leave_balance:read",
     "leave_request:read_team", "leave_request:decide",
+    "bug:create", "bug:read", "bug:comment", "bug:read_team",
   ],
   HR: [
     "user:read",
@@ -52,6 +54,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "org:read",
     "leave_request:read_org", "leave_request:decide", "leave_balance:read_org",
     "schedule:read",
+    "bug:create", "bug:read", "bug:comment",
   ],
   FINANCE: [
     "user:read",
@@ -64,6 +67,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "ai:trigger_org", "ai:read",
     "project:read", "client:read", "work_category:read", "department:read", "team:read",
     "org:read",
+    "bug:create", "bug:read", "bug:comment",
   ],
 };
 

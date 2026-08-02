@@ -12,6 +12,7 @@ const SECTION_LABELS: Record<string, string> = {
   FINANCE: "Finance",
   FINANCE_REPORTS: "Finance & Reports",
   SYSTEM: "System",
+  SUPPORT: "Support",
 };
 
 interface SidebarNavSectionProps {
