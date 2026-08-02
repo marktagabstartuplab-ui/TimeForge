@@ -21,7 +21,7 @@ interface NavItem {
   href: string;
   label: string;
   icon: string;
-  section: "WORKSPACE" | "MANAGEMENT" | "FINANCE_REPORTS" | "FINANCE" | "SYSTEM";
+  section: "WORKSPACE" | "MANAGEMENT" | "FINANCE_REPORTS" | "FINANCE" | "SYSTEM" | "SUPPORT";
 }
 
 const NAV_ITEMS: NavItem[] = [
@@ -45,7 +45,7 @@ interface AppSidebarProps {
   onClose: () => void;
 }
 
-const SECTION_ORDER = ["WORKSPACE", "MANAGEMENT", "FINANCE_REPORTS", "FINANCE", "SYSTEM"] as const;
+const SECTION_ORDER = ["WORKSPACE", "MANAGEMENT", "FINANCE_REPORTS", "FINANCE", "SYSTEM", "SUPPORT"] as const;
 
 function groupBySection(items: SidebarMenuItem[]): { section: string; items: SidebarMenuItem[] }[] {
   const map = new Map<string, SidebarMenuItem[]>();

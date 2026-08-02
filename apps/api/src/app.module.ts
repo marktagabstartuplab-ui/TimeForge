@@ -57,6 +57,7 @@ import { FinanceModule } from './modules/finance/finance.module';
 import { FinanceAiModule } from './modules/finance-ai/finance-ai.module';
 import { LeaveModule } from './modules/leave/leave.module';
 import { RecurringIssuesModule } from './modules/recurring-issues/recurring-issues.module';
+import { BugsModule } from './modules/bugs/bugs.module';
 
 @Module({
   imports: [
@@ -129,6 +130,7 @@ import { RecurringIssuesModule } from './modules/recurring-issues/recurring-issu
     FinanceAiModule,
     LeaveModule,
     RecurringIssuesModule,
+    BugsModule,
   ],
   controllers: [HealthController],
   providers: [

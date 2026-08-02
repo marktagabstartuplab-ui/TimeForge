@@ -7,7 +7,7 @@ export interface SidebarMenuItem {
   label: string;
   icon: string;
   route: string;
-  section: "WORKSPACE" | "MANAGEMENT" | "FINANCE_REPORTS" | "FINANCE" | "SYSTEM";
+  section: "WORKSPACE" | "MANAGEMENT" | "FINANCE_REPORTS" | "FINANCE" | "SYSTEM" | "SUPPORT";
   badgeCount: number;
   permission: string;
   visible: true;

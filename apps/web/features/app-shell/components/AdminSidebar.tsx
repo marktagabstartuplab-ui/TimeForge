@@ -11,7 +11,7 @@ import { SidebarNavSection } from "./SidebarNavSection";
 import { SidebarMobileDrawer } from "./SidebarMobileDrawer";
 
 /** The canonical section ordering. */
-const SECTION_ORDER = ["WORKSPACE", "MANAGEMENT", "FINANCE_REPORTS", "FINANCE", "SYSTEM"] as const;
+const SECTION_ORDER = ["WORKSPACE", "MANAGEMENT", "FINANCE_REPORTS", "FINANCE", "SYSTEM", "SUPPORT"] as const;
 
 /**
  * Groups menu items by section, maintaining the canonical order.

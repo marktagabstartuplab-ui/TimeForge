@@ -143,6 +143,18 @@ export const PERMISSIONS = {
   LEAVE_REQUEST_DECIDE: 'leave_request:decide',
   LEAVE_BALANCE_READ: 'leave_balance:read',
   LEAVE_BALANCE_READ_ORG: 'leave_balance:read_org',
+  // bug tracking
+  BUG_CREATE: 'bug:create',
+  /** Read own reports (every role has this) — scoping happens in BugsService. */
+  BUG_READ: 'bug:read',
+  /** Supervisor: reports raised by their department. */
+  BUG_READ_TEAM: 'bug:read_team',
+  /** Admin/triage: every bug in the organization. */
+  BUG_READ_ORG: 'bug:read_org',
+  /** Triage — status, priority, severity, assignment. Admin only. */
+  BUG_UPDATE: 'bug:update',
+  BUG_DELETE: 'bug:delete',
+  BUG_COMMENT: 'bug:comment',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -189,6 +201,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.HOLIDAY_READ,
     P.SCHEDULE_READ,
     P.LEAVE_REQUEST_CREATE, P.LEAVE_REQUEST_READ, P.LEAVE_REQUEST_CANCEL, P.LEAVE_BALANCE_READ,
+    P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT,
   ],
   [Role.SUPERVISOR]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -208,6 +221,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.SCHEDULE_READ, P.SCHEDULE_READ_TEAM, P.SCHEDULE_CREATE, P.SCHEDULE_UPDATE, P.SCHEDULE_DELETE,
     P.LEAVE_REQUEST_CREATE, P.LEAVE_REQUEST_READ, P.LEAVE_REQUEST_CANCEL, P.LEAVE_BALANCE_READ,
     P.LEAVE_REQUEST_READ_TEAM, P.LEAVE_REQUEST_DECIDE,
+    P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT, P.BUG_READ_TEAM,
   ],
   [Role.HR]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -229,6 +243,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.SCHEDULE_READ_ORG, P.SCHEDULE_CREATE, P.SCHEDULE_UPDATE, P.SCHEDULE_DELETE,
     P.LEAVE_REQUEST_READ, P.LEAVE_REQUEST_READ_ORG, P.LEAVE_REQUEST_DECIDE,
     P.LEAVE_BALANCE_READ, P.LEAVE_BALANCE_READ_ORG,
+    P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT,
   ],
   [Role.FINANCE]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -245,5 +260,6 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.DASHBOARD_READ_SELF, P.DASHBOARD_READ_ORG, P.DASHBOARD_READ_TEAM,
     P.ATTENDANCE_READ_ORG,
     P.ORG_READ, P.ORG_SETTINGS_READ, P.ORG_SETTINGS_UPDATE,
+    P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT,
   ],
 };
