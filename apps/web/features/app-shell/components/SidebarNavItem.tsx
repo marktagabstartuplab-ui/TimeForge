@@ -20,6 +20,8 @@ import {
   Sparkles,
   Shield,
   ShieldAlert,
+  ShieldCheck,
+  SlidersHorizontal,
   Bug,
   ClipboardList,
   type LucideIcon,
@@ -46,6 +48,8 @@ const ICON_MAP: Record<string, LucideIcon> = {
   "sparkles": Sparkles,
   "shield": Shield,
   "shield-alert": ShieldAlert,
+  "shield-check": ShieldCheck,
+  "sliders": SlidersHorizontal,
   "bug": Bug,
   "clipboard-list": ClipboardList,
 };

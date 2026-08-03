@@ -47,6 +47,8 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "kpi_progress:read_org", "kpi:read_org", "kpi_template:read",
     "attendance:read_org",
     "payroll_period:read",
+    // FEAT-3: read-only — HR reviews statutory rates, Finance/Admin change them.
+    "payroll:read", "payroll_rate:read",
     "dashboard:read_self", "dashboard:read_org",
     "ai:trigger_org", "ai:read",
     "project:read", "client:read", "work_category:read", "department:read", "team:read",

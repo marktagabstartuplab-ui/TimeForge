@@ -247,6 +247,10 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.KPI_PROGRESS_READ_ORG, P.KPI_READ_ORG, P.KPI_TEMPLATE_READ,
     P.ATTENDANCE_READ_ORG,
     P.PAYROLL_PERIOD_READ, P.PAYROLL_PERIOD_CREATE, P.PAYROLL_PERIOD_UPDATE, P.PAYROLL_GENERATE, P.PAYROLL_EXPORT, P.PAYROLL_READ,
+    // FEAT-3: HR reviews the statutory contribution rates that drive the payroll
+    // they generate, but does not set them — changing a BIR/SSS rate stays with
+    // Finance and Admin (PAYROLL_RATE_UPDATE), so this is read-only on purpose.
+    P.PAYROLL_RATE_READ,
     P.AUDIT_READ_SCOPED,
     P.NOTIFICATION_READ_SELF, P.NOTIFICATION_UPDATE_SELF,
     P.AI_TRIGGER_ORG, P.AI_READ,

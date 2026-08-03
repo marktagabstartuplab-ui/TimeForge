@@ -310,9 +310,11 @@ async function main() {
   // Holiday
   const currentYear = new Date().getFullYear();
   const holidays = [
-    { name: "New Year's Day", date: new Date(`${currentYear}-01-01`), recurring: true },
-    { name: 'Labor Day', date: new Date(`${currentYear}-05-01`), recurring: true },
-    { name: 'Christmas Day', date: new Date(`${currentYear}-12-25`), recurring: true },
+    { name: "New Year's Day", date: new Date(`${currentYear}-01-01`), recurring: true, type: 'REGULAR' as const },
+    { name: 'Labor Day', date: new Date(`${currentYear}-05-01`), recurring: true, type: 'REGULAR' as const },
+    { name: 'Christmas Day', date: new Date(`${currentYear}-12-25`), recurring: true, type: 'REGULAR' as const },
+    // A special non-working day, so the 1.30x premium path has seed coverage too.
+    { name: 'All Saints Day', date: new Date(`${currentYear}-11-01`), recurring: true, type: 'SPECIAL_NON_WORKING' as const },
   ];
   for (const h of holidays) {
     const existing = await prisma.holiday.findFirst({
@@ -320,7 +322,7 @@ async function main() {
     });
     if (!existing) {
       await prisma.holiday.create({
-        data: { tenantId: tenant.id, organizationId: org.id, name: h.name, date: h.date, recurring: h.recurring, createdBy: admin.id, updatedBy: admin.id },
+        data: { tenantId: tenant.id, organizationId: org.id, name: h.name, date: h.date, type: h.type, recurring: h.recurring, createdBy: admin.id, updatedBy: admin.id },
       });
     }
   }
@@ -346,12 +348,54 @@ async function main() {
     });
   }
 
+  // FEAT-3: 2026 BIR withholding schedule (TRAIN Act, RA 10963). National law,
+  // so this is not tenant-scoped. The migration seeds it too; this path covers
+  // CI and any environment provisioned with `prisma db push` instead of
+  // `migrate deploy`, where the migration SQL never runs.
+  const birBrackets = [
+    { sequence: 1, minIncome: 0, maxIncome: 250_000, baseTax: 0, rate: 0 },
+    { sequence: 2, minIncome: 250_000, maxIncome: 400_000, baseTax: 0, rate: 0.15 },
+    { sequence: 3, minIncome: 400_000, maxIncome: 800_000, baseTax: 22_500, rate: 0.2 },
+    { sequence: 4, minIncome: 800_000, maxIncome: 2_000_000, baseTax: 102_500, rate: 0.25 },
+    { sequence: 5, minIncome: 2_000_000, maxIncome: 8_000_000, baseTax: 402_500, rate: 0.3 },
+    { sequence: 6, minIncome: 8_000_000, maxIncome: null, baseTax: 2_202_500, rate: 0.35 },
+  ];
+  const birTable = await prisma.birTaxTable.upsert({
+    where: { taxYear: 2026 },
+    update: { isActive: true },
+    create: {
+      taxYear: 2026,
+      description: 'BIR annual withholding tax schedule (TRAIN Act, RA 10963) — effective 2023 onward',
+      isActive: true,
+      effectiveDate: new Date('2026-01-01'),
+    },
+  });
+  for (const b of birBrackets) {
+    await prisma.birTaxBracket.upsert({
+      where: { birTaxTableId_sequence: { birTaxTableId: birTable.id, sequence: b.sequence } },
+      update: { minIncome: b.minIncome, maxIncome: b.maxIncome, baseTax: b.baseTax, rate: b.rate },
+      create: { birTaxTableId: birTable.id, ...b },
+    });
+  }
+
+  // FEAT-3: statutory contribution settings — column defaults are the 2026
+  // figures, so an empty create is the correct 2026 configuration.
+  const existingPayrollSettings = await prisma.payrollSettings.findFirst({
+    where: { tenantId: tenant.id, organizationId: org.id, deletedAt: null },
+  });
+  if (!existingPayrollSettings) {
+    await prisma.payrollSettings.create({
+      data: { tenantId: tenant.id, organizationId: org.id, createdBy: admin.id, updatedBy: admin.id },
+    });
+  }
+
   console.log('✓ Seed complete (Phase 6).');
   console.log('  Tenant: demo   Org: demo-org (Asia/Manila)');
   console.log('  Login:  admin@demo.test / ChangeMe123!  (also employee@, intern@, supervisor@, hr@, finance@)');
   console.log('  Depts:  supervisor@demo.test → Engineering   |   supervisor2@demo.test → Marketing (marketing@demo.test is their report)');
   console.log('  Pending: pending@demo.test / ChangeMe123!  (for testing approval modal)');
-  console.log('  Dept: Engineering + Marketing | Team: Backend | Client: ACME | Project: TF-2026 | 3 Work Categories | 3 Holidays');
+  console.log('  Dept: Engineering + Marketing | Team: Backend | Client: ACME | Project: TF-2026 | 3 Work Categories | 4 Holidays');
+  console.log('  Payroll: 2026 BIR tax table (6 brackets) + statutory contribution settings');
 }
 
 main()

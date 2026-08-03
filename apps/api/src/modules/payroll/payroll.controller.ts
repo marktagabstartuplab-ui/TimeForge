@@ -17,12 +17,16 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { PayrollService } from './payroll.service';
-import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, RunActionDto, PayrollExportRequestDto, PayrollActionDto, PayrollRejectActionDto } from './dto';
+import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, RunActionDto, PayrollExportRequestDto, PayrollActionDto, PayrollRejectActionDto, GeneratePayrollDto, UpdatePayrollSettingsDto, StatutoryReportQuery } from './dto';
+import { PayrollSettingsService } from './payroll-settings.service';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
 @Controller({ path: 'payroll', version: '1' })
 export class PayrollController {
-  constructor(private readonly svc: PayrollService) {}
+  constructor(
+    private readonly svc: PayrollService,
+    private readonly settings: PayrollSettingsService,
+  ) {}
 
   // -- Payroll Periods --
 
@@ -65,11 +69,56 @@ export class PayrollController {
     @CurrentUser() u: AuthPrincipal,
     @Param('id', ParseUUIDPipe) id: string,
     @Headers('Idempotency-Key') idempotencyKey: string,
+    @Body() dto?: GeneratePayrollDto,
   ) {
     if (!idempotencyKey?.trim()) {
       throw new UnprocessableEntityException('Idempotency-Key header is required');
     }
-    return this.svc.generateReport(u, id, idempotencyKey.trim());
+    return this.svc.generateReport(u, id, idempotencyKey.trim(), dto?.thirteenthMonth ?? false);
+  }
+
+  // -- FEAT-3: statutory settings & compliance reports --
+
+  /** Read the org's 2026 contribution rates/caps (materializes defaults on first read). */
+  @Get('settings')
+  @RequirePermissions('payroll_rate:read')
+  getSettings(@CurrentUser() u: AuthPrincipal) {
+    return this.settings.get(u);
+  }
+
+  @Patch('settings')
+  @RequirePermissions('payroll_rate:update')
+  updateSettings(
+    @CurrentUser() u: AuthPrincipal,
+    @Body() dto: UpdatePayrollSettingsDto,
+  ) {
+    return this.settings.update(u, dto);
+  }
+
+  /** SSS remittance report for a period (defaults to the latest generated one). */
+  @Get('reports/sss')
+  @RequirePermissions('payroll:read')
+  getSssReport(@CurrentUser() u: AuthPrincipal, @Query() q: StatutoryReportQuery) {
+    return this.svc.getContributionReport(u, 'SSS', q);
+  }
+
+  @Get('reports/philhealth')
+  @RequirePermissions('payroll:read')
+  getPhilHealthReport(@CurrentUser() u: AuthPrincipal, @Query() q: StatutoryReportQuery) {
+    return this.svc.getContributionReport(u, 'PHILHEALTH', q);
+  }
+
+  @Get('reports/pagibig')
+  @RequirePermissions('payroll:read')
+  getPagIbigReport(@CurrentUser() u: AuthPrincipal, @Query() q: StatutoryReportQuery) {
+    return this.svc.getContributionReport(u, 'PAGIBIG', q);
+  }
+
+  /** BIR withholding summary — the figures behind BIR Form 1601-C. */
+  @Get('reports/bir')
+  @RequirePermissions('payroll:read')
+  getBirReport(@CurrentUser() u: AuthPrincipal, @Query() q: StatutoryReportQuery) {
+    return this.svc.getBirTaxSummary(u, q);
   }
 
   /** Lock the period -- no further edits after this. */
@@ -156,6 +205,25 @@ export class PayrollController {
   @Get('me/payslips/:id/pdf')
   @RequirePermissions('payroll:read_self')
   async downloadPayslipPdf(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const result = await this.svc.exportPayslipPdf(u, id);
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.send(result.buffer);
+  }
+
+  /**
+   * Finance/HR-facing payslip download for any employee. The service applies the
+   * same ownership check as the self route (`exportPayslipPdf` rejects a caller
+   * who is neither the employee nor FINANCE/ADMIN/HR), so this only widens the
+   * permission gate, not the authorization rule.
+   */
+  @Get('payslips/:id/pdf')
+  @RequirePermissions('payroll:read')
+  async downloadEmployeePayslipPdf(
     @CurrentUser() u: AuthPrincipal,
     @Param('id', ParseUUIDPipe) id: string,
     @Res({ passthrough: true }) res: Response,
