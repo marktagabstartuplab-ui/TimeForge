@@ -1,17 +1,31 @@
 /**
- * Syncs every tenant's Role -> Permission grants from packages/shared's
- * ROLE_PERMISSIONS (the single source of truth for what each role can do) into
- * the database's RolePermission table.
+ * ⚠️ DESTRUCTIVE — this REPLACES role permissions. It is not a sync.
  *
- * prisma/seed.ts does this too, but only for its own hardcoded demo tenant —
- * fine for local dev, useless for production. This script is tenant-agnostic:
- * it finds every tenant and every system role already in the DB and re-syncs
- * their permission grants, without touching any tenant/org/user data. Safe to
- * re-run any time permissions.ts changes and a real (non-demo) tenant's DB has
- * drifted from it — e.g. a role gains a permission in code but existing
- * deployments keep 403ing until this runs.
+ * For every tenant and every system role, this deletes all RolePermission rows
+ * and rebuilds them from packages/shared's ROLE_PERMISSIONS. Two consequences
+ * on a deployment with real users:
  *
- * Run with the privileged DIRECT_URL connection, same as prisma/seed.ts.
+ *   1. Any custom permission set an admin saved through RolesService.update is
+ *      discarded (system roles allow permission edits — only deletion is
+ *      blocked). There is no record of what was lost.
+ *   2. The delete and the re-insert are not in one transaction, so a role holds
+ *      ZERO permissions for a moment. Concurrent requests 403 during that window.
+ *
+ * Use this only for a deliberate, full reset back to the code-defined baseline —
+ * e.g. reverting an environment whose roles were edited into an unknown state.
+ *
+ * To grant permissions added in code WITHOUT revoking anything, which is what
+ * a normal deploy needs, use the additive script instead:
+ *
+ *     npm run db:sync-permissions      (prisma/scripts/sync-role-permissions.ts)
+ *
+ * Renamed from sync-role-permissions.ts: it sat next to an additive script of
+ * the same name, and `npm run db:sync-permissions` pointed here — so the routine
+ * deploy step was silently the destructive one.
+ *
+ * Run with the privileged DIRECT_URL connection, same as prisma/seed.ts:
+ *
+ *     npx tsx scripts/reset-role-permissions.ts
  */
 import { PrismaClient } from '@prisma/client';
 import { ALL_PERMISSIONS, ROLE_PERMISSIONS, Role } from '@timeforge/shared';

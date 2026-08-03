@@ -1,7 +1,7 @@
 /**
  * Additive backfill for the bug-tracking permission keys (FEAT-1).
  *
- * Deliberately NOT scripts/sync-role-permissions.ts: that one deletes every
+ * Deliberately NOT scripts/reset-role-permissions.ts: that one deletes every
  * RolePermission row for a role and rebuilds it from ROLE_PERMISSIONS, which
  * discards any custom permission set an admin saved through RolesService.update
  * (system roles allow permission edits — only deletion is blocked). On a

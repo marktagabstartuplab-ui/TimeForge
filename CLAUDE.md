@@ -15,7 +15,7 @@ timeforge/
 │   ├── worker/       # BullMQ consumers — AI, exports, notifications
 │   └── web/          # Next.js 16 App Router (port 3001) — frontend
 ├── packages/shared/  # Permission catalog, enums, DTOs
-├── prisma/           # Schema, 14 migrations, seed.ts
+├── prisma/           # Schema, 0_init baseline migration, seed.ts
 ├── docs/             # Contracts, release checklist, design system
 └── docker-compose.yml
 ```
@@ -42,7 +42,7 @@ timeforge/
 | Rate limiting | ✅ | `@nestjs/throttler` — 120 req / 60s global |
 | Exception filter | ✅ | `AllExceptionsFilter` — structured `{ success, error, code }`, no stack leakage |
 | RLS | ✅ | `scripts/apply-rls.js` — run `npm run db:rls` after deploy |
-| Migrations | ✅ | 14 migrations; latest captures `attachments`/`task`/`department_id` |
+| Migrations | ✅ | Squashed to a single `0_init` baseline (see [Migration baseline](#migration-baseline)) |
 | Tests | ✅ | `jest.config.ts` + 7 suites / 42 tests — prisma, department scope, mailer, admin, AI, storage, timesheet adjustments |
 | CI | ✅ | `.github/workflows/ci.yml` — `build` job (api/worker + Prisma + seed + `npm test`) and `web` job (typecheck + lint). See [CI gate](#ci-gate) |
 
@@ -106,6 +106,53 @@ cd apps/web && npx next typegen && npx tsc --noEmit --incremental false && npx e
 Lint gates on **errors only**. There are ~186 pre-existing warnings; don't add `--max-warnings 0` without a cleanup pass first.
 
 ---
+
+## Migration baseline
+
+`prisma/migrations/` holds a single `0_init` migration generated from
+`schema.prisma`. The 33 migrations that preceded it were squashed on
+2026-08-03; they remain in git history at commit `7dd1a5e` if you ever need to
+read one.
+
+**Why.** The old history was not replayable. Early schema work was done with
+`db push`, and migrations written afterwards referenced objects no migration
+ever created — 16 tables and 18 enums, including `notifications` and the
+`notification_type` enum. `prisma migrate deploy` against an empty database
+died on the third migration (`relation "scrum_entries" does not exist`), so new
+environments could not be provisioned from migrations and `migrate dev` could
+not build a shadow database. That is fixed: `migrate deploy` now bootstraps an
+empty database and `npm run db:seed` populates it.
+
+**If you are baselining another existing environment** (one whose schema is
+already current but whose `_prisma_migrations` predates the squash):
+
+```bash
+npx prisma migrate resolve --applied 0_init
+```
+
+Then delete the superseded rows — they are inert, since Prisma ignores rows
+with no matching local folder, but they are misleading:
+
+```sql
+DELETE FROM _prisma_migrations WHERE migration_name <> '0_init';
+```
+
+Never edit an already-applied migration file. Prisma stores a checksum of each
+one, and a modified file makes `migrate deploy` fail on every environment that
+already ran it.
+
+## Role permission scripts
+
+Two scripts write `RolePermission` rows, and they are **not** interchangeable:
+
+| Command | Script | Behaviour |
+|---|---|---|
+| `npm run db:sync-permissions` | `prisma/scripts/sync-role-permissions.ts` | **Additive.** Grants permissions added to `ROLE_PERMISSIONS`, never revokes. This is the routine deploy step. |
+| `npm run db:reset-permissions` | `scripts/reset-role-permissions.ts` | **Destructive.** Deletes and rebuilds every system role's grants across all tenants, discarding admin customisations. Deliberate resets only. |
+
+`ROLE_PERMISSIONS` in `packages/shared/src/permissions.ts` is read only at seed
+time — live permissions are rows in `role_permissions`. A role that gains a
+permission in code keeps 403ing until `db:sync-permissions` runs.
 
 ## Supabase integration
 
