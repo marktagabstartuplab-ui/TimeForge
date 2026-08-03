@@ -45,6 +45,9 @@ const MENU_CATALOG: MenuItemDef[] = [
   { id: 'reports',      label: 'Administrative Reports', icon: 'bar-chart-3',  route: '/reports',   section: 'FINANCE_REPORTS',  permission: 'dashboard:read_team' },
   { id: 'productivity-report', label: 'Productivity Report', icon: 'file-text', route: '/reports/productivity', section: 'FINANCE_REPORTS', permission: 'dashboard:read_team' },
   { id: 'performance',  label: 'Performance Report',  icon: 'bar-chart-3',  route: '/performance',        section: 'FINANCE_REPORTS',  permission: 'dashboard:read_self' },
+  // FEAT-3: SSS / PhilHealth / Pag-IBIG / BIR compliance reports. Finance reaches
+  // these through its own hardcoded shell nav; this entry serves Admin and HR.
+  { id: 'statutory-reports', label: 'Statutory Reports', icon: 'shield-check', route: '/admin/statutory-reports', section: 'FINANCE_REPORTS', permission: 'payroll:read' },
   // ── FINANCE WORKSPACE (entry points) ──
   { id: 'finance-dashboard',    label: 'Finance Dashboard',    icon: 'layout-grid',      route: '/finance/dashboard',         section: 'FINANCE',  permission: 'payroll:read' },
   { id: 'finance-payroll',      label: 'Payroll Processing',   icon: 'wallet',           route: '/finance/payroll-processing', section: 'FINANCE',  permission: 'payroll:read' },
@@ -55,6 +58,11 @@ const MENU_CATALOG: MenuItemDef[] = [
   { id: 'security-logs', label: 'Security Logs',  icon: 'shield',       route: '/admin/security',     section: 'SYSTEM', permission: 'audit:read_org' },
   { id: 'ai-config',    label: 'AI Settings',  icon: 'sparkles',     route: '/admin/ai-config',    section: 'SYSTEM',           permission: 'org:read' },
   { id: 'kpi-management', label: 'KPI Management', icon: 'target', route: '/admin/kpi-management', section: 'SYSTEM',         permission: 'kpi_template:update' },
+  // FEAT-3: statutory contribution rates/caps. Gated on payroll_rate:READ, which
+  // is what the GET endpoint requires — HR holds read but not update and still
+  // needs to see the rates, so the screen hides its edit controls for them
+  // rather than the nav hiding the screen.
+  { id: 'payroll-settings', label: 'Payroll Settings', icon: 'sliders', route: '/admin/payroll-settings', section: 'SYSTEM', permission: 'payroll_rate:read' },
   // ── SUPPORT ──
   // Every role can raise a bug; only triage-capable roles (bug:read_team /
   // bug:read_org) get the queue view.
@@ -125,7 +133,17 @@ export class NavigationService {
       if (isSupervisorOnly && (item.id === 'employees' || item.id === 'reports')) return false;
       // HR validates attendance/hours and prepares payroll; administering Employees
       // and Departments, and system settings (SYSTEM section), belong to the Admin.
-      if (isHrOnly && (item.id === 'employees' || item.id === 'departments' || item.section === 'SYSTEM')) return false;
+      // FEAT-3 exception: Payroll Settings lives in SYSTEM but is payroll domain —
+      // HR needs to see the statutory rates behind the payroll they generate. Their
+      // access is read-only (they hold payroll_rate:read but not :update), so the
+      // screen renders without edit controls.
+      if (
+        isHrOnly &&
+        (item.id === 'employees' || item.id === 'departments' ||
+          (item.section === 'SYSTEM' && item.id !== 'payroll-settings'))
+      ) {
+        return false;
+      }
       // Finance has its own dedicated workspace (section 'FINANCE' below, exactly 4 items:
       // Dashboard, Payroll Processing, Financial Reports, AI Insights). Finance's broad
       // permission set (payroll_period:read, dashboard:read_org, user:read, org:read, etc.)

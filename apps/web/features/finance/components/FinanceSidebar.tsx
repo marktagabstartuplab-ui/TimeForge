@@ -13,6 +13,8 @@ const FINANCE_NAV_ITEMS: SidebarMenuItem[] = [
   { id: "finance-dashboard", label: "Dashboard", icon: "layout-grid", route: "/finance/dashboard", section: "FINANCE", badgeCount: 0, permission: "payroll:read", visible: true },
   { id: "finance-payroll", label: "Payroll Processing", icon: "wallet", route: "/finance/payroll-processing", section: "FINANCE", badgeCount: 0, permission: "payroll_period:read", visible: true },
   { id: "finance-reports", label: "Financial Reports", icon: "bar-chart-3", route: "/finance/reports", section: "FINANCE", badgeCount: 0, permission: "org:read_dashboard", visible: true },
+  { id: "finance-statutory", label: "Statutory Reports", icon: "shield-check", route: "/finance/statutory-reports", section: "FINANCE", badgeCount: 0, permission: "payroll:read", visible: true },
+  { id: "finance-payroll-settings", label: "Payroll Settings", icon: "sliders", route: "/finance/payroll-settings", section: "FINANCE", badgeCount: 0, permission: "payroll_rate:read", visible: true },
   { id: "finance-ai", label: "AI Insights", icon: "sparkles", route: "/finance/ai-insights", section: "FINANCE", badgeCount: 0, permission: "dashboard:read_org", visible: true },
 ];
 

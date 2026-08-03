@@ -8,6 +8,9 @@ import { CacheService } from '../../infra/cache.service';
 import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
 import { OvertimeRateService } from '../../common/payroll/overtime-rate.service';
 import { AuthPrincipal } from '../../common/decorators';
+import { BirTaxService } from './bir-tax.service';
+import { DeductionService } from './deduction.service';
+import { DEFAULT_PAYROLL_SETTINGS, PayrollSettingsService } from './payroll-settings.service';
 
 /**
  * A Manila work day starts before UTC midnight, so grouping time entries by UTC
@@ -82,6 +85,10 @@ describe('PayrollService.generateReport — daily overtime uses local days', () 
         findMany: jest.fn().mockResolvedValue([{ id: 'user-1', hourlyRate: new Decimal(100) }]),
       },
       timeEntry: { findMany: jest.fn().mockResolvedValue(shiftEntries) },
+      // FEAT-3 reads: no holidays in the period, and no prior periods this tax year.
+      holiday: { findMany: jest.fn().mockResolvedValue([]) },
+      payrollLineItem: { groupBy: jest.fn().mockResolvedValue([]) },
+      birTaxTable: { findFirst: jest.fn().mockResolvedValue(null) },
       idempotencyKey: {
         findFirst: jest.fn().mockResolvedValue(null),
         create: jest.fn(),
@@ -102,6 +109,14 @@ describe('PayrollService.generateReport — daily overtime uses local days', () 
           provide: OvertimeRateService,
           useValue: { forPrincipal: jest.fn().mockResolvedValue(overtimeMultiplier) },
         },
+        // FEAT-3: the real deduction/tax engines, so these cases also assert the
+        // statutory figures land on the line item. Settings are the 2026 defaults.
+        DeductionService,
+        BirTaxService,
+        {
+          provide: PayrollSettingsService,
+          useValue: { forPrincipal: jest.fn().mockResolvedValue({ ...DEFAULT_PAYROLL_SETTINGS }) },
+        },
         { provide: getQueueToken('payroll-export'), useValue: { add: jest.fn() } },
       ],
     }).compile();
@@ -118,6 +133,29 @@ describe('PayrollService.generateReport — daily overtime uses local days', () 
     expect(Number(item.approvedHours)).toBe(10);
     // 8h × ₱100 + 2h × ₱100 × 1.25 = ₱1050
     expect(Number(item.estimatedPay)).toBe(1050);
+  });
+
+  // FEAT-3 — the generation path must also land the statutory breakdown on the
+  // line item, and that breakdown must sum to its own net pay.
+  it('writes the Philippine statutory breakdown onto the line item', async () => {
+    const item = await generateWith('Asia/Manila');
+
+    expect(Number(item.regularPay)).toBe(800); // 8h × ₱100
+    expect(Number(item.overtimePay)).toBe(250); // 2h × ₱100 × 1.25
+    expect(Number(item.grossTotal)).toBe(1050); // no holidays, no night hours
+
+    expect(Number(item.sssContribution)).toBe(52.5); // 1,050 × 5%
+    // 1,050 × 5% is only ₱52.50, below the ₱500 PhilHealth floor, so the total
+    // premium is raised to the floor and the employee carries half of it.
+    expect(Number(item.philhealthContribution)).toBe(250);
+    expect(Number(item.pagibigContribution)).toBe(10.5); // at/below ₱1,500 → 1%
+
+    // Well under the ₱250,000 annual exemption, so nothing is withheld.
+    expect(Number(item.incomeTaxWithheld)).toBe(0);
+
+    expect(Number(item.totalDeductions)).toBe(313);
+    expect(Number(item.netPay)).toBe(737);
+    expect(Number(item.grossTotal) - Number(item.totalDeductions)).toBe(Number(item.netPay));
   });
 
   // BUG-AQ — the premium used to be a hardcoded 1.25 in the pay formula, so an

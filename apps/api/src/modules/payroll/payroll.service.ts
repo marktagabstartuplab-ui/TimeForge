@@ -21,7 +21,11 @@ import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
 import { OvertimeRateService } from '../../common/payroll/overtime-rate.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CacheService } from '../../infra/cache.service';
-import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery } from './dto';
+import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, StatutoryReportQuery } from './dto';
+import { BirTaxService, round2 } from './bir-tax.service';
+import { DeductionService, periodsPerMonth } from './deduction.service';
+import { PayrollSettingsService, ResolvedPayrollSettings } from './payroll-settings.service';
+import { dateKeysBetween, dateOnlyKey, nightShiftMinutes } from './premium-hours';
 
 export interface PayrollExportJobData {
   tenantId: string;
@@ -46,6 +50,9 @@ export class PayrollService {
     private readonly cache: CacheService,
     private readonly timeZones: OrgTimeZoneService,
     private readonly overtimeRates: OvertimeRateService,
+    private readonly payrollSettings: PayrollSettingsService,
+    private readonly deductions: DeductionService,
+    private readonly birTax: BirTaxService,
     @InjectQueue('payroll-export') private readonly exportQueue: Queue<PayrollExportJobData>,
   ) {}
 
@@ -120,8 +127,170 @@ export class PayrollService {
     return { rate, regular, overtime, regPay, otPay, gross };
   }
 
+  /**
+   * FEAT-3: holiday and night-shift premiums for one employee in one period.
+   *
+   * Premiums are *increments* over the base pay (a regular holiday at 2.00x adds
+   * 1.00x, not 2.00x) because the hours worked that day are already paid once in
+   * the regular/overtime figures. Adding the full multiplier would pay holiday
+   * hours twice over.
+   *
+   * Both results are linear in `rate`, which is what lets the rate-change path
+   * rescale a stored premium instead of re-reading every time entry.
+   */
+  private computePremiums(input: {
+    rate: number;
+    nightMinutes: number;
+    holidayMinutesByDay: Map<string, number> | undefined;
+    holidayByKey: Map<string, { type: string; name: string }>;
+    periodStart: Date;
+    periodEnd: Date;
+    hasWorkedHours: boolean;
+    settings: ResolvedPayrollSettings;
+  }) {
+    const { rate, settings } = input;
+
+    const nightHours = input.nightMinutes / 60;
+    const nightDifferential = round2(nightHours * rate * (settings.nightShiftPremium - 1));
+
+    let holidayHours = 0;
+    let holidayPay = 0;
+    for (const [dayKey, minutes] of input.holidayMinutesByDay ?? []) {
+      const holiday = input.holidayByKey.get(dayKey);
+      if (!holiday) continue;
+      const multiplier =
+        holiday.type === 'SPECIAL_NON_WORKING'
+          ? settings.specialHolidayWorkedRate
+          : settings.regularHolidayWorkedRate;
+      const hours = minutes / 60;
+      holidayHours += hours;
+      holidayPay += hours * rate * (multiplier - 1);
+    }
+
+    // Unworked regular holidays are still paid (Labor Code art. 94). Only for
+    // employees who worked at some point in the period — an employee with zero
+    // approved hours has nothing to base a "regular daily wage" on and is far
+    // more likely to be inactive than to be a holiday-only payout.
+    if (input.hasWorkedHours && settings.regularHolidayUnworkedRate > 0) {
+      const REGULAR_DAY_HOURS = 8;
+      for (const dayKey of dateKeysBetween(input.periodStart, input.periodEnd)) {
+        const holiday = input.holidayByKey.get(dayKey);
+        if (!holiday || holiday.type !== 'REGULAR') continue;
+        if ((input.holidayMinutesByDay?.get(dayKey) ?? 0) > 0) continue; // worked — already paid above
+        holidayHours += REGULAR_DAY_HOURS;
+        holidayPay += REGULAR_DAY_HOURS * rate * settings.regularHolidayUnworkedRate;
+      }
+    }
+
+    return {
+      nightDiffHours: round2(nightHours),
+      nightDifferential,
+      holidayHours: round2(holidayHours),
+      holidayPay: round2(holidayPay),
+    };
+  }
+
+  /**
+   * FEAT-3: turns one employee's earnings into the full Philippine payslip
+   * figures — the three statutory contributions and BIR withholding.
+   *
+   * Takes the premiums as input rather than deriving them, so both the payroll
+   * generation path and the rate-change recalculation path produce a line item
+   * whose breakdown sums to its own totals.
+   */
+  private computeStatutoryFigures(input: {
+    /** Regular + overtime pay for the period. */
+    basePay: number;
+    premiums: ReturnType<PayrollService['computePremiums']>;
+    prior:
+      | {
+          grossTotal: Decimal | null;
+          sssContribution: Decimal | null;
+          philhealthContribution: Decimal | null;
+          pagibigContribution: Decimal | null;
+          incomeTaxWithheld: Decimal | null;
+        }
+      | undefined;
+    periodsInMonth: number;
+    settings: ResolvedPayrollSettings;
+    brackets: Awaited<ReturnType<BirTaxService['getBrackets']>>;
+    thirteenthMonth: boolean;
+  }) {
+    const { settings, brackets } = input;
+    const { holidayHours, holidayPay, nightDiffHours, nightDifferential } = input.premiums;
+
+    const grossTotal = round2(input.basePay + holidayPay + nightDifferential);
+
+    // -- Statutory contributions. A 13th-month payout is a benefit, not
+    // compensation for hours, so SSS/PhilHealth/Pag-IBIG are not assessed on it.
+    const contributions = input.thirteenthMonth
+      ? null
+      : this.deductions.calculateAll(grossTotal, input.periodsInMonth, settings);
+
+    const sssContribution = contributions?.sss.employee ?? 0;
+    const philhealthContribution = contributions?.philhealth.employee ?? 0;
+    const pagibigContribution = contributions?.pagibig.employee ?? 0;
+    const employeeContributions = contributions?.employeeTotal ?? 0;
+
+    // -- Taxable income. Mandatory contributions are deductible; a 13th-month
+    // payout is exempt up to the statutory cap.
+    const taxableThisPeriod = input.thirteenthMonth
+      ? Math.max(0, grossTotal - settings.thirteenthMonthExemptionCap)
+      : Math.max(0, grossTotal - employeeContributions);
+
+    const priorGross = Number(input.prior?.grossTotal ?? 0);
+    const priorContributions =
+      Number(input.prior?.sssContribution ?? 0) +
+      Number(input.prior?.philhealthContribution ?? 0) +
+      Number(input.prior?.pagibigContribution ?? 0);
+    const priorTaxable = Math.max(0, priorGross - priorContributions);
+    const priorTaxWithheld = Number(input.prior?.incomeTaxWithheld ?? 0);
+
+    const tax = this.birTax.calculateIncomeTax(
+      taxableThisPeriod,
+      priorTaxable,
+      priorTaxWithheld,
+      brackets,
+    );
+
+    const totalDeductions = round2(employeeContributions + tax.taxInThisPeriod);
+    const netPay = round2(grossTotal - totalDeductions);
+
+    return {
+      holidayHours,
+      nightDiffHours,
+      nightDifferential,
+      holidayPay,
+      sssContribution,
+      philhealthContribution,
+      pagibigContribution,
+      incomeTaxWithheld: tax.taxInThisPeriod,
+      sssEmployerShare: contributions?.sss.employer ?? 0,
+      philhealthEmployerShare: contributions?.philhealth.employer ?? 0,
+      pagibigEmployerShare: contributions?.pagibig.employer ?? 0,
+      grossTotal,
+      totalDeductions,
+      netPay,
+      ytdTaxableIncome: tax.yearToDateTaxableIncome,
+      ytdTaxWithheld: tax.yearToDateTax,
+      isThirteenthMonth: input.thirteenthMonth,
+    };
+  }
+
+  /**
+   * Reprice an employee's line items in still-open periods after their hourly
+   * rate changes.
+   *
+   * The FEAT-3 breakdown is repriced too, not just `estimatedPay`. Holiday and
+   * night premiums are linear in the rate, so they are rescaled by the ratio of
+   * new rate to the rate they were computed at — exact, and it avoids re-reading
+   * every time entry. Contributions and withholding are then recomputed from the
+   * new gross, because they are *not* linear (caps, floors and tax brackets).
+   * Leaving them stale is what would let a payslip show a breakdown that does
+   * not sum to its own net pay.
+   */
   private async recalculateOpenLineItemsForUser(
-    tenantId: string,
+    p: AuthPrincipal,
     userId: string,
     rate: number,
     actorId: string,
@@ -129,28 +298,95 @@ export class PayrollService {
   ) {
     const lineItems = await this.prisma.payrollLineItem.findMany({
       where: {
-        tenantId,
+        tenantId: p.tenantId,
         userId,
         payrollReport: {
           period: { status: { in: ['OPEN', 'GENERATED'] } },
         },
       },
-      select: { id: true, approvedHours: true, overtimeHours: true },
+      select: {
+        id: true,
+        approvedHours: true,
+        overtimeHours: true,
+        hourlyRate: true,
+        holidayHours: true,
+        holidayPay: true,
+        nightDiffHours: true,
+        nightDifferential: true,
+        isThirteenthMonth: true,
+        payrollReport: { select: { period: { select: { type: true, startDate: true } } } },
+      },
     });
+    if (lineItems.length === 0) return;
 
-    await Promise.all(
-      lineItems.map((li) => {
-        const approved = Number(li.approvedHours);
-        const overtime = Number(li.overtimeHours);
-        const regular = Math.max(0, approved - overtime);
-        const estimatedPay = regular * rate + overtime * rate * overtimeMultiplier;
+    const settings = await this.payrollSettings.forPrincipal(p);
+    const brackets = await this.birTax.getBrackets(settings.birTaxTableYear);
 
-        return this.prisma.payrollLineItem.update({
-          where: { id: li.id },
-          data: { hourlyRate: rate, estimatedPay, updatedBy: actorId },
-        });
-      }),
-    );
+    for (const li of lineItems) {
+      const approved = Number(li.approvedHours);
+      const overtime = Number(li.overtimeHours);
+      const regular = Math.max(0, approved - overtime);
+      const regularPay = regular * rate;
+      const overtimePay = overtime * rate * overtimeMultiplier;
+      const estimatedPay = regularPay + overtimePay;
+
+      // Rescale the stored premiums onto the new rate. A line item generated
+      // before FEAT-3 (or with no rate on it) has no premiums to rescale.
+      const oldRate = Number(li.hourlyRate);
+      const ratio = oldRate > 0 ? rate / oldRate : 0;
+      const premiums = {
+        holidayHours: Number(li.holidayHours),
+        holidayPay: round2(Number(li.holidayPay) * ratio),
+        nightDiffHours: Number(li.nightDiffHours),
+        nightDifferential: round2(Number(li.nightDifferential) * ratio),
+      };
+
+      const period = li.payrollReport.period;
+      const taxYearStart = new Date(Date.UTC(period.startDate.getUTCFullYear(), 0, 1));
+      const prior = await this.prisma.payrollLineItem.groupBy({
+        by: ['userId'],
+        where: {
+          tenantId: p.tenantId,
+          organizationId: p.organizationId,
+          userId,
+          payrollReport: {
+            period: {
+              deletedAt: null,
+              startDate: { gte: taxYearStart, lt: period.startDate },
+            },
+          },
+        },
+        _sum: {
+          grossTotal: true,
+          sssContribution: true,
+          philhealthContribution: true,
+          pagibigContribution: true,
+          incomeTaxWithheld: true,
+        },
+      });
+
+      const statutory = this.computeStatutoryFigures({
+        basePay: estimatedPay,
+        premiums,
+        prior: prior[0]?._sum,
+        periodsInMonth: periodsPerMonth(period.type),
+        settings,
+        brackets,
+        thirteenthMonth: li.isThirteenthMonth,
+      });
+
+      await this.prisma.payrollLineItem.update({
+        where: { id: li.id },
+        data: {
+          hourlyRate: rate,
+          estimatedPay,
+          regularPay,
+          overtimePay,
+          ...statutory,
+          updatedBy: actorId,
+        },
+      });
+    }
   }
 
   // -- Payroll Periods --
@@ -243,7 +479,12 @@ export class PayrollService {
    * M2: an Idempotency-Key is required by the controller; a retried request with
    * the same key returns the previously-generated report instead of reprocessing.
    */
-  async generateReport(p: AuthPrincipal, periodId: string, idempotencyKey: string) {
+  async generateReport(
+    p: AuthPrincipal,
+    periodId: string,
+    idempotencyKey: string,
+    thirteenthMonth = false,
+  ) {
     const period = await this.findOnePeriod(p, periodId);
     if (period.status === 'EXPORTED') {
       throw new ConflictException('Payroll period is already exported and locked (BR-PAY-04)');
@@ -392,6 +633,85 @@ export class PayrollService {
       userDays.set(dateStr, (userDays.get(dateStr) ?? 0) + entry.durationMinutes);
     }
 
+    // ── FEAT-3: Philippine statutory premiums, contributions and withholding ──
+
+    const settings = await this.payrollSettings.forPrincipal(p);
+    const brackets = await this.birTax.getBrackets(settings.birTaxTableYear);
+    const periodsInMonth = periodsPerMonth(period.type);
+
+    // Holidays falling inside the period, keyed by calendar day. `date` is a
+    // date-only column so it is compared as a plain key, not an instant.
+    const holidays = await this.prisma.holiday.findMany({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        deletedAt: null,
+        date: { gte: period.startDate, lte: period.endDate },
+      },
+      select: { date: true, type: true, name: true },
+    });
+    const holidayByKey = new Map(holidays.map((h) => [dateOnlyKey(h.date), h]));
+
+    // Night-differential and holiday minutes are attributed from *all* approved
+    // entries — including those on supervisor-adjusted timesheets, which are
+    // held out of the daily-overtime rollup above. The premiums are independent
+    // of the regular/overtime split, so excluding them there does not exclude
+    // them here.
+    const userNightMinutes = new Map<string, number>();
+    const userHolidayMinutes = new Map<string, Map<string, number>>();
+    for (const entry of approvedEntries) {
+      if (!entry.durationMinutes) continue;
+
+      const nightMins = nightShiftMinutes(
+        entry.startTime,
+        entry.durationMinutes,
+        timeZone,
+        settings.nightShiftStartHour,
+        settings.nightShiftEndHour,
+      );
+      if (nightMins > 0) {
+        userNightMinutes.set(entry.userId, (userNightMinutes.get(entry.userId) ?? 0) + nightMins);
+      }
+
+      const dayKey = orgDayKey(entry.startTime, timeZone);
+      if (holidayByKey.has(dayKey)) {
+        let days = userHolidayMinutes.get(entry.userId);
+        if (!days) {
+          days = new Map<string, number>();
+          userHolidayMinutes.set(entry.userId, days);
+        }
+        days.set(dayKey, (days.get(dayKey) ?? 0) + entry.durationMinutes);
+      }
+    }
+
+    // Year-to-date figures from every earlier period in the same tax year. The
+    // cumulative withholding method needs these, and reading them as a sum of
+    // already-issued line items means a regeneration of *this* period cannot
+    // move an employee's YTD backward.
+    const taxYearStart = new Date(Date.UTC(period.startDate.getUTCFullYear(), 0, 1));
+    const priorTotals = await this.prisma.payrollLineItem.groupBy({
+      by: ['userId'],
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        payrollReport: {
+          period: {
+            deletedAt: null,
+            startDate: { gte: taxYearStart },
+            endDate: { lt: period.startDate },
+          },
+        },
+      },
+      _sum: {
+        grossTotal: true,
+        sssContribution: true,
+        philhealthContribution: true,
+        pagibigContribution: true,
+        incomeTaxWithheld: true,
+      },
+    });
+    const priorByUser = new Map(priorTotals.map((row) => [row.userId, row._sum]));
+
     // Create the payroll report + line items in a transaction
     const report = await this.prisma.$transaction(async (tx) => {
       // Delete any existing report for this period (re-generation). PayrollLineItem
@@ -422,6 +742,10 @@ export class PayrollService {
       });
 
       let totalEstimatedPay = new Decimal(0);
+      let totalGross = new Decimal(0);
+      let totalNet = new Decimal(0);
+      let totalWithheld = new Decimal(0);
+      let totalEmployerCost = new Decimal(0);
 
       for (const user of eligibleUsers) {
         const rate = user.hourlyRate ?? new Decimal(0);
@@ -452,11 +776,32 @@ export class PayrollService {
         const rejectedHours = new Decimal(rejectedMins).div(60);
 
         // Estimated pay: regular x rate + overtime x rate x the org's OT multiplier
-        const estimatedPay = regularHours
-          .mul(rate)
-          .add(overtimeHours.mul(rate).mul(overtimeMultiplier));
+        const regularPay = regularHours.mul(rate);
+        const overtimePay = overtimeHours.mul(rate).mul(overtimeMultiplier);
+        const estimatedPay = regularPay.add(overtimePay);
 
         totalEstimatedPay = totalEstimatedPay.add(estimatedPay);
+
+        const premiums = this.computePremiums({
+          rate: Number(rate),
+          nightMinutes: userNightMinutes.get(user.id) ?? 0,
+          holidayMinutesByDay: userHolidayMinutes.get(user.id),
+          holidayByKey,
+          periodStart: period.startDate,
+          periodEnd: period.endDate,
+          hasWorkedHours: approvedHours.greaterThan(0),
+          settings,
+        });
+
+        const statutory = this.computeStatutoryFigures({
+          basePay: Number(estimatedPay),
+          premiums,
+          prior: priorByUser.get(user.id),
+          periodsInMonth,
+          settings,
+          brackets,
+          thirteenthMonth,
+        });
 
         await tx.payrollLineItem.create({
           data: {
@@ -470,10 +815,21 @@ export class PayrollService {
             overtimeHours,
             hourlyRate: rate,
             estimatedPay,
+            regularPay,
+            overtimePay,
+            ...statutory,
             createdBy: p.userId,
             updatedBy: p.userId,
           },
         });
+
+        totalGross = totalGross.add(statutory.grossTotal);
+        totalNet = totalNet.add(statutory.netPay);
+        totalWithheld = totalWithheld.add(statutory.incomeTaxWithheld);
+        totalEmployerCost = totalEmployerCost
+          .add(statutory.sssEmployerShare)
+          .add(statutory.philhealthEmployerShare)
+          .add(statutory.pagibigEmployerShare);
       }
 
       // Update report totals and period status
@@ -483,6 +839,14 @@ export class PayrollService {
           totals: {
             headcount: eligibleUsers.length,
             totalEstimatedPay: totalEstimatedPay.toFixed(2),
+            // FEAT-3 additions. `totalEstimatedPay` is left untouched above
+            // because the finance dashboards already read that key.
+            totalGrossPay: totalGross.toFixed(2),
+            totalNetPay: totalNet.toFixed(2),
+            totalTaxWithheld: totalWithheld.toFixed(2),
+            totalEmployerContributions: totalEmployerCost.toFixed(2),
+            isThirteenthMonth: thirteenthMonth,
+            birTaxTableYear: settings.birTaxTableYear,
           },
           updatedBy: p.userId,
           version: { increment: 1 },
@@ -906,6 +1270,26 @@ export class PayrollService {
     drawTableRow('Regular Hours', `${regular.toFixed(2)} hrs @ ₱${rate.toFixed(2)}/hr`, `₱${regPay.toFixed(2)}`);
     drawTableRow('Overtime Hours', `${overtime.toFixed(2)} hrs @ ₱${(rate * overtimeMultiplier).toFixed(2)}/hr`, `₱${otPay.toFixed(2)}`);
 
+    // FEAT-3: premiums and statutory deductions. Figures are read from the
+    // snapshot on the line item, not recomputed, so a settings change after the
+    // period was generated can never alter an already-issued payslip.
+    const holidayPay = Number(item.holidayPay);
+    const nightDifferential = Number(item.nightDifferential);
+    if (holidayPay !== 0) {
+      drawTableRow('Holiday Pay', `${Number(item.holidayHours).toFixed(2)} hrs (premium)`, `₱${holidayPay.toFixed(2)}`);
+    }
+    if (nightDifferential !== 0) {
+      drawTableRow('Night Differential', `${Number(item.nightDiffHours).toFixed(2)} hrs (premium)`, `₱${nightDifferential.toFixed(2)}`);
+    }
+    if (item.isThirteenthMonth) {
+      drawTableRow('13th Month Pay', 'Statutory benefit', `₱${Number(item.grossTotal).toFixed(2)}`);
+    }
+
+    // Pre-FEAT-3 line items carry gross_total backfilled from estimated_pay; the
+    // derived gross stays the fallback for anything that predates even that.
+    const storedGross = Number(item.grossTotal);
+    const grossEarnings = storedGross > 0 ? storedGross : gross + holidayPay + nightDifferential;
+
     doc.moveDown(0.5);
     const totalLineY = doc.y;
     doc.moveTo(40, totalLineY).lineTo(doc.page.width - 40, totalLineY).stroke();
@@ -914,9 +1298,51 @@ export class PayrollService {
     doc.fontSize(11).font(PDF_FONT_BOLD);
     const grossY = doc.y;
     doc.text('Gross Earnings', 40, grossY, { width: colW[0] });
-    doc.text(`₱${gross.toFixed(2)}`, 40 + colW[0] + colW[1], grossY, { width: colW[2] });
+    doc.text(`₱${grossEarnings.toFixed(2)}`, 40 + colW[0] + colW[1], grossY, { width: colW[2] });
 
-    doc.moveDown(3);
+    doc.moveDown(1.5);
+    doc.fontSize(12).font(PDF_FONT_BOLD).text('Deductions', 40);
+    doc.moveDown(0.5);
+    doc.fontSize(10).font(PDF_FONT);
+
+    const deductionLineY = doc.y;
+    doc.moveTo(40, deductionLineY).lineTo(doc.page.width - 40, deductionLineY).stroke();
+    doc.moveDown(0.4);
+
+    const sss = Number(item.sssContribution);
+    const philhealth = Number(item.philhealthContribution);
+    const pagibig = Number(item.pagibigContribution);
+    const tax = Number(item.incomeTaxWithheld);
+    const totalDeductions = Number(item.totalDeductions);
+
+    drawTableRow('SSS Contribution', 'Employee share', `₱${sss.toFixed(2)}`);
+    drawTableRow('PhilHealth Contribution', 'Employee share', `₱${philhealth.toFixed(2)}`);
+    drawTableRow('Pag-IBIG Contribution', 'Employee share', `₱${pagibig.toFixed(2)}`);
+    drawTableRow('Withholding Tax', 'BIR', `₱${tax.toFixed(2)}`);
+
+    doc.moveDown(0.5);
+    const dedTotalY = doc.y;
+    doc.moveTo(40, dedTotalY).lineTo(doc.page.width - 40, dedTotalY).stroke();
+    doc.moveDown(0.5);
+
+    doc.fontSize(11).font(PDF_FONT_BOLD);
+    const totalDedY = doc.y;
+    doc.text('Total Deductions', 40, totalDedY, { width: colW[0] });
+    doc.text(`₱${totalDeductions.toFixed(2)}`, 40 + colW[0] + colW[1], totalDedY, { width: colW[2] });
+
+    doc.moveDown(1);
+    const netY = doc.y;
+    doc.fontSize(13);
+    doc.text('NET PAY', 40, netY, { width: colW[0] });
+    doc.text(`₱${Number(item.netPay).toFixed(2)}`, 40 + colW[0] + colW[1], netY, { width: colW[2] });
+
+    doc.moveDown(1.5);
+    doc.fontSize(9).font(PDF_FONT_BOLD).text('Year to Date', 40);
+    doc.font(PDF_FONT)
+      .text(`Taxable Income: ₱${Number(item.ytdTaxableIncome).toFixed(2)}`, 40)
+      .text(`Tax Withheld: ₱${Number(item.ytdTaxWithheld).toFixed(2)}`, 40);
+
+    doc.moveDown(2);
     doc.fontSize(8).font('Helvetica-Oblique').text('This is a system-generated payslip from TimeForge. No signature is required.', { align: 'center' });
 
     doc.end();
@@ -1016,7 +1442,7 @@ export class PayrollService {
 
     const overtimeMultiplier = await this.overtimeRates.forPrincipal(p);
     await this.recalculateOpenLineItemsForUser(
-      p.tenantId,
+      p,
       userId,
       rate,
       p.userId,
@@ -1699,6 +2125,168 @@ export class PayrollService {
 
     await this.invalidateFinanceCache(p.organizationId);
     return { periodId, processingStatus: result.processingStatus };
+  }
+
+  // -- FEAT-3: statutory remittance / tax reporting --
+
+  /**
+   * Resolves the period a statutory report covers: the one requested, or the
+   * most recently generated one when the caller does not name it.
+   */
+  private async resolveReportPeriod(p: AuthPrincipal, periodId?: string) {
+    if (periodId) return this.findOnePeriod(p, periodId);
+
+    const latest = await this.prisma.payrollPeriod.findFirst({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        deletedAt: null,
+        status: { not: 'OPEN' },
+      },
+      orderBy: { endDate: 'desc' },
+    });
+    if (!latest) throw new NotFoundException('No generated payroll period to report on');
+    return latest;
+  }
+
+  private async reportLineItems(p: AuthPrincipal, periodId: string) {
+    return this.prisma.payrollLineItem.findMany({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        payrollReport: { payrollPeriodId: periodId },
+      },
+      include: {
+        user: {
+          select: {
+            id: true,
+            firstName: true,
+            lastName: true,
+            email: true,
+            department: { select: { name: true } },
+          },
+        },
+      },
+      orderBy: { user: { lastName: 'asc' } },
+    });
+  }
+
+  /**
+   * Remittance report for one contribution agency — the per-employee employee/
+   * employer split and the total the organization owes for the period.
+   */
+  async getContributionReport(
+    p: AuthPrincipal,
+    agency: 'SSS' | 'PHILHEALTH' | 'PAGIBIG',
+    query: StatutoryReportQuery,
+  ) {
+    const period = await this.resolveReportPeriod(p, query.periodId);
+    const items = await this.reportLineItems(p, period.id);
+
+    const pick = (item: (typeof items)[number]) => {
+      switch (agency) {
+        case 'SSS':
+          return { employee: item.sssContribution, employer: item.sssEmployerShare };
+        case 'PHILHEALTH':
+          return { employee: item.philhealthContribution, employer: item.philhealthEmployerShare };
+        case 'PAGIBIG':
+          return { employee: item.pagibigContribution, employer: item.pagibigEmployerShare };
+      }
+    };
+
+    let employeeTotal = new Decimal(0);
+    let employerTotal = new Decimal(0);
+
+    const rows = items.map((item) => {
+      const share = pick(item);
+      employeeTotal = employeeTotal.add(share.employee);
+      employerTotal = employerTotal.add(share.employer);
+      return {
+        userId: item.userId,
+        email: item.user.email,
+        name: `${item.user.lastName}, ${item.user.firstName}`,
+        department: item.user.department?.name ?? null,
+        monthlyGrossBasis: item.grossTotal.toFixed(2),
+        employeeShare: share.employee.toFixed(2),
+        employerShare: share.employer.toFixed(2),
+        total: new Decimal(share.employee).add(share.employer).toFixed(2),
+      };
+    });
+
+    return {
+      agency,
+      period: {
+        id: period.id,
+        startDate: period.startDate.toISOString().slice(0, 10),
+        endDate: period.endDate.toISOString().slice(0, 10),
+        status: period.status,
+      },
+      headcount: rows.length,
+      totals: {
+        employeeShare: employeeTotal.toFixed(2),
+        employerShare: employerTotal.toFixed(2),
+        grandTotal: employeeTotal.add(employerTotal).toFixed(2),
+      },
+      rows,
+    };
+  }
+
+  /**
+   * BIR withholding summary for the period — the figures that feed BIR Form
+   * 1601-C, plus each employee's year-to-date position.
+   */
+  async getBirTaxSummary(p: AuthPrincipal, query: StatutoryReportQuery) {
+    const period = await this.resolveReportPeriod(p, query.periodId);
+    const items = await this.reportLineItems(p, period.id);
+    const settings = await this.payrollSettings.forPrincipal(p);
+
+    let grossTotal = new Decimal(0);
+    let contributionTotal = new Decimal(0);
+    let taxableTotal = new Decimal(0);
+    let withheldTotal = new Decimal(0);
+
+    const rows = items.map((item) => {
+      const contributions = new Decimal(item.sssContribution)
+        .add(item.philhealthContribution)
+        .add(item.pagibigContribution);
+      const taxable = Decimal.max(0, new Decimal(item.grossTotal).sub(contributions));
+
+      grossTotal = grossTotal.add(item.grossTotal);
+      contributionTotal = contributionTotal.add(contributions);
+      taxableTotal = taxableTotal.add(taxable);
+      withheldTotal = withheldTotal.add(item.incomeTaxWithheld);
+
+      return {
+        userId: item.userId,
+        email: item.user.email,
+        name: `${item.user.lastName}, ${item.user.firstName}`,
+        grossCompensation: item.grossTotal.toFixed(2),
+        mandatoryContributions: contributions.toFixed(2),
+        taxableCompensation: taxable.toFixed(2),
+        taxWithheld: item.incomeTaxWithheld.toFixed(2),
+        ytdTaxableIncome: item.ytdTaxableIncome.toFixed(2),
+        ytdTaxWithheld: item.ytdTaxWithheld.toFixed(2),
+        isThirteenthMonth: item.isThirteenthMonth,
+      };
+    });
+
+    return {
+      taxYear: settings.birTaxTableYear,
+      period: {
+        id: period.id,
+        startDate: period.startDate.toISOString().slice(0, 10),
+        endDate: period.endDate.toISOString().slice(0, 10),
+        status: period.status,
+      },
+      headcount: rows.length,
+      totals: {
+        grossCompensation: grossTotal.toFixed(2),
+        mandatoryContributions: contributionTotal.toFixed(2),
+        taxableCompensation: taxableTotal.toFixed(2),
+        taxWithheld: withheldTotal.toFixed(2),
+      },
+      rows,
+    };
   }
 
   // -- Private helpers --

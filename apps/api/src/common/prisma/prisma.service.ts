@@ -40,6 +40,7 @@ export const TENANT_MODELS = new Set([
   'LeaveBalance',
   'KpiTemplate',
   'KpiProgress',
+  'PayrollSettings',
   'PayrollPeriod',
   'PayrollReport',
   'PayrollLineItem',

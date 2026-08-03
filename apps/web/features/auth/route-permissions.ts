@@ -34,10 +34,14 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   '/finance/dashboard': 'payroll:read',
   '/finance/payroll-processing': 'payroll:read',
   '/finance/reports': 'payroll:read',
+  '/finance/statutory-reports': 'payroll:read',
+  '/finance/payroll-settings': 'payroll_rate:read',
   '/finance/ai-insights': 'payroll:read',
   // system
   '/admin/security': 'audit:read_org',
   '/admin/ai-config': 'org:read',
+  '/admin/payroll-settings': 'payroll_rate:read',
+  '/admin/statutory-reports': 'payroll:read',
   '/admin/kpi-management': 'kpi_template:update',
   // additional routes not in MENU_CATALOG but still protected
   '/admin/timesheets': 'timesheet:read_org',

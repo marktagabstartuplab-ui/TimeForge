@@ -239,6 +239,7 @@ model Organization {
   bugs            Bug[]
   shiftConfigurations   ShiftConfiguration[]
   shiftLimitViolations  ShiftLimitViolation[]
+  payrollSettings       PayrollSettings?
 
   @@unique([tenantId, id])
   // Uniqueness on (tenantId, slug) is enforced by a partial unique index
@@ -612,13 +613,25 @@ model WorkCategory {
   @@map("work_categories")
 }
 
+ /// Philippine holiday classification — drives the premium multiplier applied to
+ /// hours worked on the day (Labor Code art. 94 / DOLE Handbook):
+ /// REGULAR             — 200% when worked, 100% when not worked
+ /// SPECIAL_NON_WORKING — 130% when worked, no-work-no-pay when not worked
+enum HolidayType {
+  REGULAR
+  SPECIAL_NON_WORKING
+
+  @@map("holiday_type")
+}
+
 model Holiday {
-  id             String    @id @default(uuid()) @db.Uuid
-  tenantId       String    @map("tenant_id") @db.Uuid
-  organizationId String    @map("organization_id") @db.Uuid
+  id             String      @id @default(uuid()) @db.Uuid
+  tenantId       String      @map("tenant_id") @db.Uuid
+  organizationId String      @map("organization_id") @db.Uuid
   name           String
-  date           DateTime  @db.Date
-  recurring      Boolean   @default(false)
+  date           DateTime    @db.Date
+  type           HolidayType @default(REGULAR)
+  recurring      Boolean     @default(false)
   createdBy      String?   @map("created_by") @db.Uuid
   updatedBy      String?   @map("updated_by") @db.Uuid
   createdAt      DateTime  @default(now()) @map("created_at") @db.Timestamptz
@@ -1305,6 +1318,106 @@ model KpiProgress {
 
 // ─── Payroll Preparation — Phase 9 ───────────────────────────────────────────
 
+ /// Per-organization statutory contribution configuration (FEAT-3).
+ ///
+ /// Every rate/cap the Philippine deduction engine uses lives here so a rate
+ /// change (SSS circulars move most years) is a settings edit, not a deploy.
+ /// Defaults are the 2026 figures — see the migration for the seeded values.
+ ///
+ /// Deliberately does NOT hold the overtime multiplier: that already lives on the
+ /// `payroll.overtime` OrganizationSetting (see OvertimeRateService) and having
+ /// two sources of truth for the same number is how payslips start disagreeing
+ /// with each other.
+model PayrollSettings {
+  id             String @id @default(uuid()) @db.Uuid
+  tenantId       String @map("tenant_id") @db.Uuid
+  organizationId String @map("organization_id") @db.Uuid
+
+  // SSS — employee/employer share of the monthly salary credit, capped at the ceiling.
+  sssEmployeeRate   Decimal @default(0.05) @map("sss_employee_rate") @db.Decimal(6, 4)
+  sssEmployerRate   Decimal @default(0.10) @map("sss_employer_rate") @db.Decimal(6, 4)
+  sssSalaryCeiling  Decimal @default(29500) @map("sss_salary_ceiling") @db.Decimal(12, 2)
+
+  // PhilHealth — split evenly, with a floor and ceiling on the *total* premium.
+  philhealthEmployeeRate Decimal @default(0.025) @map("philhealth_employee_rate") @db.Decimal(6, 4)
+  philhealthEmployerRate Decimal @default(0.025) @map("philhealth_employer_rate") @db.Decimal(6, 4)
+  philhealthMin          Decimal @default(500) @map("philhealth_min") @db.Decimal(12, 2)
+  philhealthMax          Decimal @default(5000) @map("philhealth_max") @db.Decimal(12, 2)
+
+  // Pag-IBIG — 1% at or below the threshold, 2% above; employee share is capped.
+  pagibigEmployeeRateLow  Decimal @default(0.01) @map("pagibig_employee_rate_low") @db.Decimal(6, 4)
+  pagibigEmployeeRateHigh Decimal @default(0.02) @map("pagibig_employee_rate_high") @db.Decimal(6, 4)
+  pagibigEmployerRate     Decimal @default(0.02) @map("pagibig_employer_rate") @db.Decimal(6, 4)
+  pagibigSalaryThreshold  Decimal @default(1500) @map("pagibig_salary_threshold") @db.Decimal(12, 2)
+  pagibigEmployeeCap      Decimal @default(200) @map("pagibig_employee_cap") @db.Decimal(12, 2)
+
+  // Premiums
+  nightShiftPremium   Decimal @default(1.10) @map("night_shift_premium") @db.Decimal(5, 2)
+  nightShiftStartHour Int     @default(22) @map("night_shift_start_hour")
+  nightShiftEndHour   Int     @default(6) @map("night_shift_end_hour")
+
+  regularHolidayWorkedRate    Decimal @default(2.00) @map("regular_holiday_worked_rate") @db.Decimal(5, 2)
+  regularHolidayUnworkedRate  Decimal @default(1.00) @map("regular_holiday_unworked_rate") @db.Decimal(5, 2)
+  specialHolidayWorkedRate    Decimal @default(1.30) @map("special_holiday_worked_rate") @db.Decimal(5, 2)
+
+  // 13th-month pay and other benefits are tax-exempt up to this annual amount.
+  thirteenthMonthExemptionCap Decimal @default(90000) @map("thirteenth_month_exemption_cap") @db.Decimal(12, 2)
+
+  birTaxTableYear Int @default(2026) @map("bir_tax_table_year")
+
+  createdBy String?   @map("created_by") @db.Uuid
+  updatedBy String?   @map("updated_by") @db.Uuid
+  createdAt DateTime  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt DateTime  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt DateTime? @map("deleted_at") @db.Timestamptz
+  version   Int       @default(0)
+
+  organization Organization @relation(fields: [tenantId, organizationId], references: [tenantId, id])
+
+  @@unique([tenantId, organizationId])
+  @@map("payroll_settings")
+}
+
+ /// BIR withholding tax table. National law, so these rows are NOT tenant-scoped —
+ /// every organization on the platform withholds against the same brackets.
+model BirTaxTable {
+  id            String   @id @default(uuid()) @db.Uuid
+  taxYear       Int      @unique @map("tax_year")
+  description   String?
+  isActive      Boolean  @default(true) @map("is_active")
+  effectiveDate DateTime @map("effective_date") @db.Date
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt     DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  brackets BirTaxBracket[]
+
+  @@index([taxYear, isActive])
+  @@map("bir_tax_tables")
+}
+
+ /// One progressive bracket. `baseTax` is the fixed amount owed at `minIncome`;
+ /// `rate` applies to the excess over `minIncome`. `maxIncome` null = top bracket.
+ ///
+ /// Normalized into rows rather than bracket_1_*..bracket_5_* columns because the
+ /// 2026 TRAIN schedule has six brackets, and a future adjustment that adds or
+ /// removes one should be a data change rather than a migration.
+model BirTaxBracket {
+  id            String   @id @default(uuid()) @db.Uuid
+  birTaxTableId String   @map("bir_tax_table_id") @db.Uuid
+  sequence      Int
+  minIncome     Decimal  @map("min_income") @db.Decimal(14, 2)
+  maxIncome     Decimal? @map("max_income") @db.Decimal(14, 2)
+  baseTax       Decimal  @default(0) @map("base_tax") @db.Decimal(14, 2)
+  rate          Decimal  @default(0) @db.Decimal(6, 4)
+  createdAt     DateTime @default(now()) @map("created_at") @db.Timestamptz
+
+  table BirTaxTable @relation(fields: [birTaxTableId], references: [id], onDelete: Cascade)
+
+  @@unique([birTaxTableId, sequence])
+  @@index([birTaxTableId, minIncome])
+  @@map("bir_tax_brackets")
+}
+
 model PayrollPeriod {
   id               String                  @id @default(uuid()) @db.Uuid
   tenantId         String                  @map("tenant_id") @db.Uuid
@@ -1378,6 +1491,41 @@ model PayrollLineItem {
   overtimeHours   Decimal  @default(0) @map("overtime_hours") @db.Decimal(8, 2)
   hourlyRate      Decimal  @map("hourly_rate") @db.Decimal(12, 2)
   estimatedPay    Decimal  @map("estimated_pay") @db.Decimal(14, 2)
+
+  // -- FEAT-3: Philippine statutory breakdown ---------------------------------
+  // Every column below is derived at generation time and snapshotted, so a later
+  // settings/rate change never silently rewrites a payslip that was already
+  // issued. `estimatedPay` above is retained unchanged (it is the gross figure
+  // the pre-FEAT-3 dashboards read) and equals regularPay + overtimePay.
+
+  holidayHours   Decimal @default(0) @map("holiday_hours") @db.Decimal(8, 2)
+  nightDiffHours Decimal @default(0) @map("night_diff_hours") @db.Decimal(8, 2)
+
+  regularPay        Decimal @default(0) @map("regular_pay") @db.Decimal(14, 2)
+  overtimePay       Decimal @default(0) @map("overtime_pay") @db.Decimal(14, 2)
+  nightDifferential Decimal @default(0) @map("night_differential") @db.Decimal(14, 2)
+  holidayPay        Decimal @default(0) @map("holiday_pay") @db.Decimal(14, 2)
+
+  sssContribution        Decimal @default(0) @map("sss_contribution") @db.Decimal(12, 2)
+  philhealthContribution Decimal @default(0) @map("philhealth_contribution") @db.Decimal(12, 2)
+  pagibigContribution    Decimal @default(0) @map("pagibig_contribution") @db.Decimal(12, 2)
+  incomeTaxWithheld      Decimal @default(0) @map("income_tax_withheld") @db.Decimal(12, 2)
+
+  sssEmployerShare        Decimal @default(0) @map("sss_employer_share") @db.Decimal(12, 2)
+  philhealthEmployerShare Decimal @default(0) @map("philhealth_employer_share") @db.Decimal(12, 2)
+  pagibigEmployerShare    Decimal @default(0) @map("pagibig_employer_share") @db.Decimal(12, 2)
+
+  grossTotal      Decimal @default(0) @map("gross_total") @db.Decimal(14, 2)
+  totalDeductions Decimal @default(0) @map("total_deductions") @db.Decimal(14, 2)
+  netPay          Decimal @default(0) @map("net_pay") @db.Decimal(14, 2)
+
+  /// Cumulative taxable income (gross less mandatory contributions) for the tax year, this period included.
+  ytdTaxableIncome Decimal @default(0) @map("ytd_taxable_income") @db.Decimal(14, 2)
+  /// Cumulative tax withheld for the tax year, this period included.
+  ytdTaxWithheld   Decimal @default(0) @map("ytd_tax_withheld") @db.Decimal(14, 2)
+
+  isThirteenthMonth Boolean @default(false) @map("is_thirteenth_month")
+
   createdBy       String?  @map("created_by") @db.Uuid
   updatedBy       String?  @map("updated_by") @db.Uuid
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
