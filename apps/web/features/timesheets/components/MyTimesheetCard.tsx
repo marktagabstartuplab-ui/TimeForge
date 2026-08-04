@@ -231,16 +231,22 @@ export function MyTimesheetCard({ onDaySelect }: { onDaySelect?: (dateKey: strin
       label: "Total Work Hours",
       value: formatMinutes(stats.workMinutes),
       icon: <Clock3 className="h-5 w-5" aria-hidden="true" />,
+      bgClass: "bg-brand-cyan/20",
+      textClass: "text-brand",
     },
     {
       label: "Break Hours",
       value: formatMinutes(stats.breakMinutes),
       icon: <Coffee className="h-5 w-5" aria-hidden="true" />,
+      bgClass: "bg-orange-100",
+      textClass: "text-orange-500",
     },
     {
       label: "Days Logged",
       value: String(filteredRows.length),
       icon: <CalendarDays className="h-5 w-5" aria-hidden="true" />,
+      bgClass: "bg-emerald-100",
+      textClass: "text-emerald-600",
     },
   ];
 
@@ -345,7 +351,7 @@ export function MyTimesheetCard({ onDaySelect }: { onDaySelect?: (dateKey: strin
             key={tile.label}
             className="flex items-center gap-3 rounded-[12px] border border-[#c3c6d2]/50 bg-[#f6f3f4] px-4 py-4"
           >
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-brand-cyan/20 text-brand">
+            <span className={`flex h-10 w-10 shrink-0 items-center justify-center rounded-full ${tile.bgClass} ${tile.textClass}`}>
               {tile.icon}
             </span>
             <div className="min-w-0">

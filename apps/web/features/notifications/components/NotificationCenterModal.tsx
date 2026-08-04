@@ -10,7 +10,6 @@ import { ErrorState } from "@/components/shared/ErrorState";
 import { EmptyState } from "@/components/shared/EmptyState";
 import { SearchInput } from "@/components/shared/SearchInput";
 import { Pagination } from "@/components/shared/Pagination";
-import { Tabs, TabsList, TabsTab } from "@/components/ui/tabs";
 import {
   Select,
   SelectContent,
@@ -146,26 +145,31 @@ export function NotificationCenterModal() {
               }}
               aria-label="Search notifications"
             />
-            <div className="flex min-w-0 items-center gap-3">
-              <Tabs
-                value={tab}
-                onValueChange={(v) => {
-                  setTab(v as TabValue);
-                  setPage(1);
-                }}
-                className="min-w-0 flex-1 overflow-hidden"
-              >
-                <TabsList className="min-w-0 w-full overscroll-x-contain [scrollbar-width:thin] [&::-webkit-scrollbar]:!block [&::-webkit-scrollbar]:h-1.5 [&::-webkit-scrollbar-thumb]:rounded-full [&::-webkit-scrollbar-thumb]:bg-[#c3c6d2]/80">
-                  {TABS.map((t) => (
-                    <TabsTab key={t.value} value={t.value}>
-                      {t.label}
-                    </TabsTab>
-                  ))}
-                </TabsList>
-              </Tabs>
+            <div className="flex flex-wrap items-center gap-3">
+              <div className="shrink-0">
+                <Select
+                  value={tab}
+                  onValueChange={(v) => {
+                    setTab(v as TabValue);
+                    setPage(1);
+                  }}
+                >
+                  <SelectTrigger size="sm" aria-label="Filter notifications" className="min-w-[160px]">
+                    <span className="text-xs font-bold uppercase tracking-wide text-brand-muted">Filter:</span>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {TABS.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>
+                        {t.label}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="shrink-0">
                 <Select value={sortBy} onValueChange={(v) => setSortBy(v as NotificationSort)}>
-                  <SelectTrigger size="sm" aria-label="Sort by">
+                  <SelectTrigger size="sm" aria-label="Sort by" className="min-w-[140px]">
                     <span className="text-xs font-bold uppercase tracking-wide text-brand-muted">Sort:</span>
                     <SelectValue />
                   </SelectTrigger>
