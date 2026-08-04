@@ -2,8 +2,8 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { useQuery, useQueryClient } from "@tanstack/react-query";
-import { useSearchParams } from "next/navigation";
-import { SunsetIcon } from "lucide-react";
+import { usePathname, useRouter, useSearchParams } from "next/navigation";
+import { ArrowLeftIcon, ArrowRightIcon, SunsetIcon } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
 import { Skeleton } from "@/components/ui/skeleton";
 import { ErrorState } from "@/components/shared/ErrorState";
@@ -21,26 +21,53 @@ import { getMe } from "@/features/account/api/account.service";
 import { fetchDepartments } from "@/features/auth/api/auth.service";
 import { summarizeDay } from "../lib/day-summary";
 import { deriveTasks, type ScrumPlanPrefill, type WorkTask } from "../lib/task-select";
-import { CurrentSessionCard } from "./CurrentSessionCard";
-import { ScrumTaskCard } from "./ScrumTaskCard";
-import { WorkDetailsCard } from "./WorkDetailsCard";
-import { QuickSelectRail } from "./QuickSelectRail";
-import { TodayProgressCard } from "./TodayProgressCard";
-import { TodayEntriesList } from "./TodayEntriesList";
-import { ScrumHistoryCard } from "./ScrumHistoryCard";
 import { SupervisorCommentBanner } from "./SupervisorCommentBanner";
 import { EodReviewModal } from "./EodReviewModal";
+import {
+  TabNavigation,
+  type ScrumTabDescriptor,
+  type ScrumTabId,
+} from "./scrum-tabs/TabNavigation";
+import { ScrumProgressBar } from "./scrum-tabs/ScrumProgressBar";
+import { PlanTab } from "./scrum-tabs/PlanTab";
+import { WorkTab } from "./scrum-tabs/WorkTab";
+import { ReviewTab } from "./scrum-tabs/ReviewTab";
+import { SubmitTab } from "./scrum-tabs/SubmitTab";
 import { startOfDay, endOfDay, toIsoDate, weekWindow } from "@/lib/time";
 
+/** Ordered workflow steps; the active one is mirrored in `?step=`. */
+const TAB_ORDER: ScrumTabId[] = ["plan", "work", "review", "submit"];
+
+function parseTab(value: string | null): ScrumTabId {
+  return TAB_ORDER.includes(value as ScrumTabId) ? (value as ScrumTabId) : "plan";
+}
+
 /**
- * Daily Scrum page — task-driven workflow. Main column: Current Session →
- * Daily Scrum card → Work Details → Today's Entries; right rail: Quick
- * Select + Today's Progress. All data comes from existing endpoints
- * (time-entries, scrum-entries, catalogs, users/me, dashboard/summary).
+ * Daily Scrum page — task-driven workflow, split into four steps (Plan → Work →
+ * Review → Submit) so no single view requires long scrolling. All four panels
+ * stay mounted and are toggled with `hidden`, so in-progress form state (the
+ * planner draft, Work Details) survives switching steps. All data comes from
+ * existing endpoints (time-entries, scrum-entries, catalogs, users/me,
+ * dashboard/summary); the EOD submission itself still runs through
+ * EodReviewModal untouched.
  */
 export function TimeTrackingContent() {
   const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
   const deepLinkId = searchParams.get("scrum");
+  const activeTab = parseTab(searchParams.get("step"));
+
+  // Steps live in the URL so browser Back moves between them (and a deep link
+  // to a specific step is shareable). `scroll: false` keeps the tab bar in view.
+  const goToTab = useCallback(
+    (id: ScrumTabId) => {
+      const params = new URLSearchParams(searchParams.toString());
+      params.set("step", id);
+      router.push(`${pathname}?${params.toString()}`, { scroll: false });
+    },
+    [pathname, router, searchParams],
+  );
   const [eodOpen, setEodOpen] = useState(false);
   const [dayClosed, setDayClosed] = useState(false);
   const [selectedTask, setSelectedTask] = useState<WorkTask | null>(null);
@@ -285,6 +312,49 @@ export function TimeTrackingContent() {
     }));
   }, [carryOverQuery.data]);
 
+  // Step completion drives both the progress bar and the tab badges.
+  const planDone = hasScrumPlan;
+  const workDone = entries.length > 0 && hasWorkDetails;
+  const reviewDone = alreadyReviewed;
+  const submitDone = alreadyReviewed;
+  const doneByTab: Record<ScrumTabId, boolean> = {
+    plan: planDone,
+    work: workDone,
+    review: reviewDone,
+    submit: submitDone,
+  };
+  const completedSteps = TAB_ORDER.filter((id) => doneByTab[id]).length;
+
+  const tabs: ScrumTabDescriptor[] = [
+    { id: "plan", shortLabel: "1. Plan", label: "Plan your day", status: "pending" },
+    { id: "work", shortLabel: "2. Work", label: "Log your work", status: "pending" },
+    { id: "review", shortLabel: "3. Review", label: "End of day review", status: "pending" },
+    { id: "submit", shortLabel: "4. Submit", label: "Submit for approval", status: "pending" },
+  ].map((tab) => {
+    const id = tab.id as ScrumTabId;
+    // "Locked" is advisory only — the tab stays clickable, the badge explains
+    // why the step can't be finished yet.
+    const locked =
+      (id === "work" && !planDone) ||
+      (id === "review" && !workDone) ||
+      (id === "submit" && !canReviewDay && !alreadyReviewed);
+    return {
+      ...tab,
+      id,
+      status: doneByTab[id] ? "done" : id === activeTab ? "current" : locked ? "locked" : "pending",
+    } as ScrumTabDescriptor;
+  });
+
+  const activeIndex = TAB_ORDER.indexOf(activeTab);
+  const activeTabMeta = tabs[activeIndex];
+
+  const submitChecklist = [
+    { label: "Planned today's commitments", done: planDone },
+    { label: `Logged ${summary.entryCount} work ${summary.entryCount === 1 ? "session" : "sessions"}`, done: entries.length > 0 },
+    { label: "Saved your work details", done: hasWorkDetails },
+    { label: "Completed the end of day review", done: alreadyReviewed },
+  ];
+
   return (
     <div className="flex flex-col gap-6">
       <PageHeader
@@ -293,7 +363,10 @@ export function TimeTrackingContent() {
         action={
           <button
             type="button"
-            onClick={() => setEodOpen(true)}
+            onClick={() => {
+              goToTab("review");
+              setEodOpen(true);
+            }}
             disabled={!canReviewDay}
             title={canReviewDay ? undefined : reviewBlockedReason ?? undefined}
             className="flex h-11 items-center gap-2 rounded-[10px] border border-[#c3c6d2]/60 bg-white px-5 text-sm font-bold text-brand-navy transition-colors hover:bg-[#f6f3f4] disabled:cursor-not-allowed disabled:opacity-50 disabled:hover:bg-white"
@@ -333,65 +406,122 @@ export function TimeTrackingContent() {
           </div>
         </div>
       ) : (
-        <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
-          {/* Main column */}
-          <div className="flex min-w-0 flex-col gap-4">
-            <CurrentSessionCard
-              selectedTask={selectedTask}
-              runningTask={summary.running?.task ?? null}
-              runningProjectId={summary.running?.projectId ?? null}
-              runningClientId={summary.running?.clientId ?? null}
-              loading={entriesQuery.isFetching}
-              onTimeOut={() => setEodOpen(true)}
-              reviewReady={canReviewDay}
-              reviewBlockedReason={reviewBlockedReason}
+        <div className="flex flex-col gap-4">
+          {latestFeedbackEntry ? (
+            <SupervisorCommentBanner
+              note={latestFeedbackEntry.supervisorNote!}
+              entryDate={latestFeedbackEntry.entryDate}
+              viewHref={`/time-tracking?scrum=${latestFeedbackEntry.id}`}
             />
+          ) : null}
 
-            <ScrumTaskCard
-              entry={scrumEntry}
+          <ScrumProgressBar completed={completedSteps} total={TAB_ORDER.length} />
+
+          <TabNavigation tabs={tabs} active={activeTab} onSelect={goToTab} />
+
+          {/* Every panel stays mounted (hidden, not unmounted) so unsaved
+              planner / Work Details input survives switching steps. */}
+          <div
+            role="tabpanel"
+            id="scrum-panel-plan"
+            aria-labelledby="scrum-tab-plan"
+            hidden={activeTab !== "plan"}
+          >
+            <PlanTab
+              scrumEntry={scrumEntry}
               loading={scrumQuery.isLoading}
               prefill={planPrefill}
               onToast={onToast}
+              tasks={tasks}
+              tasksLoading={weekQuery.isLoading}
+              onSelectTask={handleSelectTask}
+              carryOver={carryOverQuery.data?.tasks ?? []}
+              carryOverDate={carryOverQuery.data?.sourceDate ?? null}
+              onSelectCarryOver={handleSelectCarryOver}
             />
+          </div>
 
-            <WorkDetailsCard
-              key={editableEntry?.id ?? "idle"}
-              running={editableEntry}
+          <div
+            role="tabpanel"
+            id="scrum-panel-work"
+            aria-labelledby="scrum-tab-work"
+            hidden={activeTab !== "work"}
+          >
+            <WorkTab
+              summary={summary}
+              entries={entries}
+              entriesFetching={entriesQuery.isFetching}
+              weekEntries={weekEntries}
+              weekLoading={weekQuery.isLoading}
               selectedTask={selectedTask}
+              editableEntry={editableEntry}
               profileDepartmentId={meQuery.data?.departmentId ?? null}
               departments={departmentsQuery.data ?? []}
               plannedTasks={scrumTasks}
               onToast={onToast}
+              onTimeOut={() => {
+                goToTab("review");
+                setEodOpen(true);
+              }}
+              reviewReady={canReviewDay}
+              reviewBlockedReason={reviewBlockedReason}
             />
-
-            <TodayEntriesList entries={entries} />
-
-            <ScrumHistoryCard />
           </div>
 
-          {/* Right rail */}
-          <div className="flex min-w-0 flex-col gap-4">
-            <QuickSelectRail
-              tasks={tasks}
-              loading={weekQuery.isLoading}
-              onSelect={handleSelectTask}
-              carryOver={carryOverQuery.data?.tasks ?? []}
-              carryOverDate={carryOverQuery.data?.sourceDate ?? null}
-              onSelectCarryOver={handleSelectCarryOver}
-              onToast={onToast}
-            />
-            <TodayProgressCard
+          <div
+            role="tabpanel"
+            id="scrum-panel-review"
+            aria-labelledby="scrum-tab-review"
+            hidden={activeTab !== "review"}
+          >
+            <ReviewTab
               summary={summary}
-              weekEntries={weekEntries}
-              weekLoading={weekQuery.isLoading}
+              commitments={scrumTasks}
+              onOpenReview={() => setEodOpen(true)}
+              reviewReady={canReviewDay}
+              reviewBlockedReason={reviewBlockedReason}
+              alreadyReviewed={alreadyReviewed}
             />
-            {latestFeedbackEntry ? (
-              <SupervisorCommentBanner
-                note={latestFeedbackEntry.supervisorNote!}
-                entryDate={latestFeedbackEntry.entryDate}
-                viewHref={`/time-tracking?scrum=${latestFeedbackEntry.id}`}
-              />
-            ) : null}
+          </div>
+
+          <div
+            role="tabpanel"
+            id="scrum-panel-submit"
+            aria-labelledby="scrum-tab-submit"
+            hidden={activeTab !== "submit"}
+          >
+            <SubmitTab
+              checklist={submitChecklist}
+              onOpenReview={() => setEodOpen(true)}
+              reviewReady={canReviewDay}
+              reviewBlockedReason={reviewBlockedReason}
+              alreadyReviewed={alreadyReviewed}
+            />
+          </div>
+
+          {/* Step footer — 44px touch targets, shared by all four panels. */}
+          <div className="flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => goToTab(TAB_ORDER[activeIndex - 1])}
+              disabled={activeIndex === 0}
+              className="flex h-11 items-center gap-2 rounded-[10px] border border-[#c3c6d2]/60 bg-white px-5 text-sm font-bold text-brand-navy transition-colors hover:bg-[#f6f3f4] disabled:cursor-not-allowed disabled:opacity-40 disabled:hover:bg-white"
+            >
+              <ArrowLeftIcon className="h-[18px] w-[18px]" aria-hidden="true" />
+              Back
+            </button>
+            <span className="truncate text-xs font-semibold uppercase tracking-[1px] text-brand-muted">
+              {activeTabMeta.label}
+            </span>
+            <button
+              type="button"
+              onClick={() => goToTab(TAB_ORDER[activeIndex + 1])}
+              disabled={activeIndex === TAB_ORDER.length - 1}
+              className="flex h-11 items-center gap-2 rounded-[10px] bg-brand px-5 text-sm font-bold text-white shadow-[0_2px_0_rgba(0,0,0,0.15)] transition-colors hover:bg-[#1467d6] disabled:cursor-not-allowed disabled:opacity-40"
+            >
+              Next
+              <ArrowRightIcon className="h-[18px] w-[18px]" aria-hidden="true" />
+            </button>
           </div>
         </div>
       )}

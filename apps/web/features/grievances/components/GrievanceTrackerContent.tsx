@@ -68,7 +68,7 @@ export function GrievanceTrackerContent() {
         title="My Submitted Complaints"
         action={
           <div className="flex items-center gap-2">
-            <Select value={statusFilter} onValueChange={setStatusFilter}>
+            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value ?? "ALL")}>
               <SelectTrigger className="h-9 w-40 rounded-[8px] border-[#c3c6d2] bg-white text-xs">
                 <SelectValue placeholder="All Statuses" />
               </SelectTrigger>
