@@ -510,6 +510,7 @@ export class PayrollService {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
         status: { in: ['APPROVED', 'PAYROLL_READY'] },
+        paymentStatus: { not: 'PAID' },
         deletedAt: null,
         periodStart: { gte: period.startDate },
         periodEnd: { lte: period.endDate },
@@ -2084,6 +2085,22 @@ export class PayrollService {
           sentToBankBy: p.userId,
           updatedBy: p.userId,
           version: { increment: 1 },
+        },
+      });
+
+      // BUG-AK: Mark all timesheets associated with this period as PAID
+      await tx.timesheet.updateMany({
+        where: {
+          tenantId: p.tenantId,
+          organizationId: p.organizationId,
+          status: { in: ['APPROVED', 'PAYROLL_READY'] },
+          periodStart: { gte: period.startDate },
+          periodEnd: { lte: period.endDate },
+          deletedAt: null,
+        },
+        data: {
+          paymentStatus: 'PAID',
+          updatedBy: p.userId,
         },
       });
 

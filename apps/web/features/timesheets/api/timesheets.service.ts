@@ -10,10 +10,13 @@ export type TimesheetStatus =
   | "REVISION_REQUESTED"
   | "PAYROLL_READY";
 
+export type TimesheetPaymentStatus = "UNPAID" | "PROCESSING" | "PAID";
+
 export interface Timesheet {
   id: string;
   userId: string;
   status: TimesheetStatus;
+  paymentStatus?: TimesheetPaymentStatus;
   periodStart: string;
   periodEnd: string;
   totalMinutes: number;
