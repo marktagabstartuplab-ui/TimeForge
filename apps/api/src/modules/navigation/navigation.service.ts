@@ -52,6 +52,15 @@ const MENU_CATALOG: MenuItemDef[] = [
   { id: 'finance-dashboard',    label: 'Finance Dashboard',    icon: 'layout-grid',      route: '/finance/dashboard',         section: 'FINANCE',  permission: 'payroll:read' },
   { id: 'finance-payroll',      label: 'Payroll Processing',   icon: 'wallet',           route: '/finance/payroll-processing', section: 'FINANCE',  permission: 'payroll:read' },
   { id: 'finance-reports',      label: 'Financial Reports',     icon: 'bar-chart-3',      route: '/finance/reports',            section: 'FINANCE',  permission: 'payroll:read' },
+  // FEAT-3. These duplicate the FINANCE_REPORTS/SYSTEM entries above by design:
+  // those point at the /admin routes for Admin and HR, these point at the
+  // /finance routes so the Finance workspace keeps its own shell. Without them,
+  // navigating a Finance user to any non-/finance page (Report a Bug) dropped
+  // both entries, because the main AppShell renders this server menu while
+  // /finance/* renders FinanceSidebar's hardcoded list. Only the FINANCE role
+  // ever sees this section, so nothing is duplicated for anyone else.
+  { id: 'finance-statutory-reports', label: 'Statutory Reports', icon: 'shield-check',   route: '/finance/statutory-reports',  section: 'FINANCE',  permission: 'payroll:read' },
+  { id: 'finance-payroll-settings',  label: 'Payroll Settings',  icon: 'sliders',        route: '/finance/payroll-settings',   section: 'FINANCE',  permission: 'payroll_rate:read' },
   { id: 'finance-ai-insights',  label: 'AI Insights',          icon: 'sparkles',         route: '/finance/ai-insights',        section: 'FINANCE',  permission: 'payroll:read' },
   // ── SYSTEM ──
   { id: 'system-logs',   label: 'System Logs',    icon: 'scroll-text',  route: '/admin/audit-logs',   section: 'SYSTEM', permission: 'audit:read_org' },
@@ -144,8 +153,9 @@ export class NavigationService {
       ) {
         return false;
       }
-      // Finance has its own dedicated workspace (section 'FINANCE' below, exactly 4 items:
-      // Dashboard, Payroll Processing, Financial Reports, AI Insights). Finance's broad
+      // Finance has its own dedicated workspace (section 'FINANCE' below: Dashboard,
+      // Payroll Processing, Financial Reports, Statutory Reports, Payroll Settings,
+      // AI Insights — kept in sync with FinanceSidebar's hardcoded list). Finance's broad
       // permission set (payroll_period:read, dashboard:read_org, user:read, org:read, etc.)
       // would otherwise leak unrelated WORKSPACE/MANAGEMENT/FINANCE_REPORTS/SYSTEM items in —
       // exclude everything outside the FINANCE section for Finance-only users.

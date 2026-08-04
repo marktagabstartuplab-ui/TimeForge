@@ -2260,6 +2260,9 @@ export class PayrollService {
         userId: item.userId,
         email: item.user.email,
         name: `${item.user.lastName}, ${item.user.firstName}`,
+        // Carried so the reports screen can apply one department filter across
+        // the contribution and BIR views alike.
+        department: item.user.department?.name ?? null,
         grossCompensation: item.grossTotal.toFixed(2),
         mandatoryContributions: contributions.toFixed(2),
         taxableCompensation: taxable.toFixed(2),

@@ -5,10 +5,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import {
   TrendingUp,
   TrendingDown,
-  RefreshCw,
   Download,
-  Search,
-  Filter,
   Calendar,
   Building,
   UserCheck,
@@ -21,9 +18,6 @@ import {
   Clock,
   Users,
   AlertTriangle,
-  ArrowUpDown,
-  ChevronLeft,
-  ChevronRight,
   Loader2,
 } from "lucide-react";
 import {
@@ -65,11 +59,6 @@ import {
   type ReportsQuery,
   type GeneratedReportItem,
 } from "@/features/reports/api/reports.service";
-import {
-  getAttendanceReport,
-  type AttendanceReportQuery,
-  type AttendanceStatus,
-} from "@/features/attendance-reports/api/attendance-reports.service";
 
 const PIE_COLORS = ["#0052cc", "#0ea5e9", "#0f172a", "#38bdf8", "#818cf8", "#f59e0b", "#10b981", "#ef4444"];
 
@@ -79,28 +68,13 @@ function formatCurrency(value: number): string {
   return `₱${value.toFixed(2)}`;
 }
 
-const attendanceStatusConfig: Record<AttendanceStatus, { label: string; tone: BadgeTone }> = {
-  PERFECT: { label: "Perfect", tone: "success" },
-  EXCELLENT: { label: "Excellent", tone: "brand" },
-  GOOD: { label: "Good", tone: "info" },
-  CRITICAL: { label: "Critical", tone: "danger" },
-};
-
 export function FinanceReportsContent() {
   const queryClient = useQueryClient();
   const [toast, setToast] = useState<ToastState | null>(null);
-  const [activeTab, setActiveTab] = useState<"dashboard" | "attendance" | "history">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "history">("dashboard");
   const [categoryFilter, setCategoryFilter] = useState("ALL");
   const [cursorStack, setCursorStack] = useState<(string | null)[]>([null]);
   const [cursorIndex, setCursorIndex] = useState(0);
-
-  // Attendance report filters
-  const [attendanceQuery, setAttendanceQuery] = useState<AttendanceReportQuery>({
-    page: 1,
-    pageSize: 10,
-    sortBy: "name",
-    sortDir: "asc",
-  });
 
   const queryParams: ReportsQuery = {
     category: categoryFilter === "ALL" ? undefined : categoryFilter,
@@ -175,11 +149,6 @@ export function FinanceReportsContent() {
       }
     }
   }, [historyData, pendingExportIds]);
-
-  const { data: attendanceData, isLoading: isAttendanceLoading, refetch: refetchAttendance } = useQuery({
-    queryKey: ["reports", "attendance-report", attendanceQuery],
-    queryFn: () => getAttendanceReport(attendanceQuery),
-  });
 
   const generateMutation = useMutation({
     mutationFn: (category: string) => generateReport({ category, format: "PDF" }),
@@ -258,10 +227,10 @@ export function FinanceReportsContent() {
         <div className="flex items-center gap-4 w-full">
           <div className="flex-1">
             <h1 className="text-2xl font-bold text-brand-navy">Finance Reports</h1>
-            <p className="text-sm text-brand-muted">Payroll analytics, attendance reports, and compliance overview</p>
+            <p className="text-sm text-brand-muted">Payroll analytics and compliance overview</p>
           </div>
           <div className="flex items-center gap-1 rounded-[10px] bg-[#f6f3f4] p-1 shadow-sm">
-            {(["dashboard", "attendance", "history"] as const).map((tab) => (
+            {(["dashboard", "history"] as const).map((tab) => (
               <button
                 key={tab}
                 type="button"
@@ -273,9 +242,8 @@ export function FinanceReportsContent() {
                 }`}
               >
                 {tab === "dashboard" && <BarChart3 className="h-4 w-4" />}
-                {tab === "attendance" && <UserCheck className="h-4 w-4" />}
                 {tab === "history" && <FileText className="h-4 w-4" />}
-                {tab === "dashboard" ? "Dashboard" : tab === "attendance" ? "Attendance Report" : "Report History"}
+                {tab === "dashboard" ? "Dashboard" : "Report History"}
               </button>
             ))}
           </div>
@@ -529,152 +497,6 @@ export function FinanceReportsContent() {
         </>
       )}
 
-      {activeTab === "attendance" && (
-        <>
-          {/* Attendance Report Filters */}
-          <div className="flex flex-wrap items-center gap-3">
-            <div className="flex items-center gap-2 border border-[#c3c6d2] rounded-lg px-3 py-1.5 bg-white">
-              <Search className="h-4 w-4 text-brand-muted" />
-              <input
-                type="text"
-                placeholder="Search employee..."
-                className="bg-transparent text-sm text-brand-navy outline-none border-none w-40"
-                value={attendanceQuery.search ?? ""}
-                onChange={(e) => setAttendanceQuery((q) => ({ ...q, search: e.target.value || undefined, page: 1 }))}
-              />
-            </div>
-            <div className="flex items-center gap-1 border border-[#c3c6d2] rounded-lg px-2 py-1 bg-white">
-              <Filter className="h-3.5 w-3.5 text-brand-muted" />
-              <select
-                value={attendanceQuery.status ?? "ALL"}
-                onChange={(e) => setAttendanceQuery((q) => ({ ...q, status: e.target.value === "ALL" ? undefined : e.target.value as AttendanceStatus, page: 1 }))}
-                className="bg-transparent text-xs font-semibold text-brand-navy outline-none border-none cursor-pointer"
-              >
-                <option value="ALL">All Status</option>
-                <option value="PERFECT">Perfect</option>
-                <option value="EXCELLENT">Excellent</option>
-                <option value="GOOD">Good</option>
-                <option value="CRITICAL">Critical</option>
-              </select>
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              className="h-8 text-xs"
-              onClick={() => {
-                refetchAttendance();
-                setToast({ message: "Attendance report refreshed.", tone: "success" });
-              }}
-            >
-              <RefreshCw className="h-3.5 w-3.5 mr-1" /> Refresh
-            </Button>
-          </div>
-
-          {/* Attendance Summary */}
-          {attendanceData && (
-            <div className="grid grid-cols-4 gap-4">
-              <div className="rounded-[12px] bg-[#f6f3f4] p-3">
-                <p className="text-xs text-brand-muted font-semibold">Avg Attendance</p>
-                <p className="text-lg font-bold text-brand-navy">{attendanceData.summary.avgAttendanceRate}%</p>
-              </div>
-              <div className="rounded-[12px] bg-[#f6f3f4] p-3">
-                <p className="text-xs text-brand-muted font-semibold">Total Tardiness</p>
-                <p className="text-lg font-bold text-brand-navy">{attendanceData.summary.totalTardiness}</p>
-              </div>
-              <div className="rounded-[12px] bg-[#f6f3f4] p-3">
-                <p className="text-xs text-brand-muted font-semibold">Unexcused Absences</p>
-                <p className="text-lg font-bold text-brand-navy">{attendanceData.summary.unexcusedAbsences}</p>
-              </div>
-              <div className="rounded-[12px] bg-[#f6f3f4] p-3">
-                <p className="text-xs text-brand-muted font-semibold">Pending Reviews</p>
-                <p className="text-lg font-bold text-brand-navy">{attendanceData.summary.pendingReviews}</p>
-              </div>
-            </div>
-          )}
-
-          {/* Attendance Table */}
-          <SectionCard title="Employee Attendance">
-            {isAttendanceLoading ? (
-              <div className="space-y-3">
-                {Array.from({ length: 5 }).map((_, i) => (
-                  <Skeleton key={i} className="h-10 w-full" />
-                ))}
-              </div>
-            ) : attendanceData && attendanceData.data.length > 0 ? (
-              <div className="overflow-x-auto">
-                <table className="w-full text-left text-sm border-collapse">
-                  <thead>
-                    <tr className="border-b border-[#c3c6d2]/40 text-xs font-semibold text-brand-muted uppercase tracking-wider">
-                      <th className="py-3 px-4 cursor-pointer select-none" onClick={() => setAttendanceQuery((q) => ({ ...q, sortBy: "name", sortDir: q.sortDir === "asc" ? "desc" : "asc" }))}>
-                        <span className="flex items-center gap-1">Employee <ArrowUpDown className="h-3 w-3" /></span>
-                      </th>
-                      <th className="py-3 px-4">Department</th>
-                      <th className="py-3 px-4 cursor-pointer select-none" onClick={() => setAttendanceQuery((q) => ({ ...q, sortBy: "attendancePercent", sortDir: q.sortDir === "asc" ? "desc" : "asc" }))}>
-                        <span className="flex items-center gap-1">Attendance % <ArrowUpDown className="h-3 w-3" /></span>
-                      </th>
-                      <th className="py-3 px-4">Days Logged</th>
-                      <th className="py-3 px-4">Absences</th>
-                      <th className="py-3 px-4">Tardiness</th>
-                      <th className="py-3 px-4">Status</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-[#c3c6d2]/30">
-                    {attendanceData.data.map((row) => {
-                      const cfg = attendanceStatusConfig[row.status] ?? { label: row.status, tone: "neutral" as BadgeTone };
-                      return (
-                        <tr key={row.userId} className="hover:bg-[#f8fafc] transition-colors">
-                          <td className="py-3 px-4 font-semibold text-brand-navy">{row.name}</td>
-                          <td className="py-3 px-4 text-brand-muted text-xs">{row.department ?? "—"}</td>
-                          <td className="py-3 px-4 font-semibold">{row.attendancePercent}%</td>
-                          <td className="py-3 px-4 text-brand-muted">{row.daysLogged} / {row.expectedDays}</td>
-                          <td className="py-3 px-4 text-brand-muted">{row.absences}</td>
-                          <td className="py-3 px-4 text-brand-muted">{row.tardiness}</td>
-                          <td className="py-3 px-4">
-                            <StatusBadge label={cfg.label} tone={cfg.tone} />
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            ) : (
-              <div className="flex items-center justify-center py-8 text-sm text-brand-muted">
-                No attendance data found for the selected period.
-              </div>
-            )}
-
-            {/* Pagination */}
-            {attendanceData && (
-              <div className="flex items-center justify-between border-t border-[#c3c6d2]/30 pt-4 mt-2">
-                <span className="text-xs text-brand-muted">
-                  Page {attendanceData.page.page} of {attendanceData.page.totalPages} ({attendanceData.page.total} entries)
-                </span>
-                <div className="flex items-center gap-2">
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={attendanceData.page.page <= 1}
-                    onClick={() => setAttendanceQuery((q) => ({ ...q, page: Math.max(1, (q.page ?? 1) - 1) }))}
-                    className="h-8 text-xs px-3"
-                  >
-                    <ChevronLeft className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    disabled={attendanceData.page.page >= attendanceData.page.totalPages}
-                    onClick={() => setAttendanceQuery((q) => ({ ...q, page: Math.min(attendanceData.page.totalPages, (q.page ?? 1) + 1) }))}
-                    className="h-8 text-xs px-3"
-                  >
-                    <ChevronRight className="h-3.5 w-3.5" />
-                  </Button>
-                </div>
-              </div>
-            )}
-          </SectionCard>
-        </>
-      )}
 
       {activeTab === "history" && (
         <>

@@ -84,6 +84,7 @@ export interface BirReportRow {
   userId: string;
   email: string;
   name: string;
+  department: string | null;
   grossCompensation: string;
   mandatoryContributions: string;
   taxableCompensation: string;
