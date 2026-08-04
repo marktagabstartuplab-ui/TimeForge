@@ -143,6 +143,16 @@ enum TimesheetStatus {
   PAYROLL_READY
 }
 
+/// Financial lifecycle of a timesheet — set automatically by payroll processing.
+/// UNPAID  = approved but not yet in a paid batch.
+/// PROCESSING = included in a payroll batch that has been sent to bank but not confirmed.
+/// PAID    = payout confirmed; timesheet is locked from further processing.
+enum TimesheetPaymentStatus {
+  UNPAID
+  PROCESSING
+  PAID
+}
+
 // Phase 9 enums ───────────────────────────────────────────────────────────────
 
 enum ApprovalAction {
@@ -352,6 +362,7 @@ model User {
   shiftViolations       ShiftLimitViolation[] @relation("ShiftViolationEmployee")
   shiftViolationsActed  ShiftLimitViolation[] @relation("ShiftViolationSupervisor")
   shiftOverridesGranted WorkSession[]         @relation("WorkSessionOverrideSupervisor")
+  grievances            Grievance[]           @relation("GrievanceEmployee")
 
   @@unique([tenantId, id])
   // Uniqueness on (tenantId, email) is enforced by a partial unique index
@@ -698,35 +709,42 @@ model TimeEntry {
 // ─── Smart Timesheets — Phase 8 ──────────────────────────────────────────────
 
 model Timesheet {
-  id             String          @id @default(uuid()) @db.Uuid
-  tenantId       String          @map("tenant_id") @db.Uuid
-  organizationId String          @map("organization_id") @db.Uuid
-  userId         String          @map("user_id") @db.Uuid
-  status         TimesheetStatus @default(DRAFT)
-  periodStart    DateTime        @map("period_start") @db.Date
-  periodEnd      DateTime        @map("period_end") @db.Date
-  totalMinutes   Int             @default(0) @map("total_minutes")
+  id             String                 @id @default(uuid()) @db.Uuid
+  tenantId       String                 @map("tenant_id") @db.Uuid
+  organizationId String                 @map("organization_id") @db.Uuid
+  userId         String                 @map("user_id") @db.Uuid
+  status         TimesheetStatus        @default(DRAFT)
+  /// BUG-AK: financial lifecycle — auto-updated by payroll processing.
+  paymentStatus  TimesheetPaymentStatus @default(UNPAID) @map("payment_status")
+  periodStart    DateTime               @map("period_start") @db.Date
+  periodEnd      DateTime               @map("period_end") @db.Date
+  totalMinutes   Int                    @default(0) @map("total_minutes")
   /// Supervisor-set overtime for this period. NULL = derive it from the entries
   /// (>8h/day), which is how every un-adjusted timesheet behaves.
-  overtimeMinutesOverride Int?    @map("overtime_minutes_override")
+  overtimeMinutesOverride Int?           @map("overtime_minutes_override")
   summary        String?
-  submittedAt    DateTime?       @map("submitted_at") @db.Timestamptz
-  decidedAt      DateTime?       @map("decided_at") @db.Timestamptz
-  createdBy      String?         @map("created_by") @db.Uuid
-  updatedBy      String?         @map("updated_by") @db.Uuid
-  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz
-  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz
-  deletedAt      DateTime?       @map("deleted_at") @db.Timestamptz
-  version        Int             @default(0)
+  submittedAt    DateTime?              @map("submitted_at") @db.Timestamptz
+  decidedAt      DateTime?              @map("decided_at") @db.Timestamptz
+  /// BUG-AJ: auto-linked to the system-generated payroll period whose date range
+  /// contains this timesheet's periodStart/periodEnd. Set on supervisor APPROVE.
+  payrollPeriodId String?               @map("payroll_period_id") @db.Uuid
+  createdBy      String?                @map("created_by") @db.Uuid
+  updatedBy      String?                @map("updated_by") @db.Uuid
+  createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime               @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?              @map("deleted_at") @db.Timestamptz
+  version        Int                    @default(0)
 
-  organization Organization @relation(fields: [tenantId, organizationId], references: [tenantId, id])
-  user         User         @relation(fields: [userId], references: [id])
-  entries      TimeEntry[]
-  approvals    Approval[]
+  organization   Organization   @relation(fields: [tenantId, organizationId], references: [tenantId, id])
+  user           User           @relation(fields: [userId], references: [id])
+  payrollPeriod  PayrollPeriod? @relation(fields: [payrollPeriodId], references: [id])
+  entries        TimeEntry[]
+  approvals      Approval[]
 
   @@index([tenantId, userId, periodStart])
   @@index([tenantId, status, organizationId])
   @@index([tenantId, organizationId, status, periodStart])
+  @@index([tenantId, payrollPeriodId])
   @@map("timesheets")
 }
 
@@ -1438,6 +1456,8 @@ model PayrollPeriod {
   rejectionReason  String?                 @map("rejection_reason")
   sentToBankAt     DateTime?               @map("sent_to_bank_at") @db.Timestamptz
   sentToBankBy     String?                 @map("sent_to_bank_by") @db.Uuid
+  /// BUG-AJ: true when this period was created by the scheduler (not manually).
+  isAutoGenerated  Boolean                 @default(false) @map("is_auto_generated")
   createdBy        String?                 @map("created_by") @db.Uuid
   updatedBy        String?                 @map("updated_by") @db.Uuid
   createdAt        DateTime                @default(now()) @map("created_at") @db.Timestamptz
@@ -1447,11 +1467,13 @@ model PayrollPeriod {
 
   organization Organization    @relation(fields: [tenantId, organizationId], references: [tenantId, id])
   reports      PayrollReport[]
+  timesheets   Timesheet[]
 
   // Uniqueness enforced by a partial unique index (WHERE deleted_at IS NULL) —
   // see migration 20260710000000_soft_delete_partial_unique_indexes.
   @@index([tenantId, organizationId, startDate, endDate])
   @@index([tenantId, organizationId, status])
+  @@index([tenantId, organizationId, isAutoGenerated])
   @@map("payroll_periods")
 }
 
@@ -1972,3 +1994,47 @@ model BugActivityLog {
   @@index([tenantId, bugId, createdAt])
   @@map("bug_activity_log")
 }
+
+// ─── Grievance / Complaint Channel (BUG-AL) ──────────────────────────────────
+
+enum GrievanceCategory {
+  WORKPLACE_ENVIRONMENT
+  COLLEAGUE_ISSUE
+  PAYROLL_DISPUTE
+  HARASSMENT
+  SAFETY_CONCERN
+  MANAGEMENT_ISSUE
+  OTHER
+}
+
+enum GrievanceStatus {
+  SUBMITTED
+  UNDER_REVIEW
+  RESOLVED
+}
+
+model Grievance {
+  id             String            @id @default(uuid()) @db.Uuid
+  tenantId       String            @map("tenant_id") @db.Uuid
+  organizationId String            @map("organization_id") @db.Uuid
+  employeeId     String            @map("employee_id") @db.Uuid
+  subject        String
+  category       GrievanceCategory @default(OTHER)
+  description    String
+  isAnonymous    Boolean           @default(false) @map("is_anonymous")
+  status         GrievanceStatus   @default(SUBMITTED)
+  internalNotes  String?           @map("internal_notes")
+  resolvedAt     DateTime?         @map("resolved_at") @db.Timestamptz
+  createdBy      String?           @map("created_by") @db.Uuid
+  updatedBy      String?           @map("updated_by") @db.Uuid
+  createdAt      DateTime          @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime          @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?         @map("deleted_at") @db.Timestamptz
+
+  employee User @relation("GrievanceEmployee", fields: [employeeId], references: [id])
+
+  @@index([tenantId, organizationId, status])
+  @@index([tenantId, employeeId])
+  @@map("grievances")
+}
+

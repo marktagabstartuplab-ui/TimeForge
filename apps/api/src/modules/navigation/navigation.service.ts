@@ -73,6 +73,9 @@ const MENU_CATALOG: MenuItemDef[] = [
   // rather than the nav hiding the screen.
   { id: 'payroll-settings', label: 'Payroll Settings', icon: 'sliders', route: '/admin/payroll-settings', section: 'SYSTEM', permission: 'payroll_rate:read' },
   // ── SUPPORT ──
+  // Grievance/Complaint Channel (BUG-AL): Employees can submit complaints privately to HR.
+  { id: 'submit-complaint', label: 'Submit a Complaint', icon: 'shield-alert', route: '/grievances', section: 'SUPPORT', permission: 'grievance:create' },
+  { id: 'hr-grievances',    label: 'HR Complaints Inbox', icon: 'inbox',        route: '/admin/grievances', section: 'SUPPORT', permission: 'grievance:read_org' },
   // Every role can raise a bug; only triage-capable roles (bug:read_team /
   // bug:read_org) get the queue view.
   { id: 'report-bug',   label: 'Report a Bug',          icon: 'bug',           route: '/bugs/create', section: 'SUPPORT', permission: 'bug:create' },

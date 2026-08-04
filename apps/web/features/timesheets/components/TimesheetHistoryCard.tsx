@@ -30,6 +30,15 @@ const columns: DataTableColumn<Timesheet>[] = [
     render: (t) => <StatusBadge {...timesheetStatusTone(t.status)} />,
   },
   {
+    key: "paymentStatus",
+    header: "Payment Status",
+    render: (t) => {
+      const ps = t.paymentStatus ?? "UNPAID";
+      const tone = ps === "PAID" ? "success" : ps === "PROCESSING" ? "warning" : "neutral";
+      return <StatusBadge label={ps} tone={tone} />;
+    },
+  },
+  {
     key: "summary",
     header: "Notes",
     className: "max-w-[320px]",

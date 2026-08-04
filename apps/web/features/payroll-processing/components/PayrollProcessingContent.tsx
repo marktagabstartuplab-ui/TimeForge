@@ -262,47 +262,8 @@ export function PayrollProcessingContent() {
               ))}
             </SelectContent>
           </Select>
-          <Button variant="outline" size="sm" onClick={() => setShowCreatePeriod((v) => !v)} className="h-10">
-            <Plus className="h-4 w-4" /> New Period
-          </Button>
         </div>
       </div>
-
-      {showCreatePeriod ? (
-        <SectionCard title="Create Payroll Period">
-          <div className="flex flex-wrap items-end gap-3">
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-brand-muted">Type</label>
-              <Select value={newPeriod.type} onValueChange={(v) => setNewPeriod((p) => ({ ...p, type: v as PayrollPeriodType }))}>
-                <SelectTrigger className="h-10 w-40 rounded-[10px] border-[#c3c6d2] bg-white text-sm">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="FIRST_HALF">First Half</SelectItem>
-                  <SelectItem value="SECOND_HALF">Second Half</SelectItem>
-                  <SelectItem value="CUSTOM">Custom</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-brand-muted">Start Date</label>
-              <Input type="date" value={newPeriod.startDate} onChange={(e) => setNewPeriod((p) => ({ ...p, startDate: e.target.value }))} className="h-10" />
-            </div>
-            <div>
-              <label className="mb-1 block text-xs font-semibold text-brand-muted">End Date</label>
-              <Input type="date" value={newPeriod.endDate} onChange={(e) => setNewPeriod((p) => ({ ...p, endDate: e.target.value }))} className="h-10" />
-            </div>
-            <Button
-              onClick={() => createPeriodMutation.mutate(newPeriod)}
-              disabled={!newPeriod.startDate || !newPeriod.endDate || createPeriodMutation.isPending}
-              className="h-10"
-            >
-              {createPeriodMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
-              Create
-            </Button>
-          </div>
-        </SectionCard>
-      ) : null}
 
       {/* Wizard stepper */}
       <div className="flex items-center gap-1 overflow-x-auto rounded-[12px] border border-[#c3c6d2]/50 bg-white p-2">
@@ -330,7 +291,7 @@ export function PayrollProcessingContent() {
       </div>
 
       {!activePeriodId ? (
-        <EmptyState message="No payroll periods yet. Click “New Period” to get started." />
+        <EmptyState message="No payroll periods available." />
       ) : (
         <>
           {/* Contextual step panel */}

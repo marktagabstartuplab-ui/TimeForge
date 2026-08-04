@@ -168,6 +168,11 @@ export const PERMISSIONS = {
   SHIFT_VIOLATION_READ_TEAM: 'shift_violation:read_team',
   /** Admin/HR: every violation in the organization. */
   SHIFT_VIOLATION_READ_ORG: 'shift_violation:read_org',
+  // grievances (BUG-AL)
+  GRIEVANCE_CREATE: 'grievance:create',
+  GRIEVANCE_READ_SELF: 'grievance:read_self',
+  GRIEVANCE_READ_ORG: 'grievance:read_org',
+  GRIEVANCE_UPDATE: 'grievance:update',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -216,6 +221,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.LEAVE_REQUEST_CREATE, P.LEAVE_REQUEST_READ, P.LEAVE_REQUEST_CANCEL, P.LEAVE_BALANCE_READ,
     P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT,
     P.SHIFT_CONFIG_READ, P.SHIFT_OVERRIDE_REQUEST,
+    P.GRIEVANCE_CREATE, P.GRIEVANCE_READ_SELF,
   ],
   [Role.SUPERVISOR]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -238,6 +244,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT, P.BUG_READ_TEAM,
     P.SHIFT_CONFIG_READ, P.SHIFT_OVERRIDE_REQUEST,
     P.SHIFT_OVERRIDE_APPROVE, P.SHIFT_VIOLATION_READ_TEAM,
+    P.GRIEVANCE_CREATE, P.GRIEVANCE_READ_SELF,
   ],
   [Role.HR]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -269,6 +276,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     // strictly broader than READ_TEAM in ShiftLimitsService — so HR carries both
     // to get the nav entry while still being scoped org-wide.
     P.SHIFT_VIOLATION_READ_TEAM,
+    P.GRIEVANCE_CREATE, P.GRIEVANCE_READ_SELF, P.GRIEVANCE_READ_ORG, P.GRIEVANCE_UPDATE,
   ],
   [Role.FINANCE]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -286,5 +294,6 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.ATTENDANCE_READ_ORG,
     P.ORG_READ, P.ORG_SETTINGS_READ, P.ORG_SETTINGS_UPDATE,
     P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT,
+    P.GRIEVANCE_CREATE, P.GRIEVANCE_READ_SELF,
   ],
 };

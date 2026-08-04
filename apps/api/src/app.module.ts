@@ -4,6 +4,7 @@ import { APP_FILTER, APP_GUARD } from '@nestjs/core';
 import { LoggerModule } from 'nestjs-pino';
 import { ThrottlerGuard, ThrottlerModule } from '@nestjs/throttler';
 import { BullModule } from '@nestjs/bullmq';
+import { ScheduleModule } from '@nestjs/schedule';
 import { randomUUID } from 'node:crypto';
 import type { IncomingMessage } from 'node:http';
 
@@ -59,6 +60,7 @@ import { LeaveModule } from './modules/leave/leave.module';
 import { RecurringIssuesModule } from './modules/recurring-issues/recurring-issues.module';
 import { BugsModule } from './modules/bugs/bugs.module';
 import { ShiftLimitsModule } from './modules/shift-limits/shift-limits.module';
+import { GrievancesModule } from './modules/grievances/grievances.module';
 
 @Module({
   imports: [
@@ -88,6 +90,7 @@ import { ShiftLimitsModule } from './modules/shift-limits/shift-limits.module';
         };
       },
     }),
+    ScheduleModule.forRoot(),
     PrismaModule,
     ScopingModule,
     TimeModule,
@@ -133,6 +136,7 @@ import { ShiftLimitsModule } from './modules/shift-limits/shift-limits.module';
     RecurringIssuesModule,
     BugsModule,
     ShiftLimitsModule,
+    GrievancesModule,
   ],
   controllers: [HealthController],
   providers: [
