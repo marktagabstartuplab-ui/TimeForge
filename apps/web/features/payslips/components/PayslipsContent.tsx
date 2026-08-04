@@ -29,6 +29,7 @@ import { RecentActivityCard } from "./RecentActivityCard";
 import { useCan } from "@/features/auth/rbac";
 import { useAuth } from "@/providers/auth-provider";
 import { formatPeriodRange, minutesBetween, toIsoDate, weekWindow } from "@/lib/time";
+import { cn } from "@/lib/utils";
 
 const DAY_LABELS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 
@@ -46,9 +47,20 @@ export function PayslipsContent() {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [toast, setToast] = useState<ToastState | null>(null);
 
+  // Colleagues' live clock-in/out status is supervisor/admin information — it has
+  // no bearing on an employee's own payslips, so it is not rendered (or even
+  // fetched) for a regular employee.
+  const isManager = user
+    ? user.roles.includes("SUPERVISOR") || user.roles.includes("ADMIN")
+    : false;
+
   const payrollQuery = useQuery({ queryKey: ["payroll", "me"], queryFn: getMyPayroll });
   const meQuery = useQuery({ queryKey: ["account", "me"], queryFn: getMe });
-  const presenceQuery = useQuery({ queryKey: ["account", "team-presence"], queryFn: getTeamPresence });
+  const presenceQuery = useQuery({
+    queryKey: ["account", "team-presence"],
+    queryFn: getTeamPresence,
+    enabled: isManager,
+  });
 
   const rateQuery = useQuery({
     queryKey: ["payroll", "rate", user?.id],
@@ -220,17 +232,19 @@ export function PayslipsContent() {
       <Toast toast={toast} onDismiss={() => setToast(null)} />
       <PageHeader title="Payslips" subtitle="Your approved hours and payroll history." />
 
-      <div className="grid grid-cols-1 gap-4 lg:grid-cols-3">
-        <SectionCard title="Weekly Tracked Hours" className="lg:col-span-2">
+      <div className={cn("grid grid-cols-1 gap-4", isManager && "lg:grid-cols-3")}>
+        <SectionCard title="Weekly Tracked Hours" className={cn(isManager && "lg:col-span-2")}>
           {weekEntriesQuery.isLoading ? (
             <Skeleton className="h-48" />
           ) : (
             <WeeklyHoursChart days={weekDays} />
           )}
         </SectionCard>
-        <SectionCard title="Team Status">
-          <TeamStatusList isLoading={presenceQuery.isLoading} members={presenceQuery.data} />
-        </SectionCard>
+        {isManager ? (
+          <SectionCard title="Team Status">
+            <TeamStatusList isLoading={presenceQuery.isLoading} members={presenceQuery.data} />
+          </SectionCard>
+        ) : null}
       </div>
 
       <div className="flex flex-col gap-4">
