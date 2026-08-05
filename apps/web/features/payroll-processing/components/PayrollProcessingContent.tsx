@@ -40,6 +40,7 @@ import {
 } from "../api/payroll-processing.service";
 import { runAndPollAiJob } from "@/features/scrum-management/api/ai-insight.service";
 import { AiFormattedText } from "@/components/shared/AiFormattedText";
+import { useCan } from "@/features/auth/rbac";
 
 const WIZARD_STEPS = [
   { n: 1, key: "period", label: "Period" },
@@ -87,10 +88,13 @@ export function PayrollProcessingContent() {
   const [statusFilter, setStatusFilter] = useState<"ALL" | RowStatus>("ALL");
   const [showCreatePeriod, setShowCreatePeriod] = useState(false);
   const [newPeriod, setNewPeriod] = useState<{ type: PayrollPeriodType; startDate: string; endDate: string }>({
-    type: "FIRST_HALF",
+    type: "CUSTOM",
     startDate: "",
     endDate: "",
   });
+  // BUG-AT: off-cycle payrolls (final pay, mid-month adjustments) need a period
+  // the scheduler never generated, so HR can create one inline.
+  const canCreatePeriod = useCan("payroll_period:create");
 
   const { data: periodsPage, isLoading: isPeriodsLoading } = useQuery({
     queryKey: ["payroll-processing", "periods"],
@@ -125,7 +129,9 @@ export function PayrollProcessingContent() {
     onSuccess: (period) => {
       setToast({ message: "Payroll period created.", tone: "success" });
       setShowCreatePeriod(false);
+      setNewPeriod({ type: "CUSTOM", startDate: "", endDate: "" });
       setSelectedPeriodId(period.id);
+      setStep(1);
       invalidateAll();
     },
     onError: (err: any) => setToast({ message: err?.message || "Could not create period.", tone: "error" }),
@@ -233,6 +239,14 @@ export function PayrollProcessingContent() {
   const canSendToFinance = report && activePeriod?.status === "GENERATED";
   const isBusy = generateMutation.isPending || lockMutation.isPending;
 
+  // Mirrors the server-side guard in payroll.service.ts createPeriod: both dates
+  // required, end must not precede start.
+  const newPeriodError =
+    newPeriod.startDate && newPeriod.endDate && newPeriod.endDate < newPeriod.startDate
+      ? "End date must be on or after the start date."
+      : null;
+  const canSubmitNewPeriod = Boolean(newPeriod.startDate && newPeriod.endDate) && !newPeriodError;
+
   return (
     <div className="flex flex-col gap-6">
       <Toast toast={toast} onDismiss={() => setToast(null)} />
@@ -262,6 +276,16 @@ export function PayrollProcessingContent() {
               ))}
             </SelectContent>
           </Select>
+          {canCreatePeriod ? (
+            <Button
+              type="button"
+              size="sm"
+              onClick={() => setShowCreatePeriod(true)}
+              className="h-10 shrink-0"
+            >
+              <Plus className="mr-1 h-4 w-4" /> New Period
+            </Button>
+          ) : null}
         </div>
       </div>
 
@@ -587,6 +611,90 @@ export function PayrollProcessingContent() {
           ) : null}
         </>
       )}
+
+      {showCreatePeriod ? (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30 p-4">
+          <div className="w-full max-w-md rounded-[16px] bg-white p-6 shadow-xl">
+            <h3 className="text-lg font-bold text-brand-navy">Create Payroll Period</h3>
+            <p className="mt-1 text-sm text-brand-muted">
+              Set up an off-cycle or custom-range period. It becomes available in the period
+              selector immediately.
+            </p>
+
+            <div className="mt-4 flex flex-col gap-4">
+              <div>
+                <label className="mb-1 block text-xs font-semibold text-brand-muted">Period Type</label>
+                <Select
+                  value={newPeriod.type}
+                  onValueChange={(v) => setNewPeriod((p) => ({ ...p, type: v as PayrollPeriodType }))}
+                >
+                  <SelectTrigger className="h-10 w-full rounded-[10px] border-[#c3c6d2] bg-white text-sm">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="CUSTOM">Custom</SelectItem>
+                    <SelectItem value="FIRST_HALF">First Half</SelectItem>
+                    <SelectItem value="SECOND_HALF">Second Half</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label htmlFor="new-period-start" className="mb-1 block text-xs font-semibold text-brand-muted">
+                    Start Date
+                  </label>
+                  <Input
+                    id="new-period-start"
+                    type="date"
+                    value={newPeriod.startDate}
+                    onChange={(e) => setNewPeriod((p) => ({ ...p, startDate: e.target.value }))}
+                    className="h-10"
+                  />
+                </div>
+                <div>
+                  <label htmlFor="new-period-end" className="mb-1 block text-xs font-semibold text-brand-muted">
+                    End Date
+                  </label>
+                  <Input
+                    id="new-period-end"
+                    type="date"
+                    min={newPeriod.startDate || undefined}
+                    value={newPeriod.endDate}
+                    onChange={(e) => setNewPeriod((p) => ({ ...p, endDate: e.target.value }))}
+                    className="h-10"
+                  />
+                </div>
+              </div>
+
+              {newPeriodError ? <p className="text-xs font-medium text-red-600">{newPeriodError}</p> : null}
+            </div>
+
+            <div className="mt-5 flex justify-end gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setShowCreatePeriod(false)}
+                disabled={createPeriodMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => createPeriodMutation.mutate(newPeriod)}
+                disabled={!canSubmitNewPeriod || createPeriodMutation.isPending}
+              >
+                {createPeriodMutation.isPending ? (
+                  <Loader2 className="mr-1 h-4 w-4 animate-spin" />
+                ) : (
+                  <Plus className="mr-1 h-4 w-4" />
+                )}
+                Create Period
+              </Button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }
