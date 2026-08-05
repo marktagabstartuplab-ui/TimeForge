@@ -704,6 +704,9 @@ export class UsersService {
         emailVerifiedAt: u.emailVerifiedAt,
         createdAt: u.createdAt,
         version: u.version,
+        // BUG-AS: omitted here, so the approval modal fell back to "EMPLOYEE"
+        // and silently overwrote whatever the applicant registered as.
+        employmentType: u.employmentType,
       })),
       page: { ...page.page, total },
     };
