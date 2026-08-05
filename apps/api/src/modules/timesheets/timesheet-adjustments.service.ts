@@ -25,6 +25,10 @@ interface EntrySnapshot {
   startTime: string;
   endTime: string | null;
   durationMinutes: number | null;
+  submittedMinutes?: number | null;
+  approvedMinutes?: number | null;
+  rejectedMinutes?: number | null;
+  rejectionReason?: string | null;
 }
 
 /**
@@ -135,6 +139,10 @@ export class TimesheetAdjustmentsService {
             startTime: u.startTime,
             endTime: u.endTime,
             durationMinutes: u.durationMinutes,
+            submittedMinutes: u.submittedMinutes,
+            approvedMinutes: u.approvedMinutes,
+            rejectedMinutes: u.rejectedMinutes,
+            rejectionReason: u.rejectionReason,
             updatedBy: p.userId,
             version: { increment: 1 },
           },
@@ -192,16 +200,22 @@ export class TimesheetAdjustmentsService {
 
   /**
    * Validates each requested entry change against the entry it targets and
-   * resolves the final startTime/endTime/durationMinutes triple.
-   *
-   * durationMinutes is the supervisor's explicit Total Hours when supplied and
-   * the span between the adjusted times otherwise — that's what lets them keep
-   * the clock times but book 8h against a 12h span, or vice versa.
+   * resolves the final startTime/endTime/durationMinutes triple, along with
+   * submitted/approved/rejected minutes deltas and rejection reasons.
    */
   private resolveEntryUpdates(
     entries: TimeEntry[],
     requested: AdjustEntryDto[],
-  ): { id: string; startTime: Date; endTime: Date | null; durationMinutes: number | null }[] {
+  ): {
+    id: string;
+    startTime: Date;
+    endTime: Date | null;
+    durationMinutes: number | null;
+    submittedMinutes: number | null;
+    approvedMinutes: number | null;
+    rejectedMinutes: number | null;
+    rejectionReason: string | null;
+  }[] {
     const byId = new Map(entries.map((e) => [e.id, e] as const));
     const seen = new Set<string>();
 
@@ -223,14 +237,35 @@ export class TimesheetAdjustmentsService {
         throw new UnprocessableEntityException('Time Out must be after Time In');
       }
 
-      const durationMinutes =
-        r.durationMinutes !== undefined
-          ? r.durationMinutes
-          : endTime
-            ? Math.max(0, Math.round((endTime.getTime() - startTime.getTime()) / 60_000))
-            : entry.durationMinutes;
+      const calculatedSpan = endTime
+        ? Math.max(0, Math.round((endTime.getTime() - startTime.getTime()) / 60_000))
+        : entry.durationMinutes;
 
-      return { id: entry.id, startTime, endTime, durationMinutes };
+      const submittedMinutes = entry.submittedMinutes ?? entry.durationMinutes ?? calculatedSpan ?? 0;
+
+      let approvedMinutes = r.approvedMinutes;
+      if (approvedMinutes === undefined) {
+        approvedMinutes = r.durationMinutes !== undefined ? r.durationMinutes : (calculatedSpan ?? 0);
+      }
+
+      let rejectedMinutes = r.rejectedMinutes;
+      if (rejectedMinutes === undefined) {
+        rejectedMinutes = Math.max(0, submittedMinutes - approvedMinutes);
+      }
+
+      const rejectionReason = r.rejectionReason?.trim() || null;
+      const durationMinutes = approvedMinutes;
+
+      return {
+        id: entry.id,
+        startTime,
+        endTime,
+        durationMinutes,
+        submittedMinutes,
+        approvedMinutes,
+        rejectedMinutes,
+        rejectionReason,
+      };
     });
   }
 
@@ -277,11 +312,19 @@ function toSnapshot(e: {
   startTime: Date;
   endTime: Date | null;
   durationMinutes: number | null;
+  submittedMinutes?: number | null;
+  approvedMinutes?: number | null;
+  rejectedMinutes?: number | null;
+  rejectionReason?: string | null;
 }): EntrySnapshot {
   return {
     id: e.id,
     startTime: e.startTime.toISOString(),
     endTime: e.endTime?.toISOString() ?? null,
     durationMinutes: e.durationMinutes,
+    ...(e.submittedMinutes != null ? { submittedMinutes: e.submittedMinutes } : {}),
+    ...(e.approvedMinutes != null ? { approvedMinutes: e.approvedMinutes } : {}),
+    ...(e.rejectedMinutes != null ? { rejectedMinutes: e.rejectedMinutes } : {}),
+    ...(e.rejectionReason != null ? { rejectionReason: e.rejectionReason } : {}),
   };
 }

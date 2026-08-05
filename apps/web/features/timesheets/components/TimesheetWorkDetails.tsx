@@ -61,6 +61,9 @@ export function TimesheetWorkDetails({ timesheetId }: { timesheetId: string }) {
           .join(" · ");
         const links = entry.referenceLinks ?? [];
         const attachments = entry.attachments ?? [];
+        const hasRejection = entry.rejectedMinutes != null && entry.rejectedMinutes > 0;
+        const submittedMins = entry.submittedMinutes ?? ((entry.durationMinutes ?? 0) + (entry.rejectedMinutes ?? 0));
+
         return (
           <div key={entry.id} className="rounded-[12px] border border-[#c3c6d2]/40 bg-white p-4">
             <div className="flex flex-wrap items-center justify-between gap-2">
@@ -69,6 +72,11 @@ export function TimesheetWorkDetails({ timesheetId }: { timesheetId: string }) {
                 <p className="truncate text-sm font-semibold text-brand-navy">
                   {entry.task?.trim() || "General work"}
                 </p>
+                {hasRejection && (
+                  <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
+                    {formatDuration(entry.rejectedMinutes)} Rejected
+                  </span>
+                )}
               </div>
               <p className="shrink-0 text-xs text-brand-muted">
                 {formatEntryDate(entry.startTime)} · {formatTime(entry.startTime)}
@@ -76,6 +84,20 @@ export function TimesheetWorkDetails({ timesheetId }: { timesheetId: string }) {
                 <span className="font-semibold text-brand-ink">{formatDuration(entry.durationMinutes)}</span>
               </p>
             </div>
+
+            {hasRejection && (
+              <div className="mt-2.5 rounded-[8px] bg-red-50/60 border border-red-200/80 p-2.5 text-xs text-red-900">
+                <p className="font-semibold">
+                  Hours Split: {formatDuration(entry.durationMinutes)} Approved · {formatDuration(entry.rejectedMinutes)} Rejected (Submitted: {formatDuration(submittedMins)})
+                </p>
+                {entry.rejectionReason && (
+                  <p className="mt-1 text-red-800">
+                    <span className="font-semibold text-red-900">Reason: </span>
+                    {entry.rejectionReason}
+                  </p>
+                )}
+              </div>
+            )}
 
             {context ? <p className="mt-1 text-xs text-brand-muted">{context}</p> : null}
 

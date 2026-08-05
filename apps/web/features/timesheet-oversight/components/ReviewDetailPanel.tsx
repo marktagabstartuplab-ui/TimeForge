@@ -1,12 +1,17 @@
 "use client";
 
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { useMutation, useQueryClient } from "@tanstack/react-query";
 import { Clock, TrendingUp, BookOpen, MessageSquare, Loader2, RefreshCw, AlertCircle, Ban, ChevronDown, ChevronUp, Link2, Paperclip, Download, Sparkles, PencilLine } from "lucide-react";
 import { StatusBadge, timesheetStatusTone } from "@/components/shared/StatusBadge";
 import { Textarea } from "@/components/ui/textarea";
 import { ApiError } from "@/lib/api/client";
-import { approveTimesheet, rejectTimesheet, requestRevisionTimesheet, type TimesheetDetail } from "../api/timesheet-oversight.service";
+import { Dialog, DialogContent, DialogTitle, DialogDescription, DialogCloseButton } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { FormBanner } from "@/features/auth/components/FormMessages";
+import { adjustTimesheet, approveTimesheet, rejectTimesheet, requestRevisionTimesheet, type TimesheetDetail } from "../api/timesheet-oversight.service";
 import { getAttachmentSignedUrl } from "../../time-tracking/api/time-entries.service";
 import { runAndPollAiJob } from "@/features/scrum-management/api/ai-insight.service";
 import { AiFormattedText } from "@/components/shared/AiFormattedText";
@@ -37,6 +42,7 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
   const [summarizing, setSummarizing] = useState(false);
   const [aiSummary, setAiSummary] = useState<{ summary: string; recommendation: string } | null>(null);
   const [adjustOpen, setAdjustOpen] = useState(false);
+  const [selectedEntryForAdjust, setSelectedEntryForAdjust] = useState<TimesheetDetail["entries"][0] | null>(null);
   // Supervisors (and Admins, via the wildcard) may correct a record while it is
   // under review; employees never see this. The API enforces the same rule.
   const canAdjust = useCan("timesheet:adjust_team");
@@ -295,15 +301,17 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
           ) : (
             detail.entries.map((entry) => {
               const isExpanded = expandedEntries[entry.id];
+              const hasRejection = entry.rejectedMinutes != null && entry.rejectedMinutes > 0;
+              const submittedMins = entry.submittedMinutes ?? ((entry.durationMinutes ?? 0) + (entry.rejectedMinutes ?? 0));
               return (
                 <div key={entry.id} className="flex flex-col hover:bg-slate-50/30 transition-colors">
                   {/* Clickable Header */}
-                  <button
-                    type="button"
-                    onClick={() => toggleExpand(entry.id)}
-                    className="w-full text-left p-3 flex items-start gap-3 justify-between hover:bg-slate-50/80 transition-colors"
-                  >
-                    <div className="min-w-0 flex-1">
+                  <div className="w-full text-left p-3 flex items-start gap-3 justify-between hover:bg-slate-50/80 transition-colors">
+                    <button
+                      type="button"
+                      onClick={() => toggleExpand(entry.id)}
+                      className="min-w-0 flex-1 text-left"
+                    >
                       <div className="flex items-center gap-2 flex-wrap">
                         {isExpanded ? (
                           <ChevronUp className="h-4 w-4 text-brand-muted shrink-0" />
@@ -318,6 +326,11 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
                             {entry.project.name}
                           </span>
                         )}
+                        {hasRejection && (
+                          <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full shrink-0">
+                            {formatHours(entry.rejectedMinutes!)}h Rejected
+                          </span>
+                        )}
                       </div>
                       {entry.deliverables && !isExpanded ? (
                         <p className="text-xs text-brand-muted truncate pl-5 mt-0.5">
@@ -327,15 +340,42 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
                       <p className="text-[10px] text-brand-muted pl-5 mt-0.5">
                         {new Date(entry.startTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })} @ {formatTime(entry.startTime)}
                       </p>
+                    </button>
+                    <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                      <div className="text-xs font-bold text-brand bg-slate-100 px-2 py-0.5 rounded">
+                        {formatHours(entry.durationMinutes ?? 0)}h Approved
+                      </div>
+                      {canAdjust && underReview && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedEntryForAdjust(entry);
+                          }}
+                          title="Adjust regular/overtime hours and record rejected time for this entry"
+                          className="p-1 text-brand-muted hover:text-brand hover:bg-brand/10 rounded transition-colors"
+                        >
+                          <PencilLine className="h-4 w-4 text-amber-600 hover:text-amber-700" />
+                        </button>
+                      )}
                     </div>
-                    <div className="text-xs font-bold text-brand bg-slate-100 px-2 py-0.5 rounded shrink-0">
-                      {formatHours(entry.durationMinutes ?? 0)}h
-                    </div>
-                  </button>
+                  </div>
 
                   {/* Expanded Details Panel */}
                   {isExpanded && (
                     <div className="px-8 pb-4 pt-3 flex flex-col gap-3 border-t border-[#c3c6d2]/10 bg-slate-50/20 text-xs text-brand-ink">
+                      {hasRejection && (
+                        <div className="rounded-lg border border-red-200/80 bg-red-50/60 p-2.5 text-xs text-red-900">
+                          <span className="font-semibold block mb-0.5">Hour Adjustment & Rejection Split:</span>
+                          <p>{formatHours(entry.durationMinutes ?? 0)}h Approved · {formatHours(entry.rejectedMinutes!)}h Rejected (Submitted: {formatHours(submittedMins)}h)</p>
+                          {entry.rejectionReason && (
+                            <p className="mt-1 text-red-800">
+                              <span className="font-semibold text-red-900">Reason: </span>
+                              {entry.rejectionReason}
+                            </p>
+                          )}
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-b border-[#c3c6d2]/15 pb-2.5 mb-1.5">
                         <div>
                           <span className="font-semibold text-brand-muted block mb-0.5">Project:</span>
@@ -559,13 +599,173 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
       </div>
 
       {canAdjust && underReview ? (
-        <AdjustHoursModal
-          open={adjustOpen}
-          onOpenChange={setAdjustOpen}
-          detail={detail}
-          onToast={onToast}
-        />
+        <>
+          <AdjustHoursModal
+            open={adjustOpen}
+            onOpenChange={setAdjustOpen}
+            detail={detail}
+            onToast={onToast}
+          />
+          <InlineEntryAdjustModal
+            open={selectedEntryForAdjust !== null}
+            onOpenChange={(open) => {
+              if (!open) setSelectedEntryForAdjust(null);
+            }}
+            entry={selectedEntryForAdjust}
+            detail={detail}
+            onToast={onToast}
+          />
+        </>
       ) : null}
     </div>
+  );
+}
+
+function InlineEntryAdjustModal({
+  open,
+  onOpenChange,
+  entry,
+  detail,
+  onToast,
+}: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  entry: TimesheetDetail["entries"][0] | null;
+  detail: TimesheetDetail;
+  onToast: (t: ToastState) => void;
+}) {
+  const queryClient = useQueryClient();
+  const submittedMins = entry ? (entry.submittedMinutes ?? ((entry.durationMinutes ?? 0) + (entry.rejectedMinutes ?? 0))) : 0;
+  const [approvedHoursStr, setApprovedHoursStr] = useState("");
+  const [reason, setReason] = useState("");
+  const [serverError, setServerError] = useState<string | null>(null);
+
+  useEffect(() => {
+    if (!open || !entry) return;
+    setApprovedHoursStr(((entry.approvedMinutes ?? entry.durationMinutes ?? 0) / 60).toFixed(2));
+    setReason(entry.rejectionReason ?? "");
+    setServerError(null);
+  }, [open, entry]);
+
+  if (!entry) return null;
+
+  const approvedMins = Math.round((Number(approvedHoursStr) || 0) * 60);
+  const rejectedMins = Math.max(0, submittedMins - approvedMins);
+  const submittedHours = (submittedMins / 60).toFixed(2);
+  const approvedHours = (approvedMins / 60).toFixed(2);
+  const rejectedHours = (rejectedMins / 60).toFixed(2);
+
+  const canSave = approvedMins >= 0 && (rejectedMins === 0 || reason.trim().length > 0);
+
+  const submit = useMutation({
+    mutationFn: () =>
+      adjustTimesheet(detail.id, {
+        expectedVersion: detail.version,
+        reason: reason.trim() || `Adjusted hours for task: ${entry.task || "Work entry"}`,
+        entries: [
+          {
+            entryId: entry.id,
+            durationMinutes: approvedMins,
+            approvedMinutes: approvedMins,
+            rejectedMinutes: rejectedMins,
+            rejectionReason: reason.trim() || undefined,
+          },
+        ],
+      }),
+    onSuccess: () => {
+      onToast({ message: "Entry hours adjusted and rejected time updated.", tone: "success" });
+      queryClient.invalidateQueries({ queryKey: ["timesheet-oversight"] });
+      queryClient.invalidateQueries({ queryKey: ["timesheets"] });
+      onOpenChange(false);
+    },
+    onError: (err) =>
+      setServerError(err instanceof ApiError ? err.message : "Could not save entry adjustment."),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="w-[min(540px,calc(100vw-2rem))]">
+        <div className="flex items-start justify-between px-6 pt-6">
+          <div>
+            <DialogTitle className="text-lg font-bold text-brand-navy">
+              Adjust Entry Hours & Rejected Time
+            </DialogTitle>
+            <DialogDescription className="text-xs text-brand-muted mt-1">
+              Adjust approved hours for &ldquo;{entry.task || entry.description || "General Work"}&rdquo;
+            </DialogDescription>
+          </div>
+          <DialogCloseButton />
+        </div>
+
+        <div className="flex flex-col gap-4 px-6 py-4">
+          {serverError ? <FormBanner message={serverError} /> : null}
+
+          <div className="grid grid-cols-3 gap-3 rounded-lg border border-[#c3c6d2]/40 bg-slate-50 p-3 text-center">
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Submitted</p>
+              <p className="text-base font-black text-brand-ink">{submittedHours}h</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Approved</p>
+              <p className="text-base font-black text-emerald-700">{approvedHours}h</p>
+            </div>
+            <div>
+              <p className="text-[10px] font-bold uppercase tracking-wider text-red-600">Rejected</p>
+              <p className="text-base font-black text-red-600">{rejectedHours}h</p>
+            </div>
+          </div>
+
+          <div>
+            <Label htmlFor="entry-approved-hours" className="text-xs font-semibold text-brand-ink mb-1.5 block">
+              Approved Hours
+            </Label>
+            <Input
+              id="entry-approved-hours"
+              type="number"
+              min="0"
+              max={(submittedMins / 60).toFixed(2)}
+              step="0.25"
+              value={approvedHoursStr}
+              onChange={(e) => setApprovedHoursStr(e.target.value)}
+              className="w-full bg-white text-sm"
+            />
+            {rejectedMins > 0 && (
+              <p className="mt-1 text-[11px] font-medium text-amber-700">
+                Reducing from {submittedHours}h to {approvedHours}h will record {rejectedHours}h as Rejected Hours.
+              </p>
+            )}
+          </div>
+
+          <div>
+            <Label htmlFor="entry-rejection-reason" className="text-xs font-semibold text-brand-ink mb-1.5 block">
+              Reason / Note {rejectedMins > 0 ? <span className="text-red-600">*</span> : "(Optional)"}
+            </Label>
+            <Textarea
+              id="entry-rejection-reason"
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              placeholder="Explain why hours were deducted or adjusted (e.g. Unapproved overtime, unlogged break, scope change)..."
+              className="bg-white text-sm"
+            />
+          </div>
+
+          <div className="flex justify-end gap-2.5 pt-2">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              onClick={() => submit.mutate()}
+              disabled={!canSave || submit.isPending}
+              className="bg-brand text-white hover:bg-[#1467d6]"
+            >
+              {submit.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+              Save Entry Adjustment
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
   );
 }

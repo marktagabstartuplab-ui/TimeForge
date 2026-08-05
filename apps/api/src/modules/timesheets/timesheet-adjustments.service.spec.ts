@@ -213,6 +213,9 @@ describe('TimesheetAdjustmentsService', () => {
           startTime: '2026-07-20T09:00:00.000Z',
           endTime: '2026-07-20T17:00:00.000Z',
           durationMinutes: 480,
+          submittedMinutes: 720,
+          approvedMinutes: 480,
+          rejectedMinutes: 240,
         },
       ]);
     });
@@ -267,6 +270,33 @@ describe('TimesheetAdjustmentsService', () => {
       );
       expect(notifications.create.mock.calls[0][0].message).toContain(
         'Employee forgot to clock out',
+      );
+    });
+
+    it('calculates and persists rejected hours and rejection reason when entry hours are reduced (BUG-AU)', async () => {
+      await service.adjust(SUPERVISOR, 'ts-1', {
+        expectedVersion: 3,
+        reason: 'Adjusted per-entry hours.',
+        entries: [
+          {
+            entryId: 'e-1',
+            approvedMinutes: 480, // 8 hours approved out of 12 hours (720m) submitted
+            rejectionReason: 'Unapproved overtime hours',
+          },
+        ],
+      });
+
+      expect(prisma.timeEntry.update).toHaveBeenCalledWith(
+        expect.objectContaining({
+          where: { id: 'e-1' },
+          data: expect.objectContaining({
+            submittedMinutes: 720,
+            approvedMinutes: 480,
+            rejectedMinutes: 240, // 720 - 480 = 240 (4h)
+            durationMinutes: 480,
+            rejectionReason: 'Unapproved overtime hours',
+          }),
+        }),
       );
     });
   });

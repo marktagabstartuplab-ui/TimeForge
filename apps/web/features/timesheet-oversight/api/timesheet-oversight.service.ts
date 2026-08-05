@@ -82,6 +82,10 @@ export interface TimesheetDetail extends TimesheetRow {
     startTime: string;
     endTime: string | null;
     durationMinutes: number | null;
+    submittedMinutes?: number | null;
+    approvedMinutes?: number | null;
+    rejectedMinutes?: number | null;
+    rejectionReason?: string | null;
     projectId: string | null;
     workCategoryId: string | null;
     description: string | null;
@@ -138,6 +142,9 @@ export interface AdjustTimesheetPayload {
     endTime?: string;
     /** Explicit Total Hours in minutes; omit to recompute from the times. */
     durationMinutes?: number;
+    approvedMinutes?: number;
+    rejectedMinutes?: number;
+    rejectionReason?: string;
   }[];
   /** Explicit overtime in minutes; null clears it back to the derived >8h/day figure. */
   overtimeMinutesOverride?: number | null;

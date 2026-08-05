@@ -133,7 +133,7 @@ export class AdjustEntryDto {
   endTime?: string;
 
   /**
-   * New Total Hours for this entry, in minutes. Omit to recompute it from
+   * New Total Hours / Approved Hours for this entry, in minutes. Omit to recompute it from
    * startTime/endTime; send it to override the span explicitly (e.g. keeping
    * the clock times but deducting an unlogged break).
    */
@@ -143,6 +143,25 @@ export class AdjustEntryDto {
   @Max(24 * 60)
   @Type(() => Number)
   durationMinutes?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(24 * 60)
+  @Type(() => Number)
+  approvedMinutes?: number;
+
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(24 * 60)
+  @Type(() => Number)
+  rejectedMinutes?: number;
+
+  @IsOptional()
+  @IsString()
+  @MaxLength(2000)
+  rejectionReason?: string;
 }
 
 export class AdjustTimesheetDto {

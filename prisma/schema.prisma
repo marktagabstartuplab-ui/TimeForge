@@ -674,6 +674,10 @@ model TimeEntry {
   startTime       DateTime        @map("start_time") @db.Timestamptz
   endTime         DateTime?       @map("end_time") @db.Timestamptz
   durationMinutes Int?            @map("duration_minutes")
+  submittedMinutes Int?           @map("submitted_minutes")
+  approvedMinutes  Int?           @map("approved_minutes")
+  rejectedMinutes  Int?           @map("rejected_minutes")
+  rejectionReason  String?        @map("rejection_reason")
   task            String?
   description     String?
   deliverables    String?

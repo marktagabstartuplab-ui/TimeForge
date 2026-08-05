@@ -31,6 +31,10 @@ export interface TimeEntry {
   startTime: string;
   endTime: string | null;
   durationMinutes: number | null;
+  submittedMinutes?: number | null;
+  approvedMinutes?: number | null;
+  rejectedMinutes?: number | null;
+  rejectionReason?: string | null;
   task: string | null;
   description: string | null;
   deliverables: string | null;
