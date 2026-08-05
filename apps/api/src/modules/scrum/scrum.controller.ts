@@ -64,6 +64,22 @@ export class ScrumController {
     return this.svc.myEditRequest(u, id);
   }
 
+  /** Employee closes a revision on a reopened entry — saves are done, lock it again. */
+  @Post(':id/resubmit')
+  @HttpCode(200)
+  @RequirePermissions('scrum:update')
+  resubmit(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.resubmitEntry(u, id);
+  }
+
+  /** Employee hides the supervisor comment from their active dashboard. */
+  @Post(':id/comment/dismiss')
+  @HttpCode(200)
+  @RequirePermissions('scrum:update')
+  dismissComment(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.dismissComment(u, id);
+  }
+
   @Get(':id')
   @RequirePermissions('scrum:read')
   findOne(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {

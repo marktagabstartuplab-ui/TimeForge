@@ -55,6 +55,15 @@ interface WorkDetailsCardProps {
 // Use a non-empty sentinel and map it back to "" (→ undefined) on save.
 const PROFILE_DEPARTMENT = "__profile_department__";
 
+/** Asterisk marking a mandatory field (BUG-AP). */
+function RequiredMark() {
+  return (
+    <span className="ml-0.5 text-red-600" aria-hidden="true">
+      *
+    </span>
+  );
+}
+
 /**
  * Section 3 — Work Details. Saves context onto the *running* time entry via
  * PATCH /time-entries/:id: Task and Work Description are stored as separate
@@ -106,6 +115,10 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
     formState: { errors, isDirty },
   } = useForm<WorkDetailsValues>({
     resolver: zodResolver(workDetailsSchema),
+    // Required fields gate the Save button, so validity has to be known before
+    // the first submit — with the default "onSubmit" mode it is only computed
+    // once a submit fires, which a disabled button can never trigger (BUG-AP).
+    mode: "onChange",
     defaultValues: {
       task: initialTask,
       workDescription: initialDescription,
@@ -141,6 +154,19 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
   const watchTask = watch("task");
   const watchWorkDescription = watch("workDescription");
   const watchDeliverables = watch("deliverables");
+  const watchWorkCategoryId = watch("workCategoryId");
+
+  // Empty required fields are flagged immediately rather than waiting for a
+  // touch/submit: the Save button is disabled while any of them is blank, so
+  // without this the form would silently refuse to submit with nothing on
+  // screen explaining why (BUG-AP verify (d)).
+  const missing = {
+    task: !watchTask?.trim(),
+    workDescription: !watchWorkDescription?.trim(),
+    workCategoryId: !watchWorkCategoryId?.trim(),
+  };
+  const hasMissingRequired = missing.task || missing.workDescription || missing.workCategoryId;
+  const REQUIRED_MESSAGE = "This field is required";
 
   const save = useMutation({
     mutationFn: async (values: WorkDetailsValues) => {
@@ -359,7 +385,10 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
             <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label htmlFor="wd-task" className="text-sm font-medium text-brand-navy">Task</label>
+                  <label htmlFor="wd-task" className="text-sm font-medium text-brand-navy">
+                    Task
+                    <RequiredMark />
+                  </label>
                   <AiImproveTaskButton
                     text={watchTask || ""}
                     onImprove={(val) => setValue("task", val, { shouldDirty: true })}
@@ -401,14 +430,18 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
                   id="wd-task"
                   placeholder="e.g. UI Refactoring"
                   rows={2}
-                  invalid={Boolean(errors.task)}
+                  invalid={Boolean(errors.task) || missing.task}
+                  aria-required="true"
                   {...register("task")}
                 />
-                <FieldError message={errors.task?.message} />
+                <FieldError message={errors.task?.message ?? (missing.task ? REQUIRED_MESSAGE : undefined)} />
               </div>
 
               <div>
-                <FieldLabel htmlFor="wd-workCategoryId">Work Category</FieldLabel>
+                <FieldLabel htmlFor="wd-workCategoryId">
+                  Work Category
+                  <RequiredMark />
+                </FieldLabel>
                 <Controller
                   control={control}
                   name="workCategoryId"
@@ -418,7 +451,16 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
                       onValueChange={(v) => field.onChange(v ?? "")}
                       items={toItems(categories)}
                     >
-                      <SelectTrigger id="wd-workCategoryId" aria-label="Work Category" className={selectClass}>
+                      <SelectTrigger
+                        id="wd-workCategoryId"
+                        aria-label="Work Category"
+                        aria-required="true"
+                        aria-invalid={missing.workCategoryId || undefined}
+                        className={cn(
+                          selectClass,
+                          missing.workCategoryId && "border-red-400 focus-visible:ring-red-200",
+                        )}
+                      >
                         <SelectValue placeholder="Select..." />
                       </SelectTrigger>
                       <SelectContent>
@@ -430,6 +472,9 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
                       </SelectContent>
                     </Select>
                   )}
+                />
+                <FieldError
+                  message={errors.workCategoryId?.message ?? (missing.workCategoryId ? REQUIRED_MESSAGE : undefined)}
                 />
               </div>
             </div>
@@ -443,7 +488,10 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
 
             <div>
               <div className="flex items-center justify-between mb-1.5">
-                <label htmlFor="wd-workDescription" className="text-sm font-medium text-brand-navy">Work Description</label>
+                <label htmlFor="wd-workDescription" className="text-sm font-medium text-brand-navy">
+                  Work Description
+                  <RequiredMark />
+                </label>
                 <AiImproveTaskButton
                   text={watchWorkDescription || ""}
                   onImprove={(val) => setValue("workDescription", val, { shouldDirty: true })}
@@ -455,10 +503,13 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
                 id="wd-workDescription"
                 rows={3}
                 placeholder="Detail the specific work for this session..."
-                invalid={Boolean(errors.workDescription)}
+                invalid={Boolean(errors.workDescription) || missing.workDescription}
+                aria-required="true"
                 {...register("workDescription")}
               />
-              <FieldError message={errors.workDescription?.message} />
+              <FieldError
+                message={errors.workDescription?.message ?? (missing.workDescription ? REQUIRED_MESSAGE : undefined)}
+              />
             </div>
 
             <div>
@@ -614,7 +665,11 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
             {/* Persistent confirmation — a toast disappears, leaving the user
                 unsure whether the values on screen are the saved ones. */}
             <p className="text-xs text-brand-muted" role="status">
-              {savedAt && !isDirty ? (
+              {hasMissingRequired ? (
+                <span className="font-semibold text-red-600">
+                  Fill in the required fields (<span aria-hidden="true">*</span>) to save.
+                </span>
+              ) : savedAt && !isDirty ? (
                 <span className="flex items-center gap-1.5 font-semibold text-[#16a34a]">
                   <Check className="h-3.5 w-3.5" aria-hidden="true" />
                   Saved at {formatClockTime(savedAt)} — these are the stored values.
@@ -627,8 +682,14 @@ export function WorkDetailsCard({ running, selectedTask, profileDepartmentId, de
             </p>
             <button
               type="submit"
-              disabled={save.isPending || !isDirty}
-              title={!isDirty && !save.isPending ? "No changes to save" : undefined}
+              disabled={save.isPending || !isDirty || hasMissingRequired}
+              title={
+                hasMissingRequired
+                  ? "Task, Work Category and Work Description are required"
+                  : !isDirty && !save.isPending
+                    ? "No changes to save"
+                    : undefined
+              }
               className="flex h-11 items-center justify-center gap-2 rounded-[10px] bg-brand px-6 text-sm font-bold text-white transition-colors hover:bg-[#1467d6] disabled:cursor-not-allowed disabled:opacity-60"
             >
               {save.isPending ? <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" /> : null}

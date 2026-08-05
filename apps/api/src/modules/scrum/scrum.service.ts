@@ -319,6 +319,9 @@ export class ScrumService {
       where: { id },
       data: {
         supervisorNote: dto.comment,
+        // A new comment is new information — clear any earlier dismissal so it
+        // surfaces on the employee's dashboard again (BUG-AR).
+        supervisorNoteDismissedAt: null,
         updatedBy: p.userId,
         version: { increment: 1 },
       },
@@ -348,6 +351,88 @@ export class ScrumService {
       message: `Your supervisor left feedback: "${dto.comment.trim().slice(0, 500)}"`,
       actionUrl: `/time-tracking?scrum=${id}`,
       actionLabel: 'View Scrum',
+    });
+
+    return updated;
+  }
+
+  /**
+   * Employee dismisses the supervisor comment on their own entry: it stops
+   * rendering on the active dashboard, but the text is deliberately kept so the
+   * entry's history record stays complete (BUG-AR). Idempotent — re-dismissing
+   * an already-dismissed note is a no-op rather than an error, since the button
+   * can be clicked twice before the refetch lands.
+   */
+  async dismissComment(p: AuthPrincipal, id: string): Promise<ScrumEntry> {
+    const entry = await this.ownEntry(p, id);
+    if (!entry.supervisorNote) {
+      throw new NotFoundException('This entry has no supervisor comment');
+    }
+    if (entry.supervisorNoteDismissedAt) return entry;
+
+    const updated = await this.prisma.scrumEntry.update({
+      where: { id },
+      data: {
+        supervisorNoteDismissedAt: new Date(),
+        updatedBy: p.userId,
+        version: { increment: 1 },
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: p.tenantId,
+        actorId: p.userId,
+        action: 'ADMIN_ACTION',
+        entityType: 'ScrumEntry',
+        entityId: id,
+        metadata: { event: 'SCRUM_COMMENT_DISMISSED' },
+      },
+    });
+
+    return updated;
+  }
+
+  /**
+   * Supervisor removes their comment outright — unlike a dismissal this erases
+   * the text everywhere, including history, so it is restricted to callers who
+   * could have written it in the first place (same team-scope check as `comment`).
+   * The original text is preserved in the audit log.
+   */
+  async deleteComment(p: AuthPrincipal, id: string): Promise<ScrumEntry> {
+    const entry = await this.prisma.scrumEntry.findFirst({
+      where: { id, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
+    });
+    if (!entry) throw new NotFoundException('Scrum entry not found');
+    if (!this.can(p, PERMISSIONS.SCRUM_READ_TEAM)) {
+      throw new ForbiddenException('Only supervisors can delete scrum comments');
+    }
+    if (!(await this.isInTeam(p, entry.userId))) {
+      throw new ForbiddenException('This entry is outside your team');
+    }
+    if (!entry.supervisorNote) {
+      throw new NotFoundException('This entry has no supervisor comment');
+    }
+
+    const updated = await this.prisma.scrumEntry.update({
+      where: { id },
+      data: {
+        supervisorNote: null,
+        supervisorNoteDismissedAt: null,
+        updatedBy: p.userId,
+        version: { increment: 1 },
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: p.tenantId,
+        actorId: p.userId,
+        action: 'ADMIN_ACTION',
+        entityType: 'ScrumEntry',
+        entityId: id,
+        metadata: { event: 'SCRUM_COMMENT_DELETED', comment: entry.supervisorNote },
+      },
     });
 
     return updated;
@@ -599,6 +684,70 @@ export class ScrumService {
         : `Your supervisor approved your request to edit today's commitments. Reason: ${reason}`,
       actionUrl: `/time-tracking?scrum=${id}`,
       actionLabel: 'Edit Scrum',
+    });
+
+    return updated;
+  }
+
+  /**
+   * Employee closes a revision: the entry they were granted access to is locked
+   * again immediately (BUG-AQ). Without this the reopen workflow had no exit —
+   * an unlocked past day stayed editable indefinitely, because the automatic
+   * re-lock only fires when a day reaches 100% task completion, which a past
+   * entry reopened for a typo fix will never newly cross.
+   *
+   * Deliberately not an approval step: the supervisor already approved the edit
+   * by unlocking, so the employee owns the resubmission. They are notified that
+   * it landed, and the audit log records who resubmitted and when.
+   */
+  async resubmitEntry(p: AuthPrincipal, id: string): Promise<ScrumEntry> {
+    const entry = await this.ownEntry(p, id);
+    if (entry.isLocked) {
+      throw new ConflictException('This scrum entry is already locked');
+    }
+
+    // Progress/status stay derived from the task rows — resubmitting records
+    // that the employee is done editing, it must not claim work was completed.
+    const tasks = await this.prisma.scrumTask.findMany({
+      where: { scrumEntryId: id, deletedAt: null },
+      select: { taskStatus: true },
+    });
+    const completed = tasks.filter((t) => t.taskStatus === 'COMPLETED').length;
+    const progress = tasks.length > 0 ? Math.round((completed / tasks.length) * 100) : entry.progress;
+
+    const updated = await this.prisma.scrumEntry.update({
+      where: { id },
+      data: {
+        isLocked: true,
+        progress,
+        status: progress === 100 ? 'COMPLETED' : entry.status,
+        submittedAt: new Date(),
+        updatedBy: p.userId,
+        version: { increment: 1 },
+      },
+    });
+
+    await this.prisma.auditLog.create({
+      data: {
+        tenantId: p.tenantId,
+        actorId: p.userId,
+        action: 'ADMIN_ACTION',
+        entityType: 'ScrumEntry',
+        entityId: id,
+        metadata: {
+          event: 'SCRUM_ENTRY_RESUBMITTED',
+          entryDate: entry.entryDate.toISOString(),
+          progress,
+        },
+      },
+    });
+
+    await this.notifySupervisorOf(p.userId, p.tenantId, p.organizationId, {
+      type: 'SCRUM_ENTRY_LOCKED',
+      title: 'Daily Scrum resubmitted',
+      message: `An employee finished revising their scrum for ${entry.entryDate.toISOString().slice(0, 10)} and it is locked again.`,
+      actionUrl: '/team-scrum',
+      actionLabel: 'View scrum',
     });
 
     return updated;

@@ -15,6 +15,8 @@ export interface ScrumEntry {
   notes: string | null;
   /** Supervisor's feedback on this entry, shown read-only to the employee. */
   supervisorNote: string | null;
+  /** Set once the employee dismissed the comment — hidden from the active dashboard, still shown in history. */
+  supervisorNoteDismissedAt: string | null;
   /** Server-computed task progress for the day, 0–100. */
   progress: number;
   status: ScrumTaskStatus;
@@ -204,6 +206,27 @@ export async function createScrumEntry(payload: CreateScrumEntryPayload): Promis
 
 export async function updateScrumEntry(id: string, payload: UpdateScrumEntryPayload): Promise<ScrumEntry> {
   const { data } = await apiClient.patch<ScrumEntry>(`/scrum-entries/${id}`, payload);
+  return data;
+}
+
+/**
+ * Employee closes a revision on an entry their supervisor reopened: saves are
+ * done, lock it again (BUG-AQ).
+ */
+export async function resubmitScrumEntry(id: string): Promise<ScrumEntry> {
+  const { data } = await apiClient.post<ScrumEntry>(`/scrum-entries/${id}/resubmit`, {});
+  return data;
+}
+
+/** Employee hides a supervisor comment from their active dashboard (BUG-AR). */
+export async function dismissSupervisorComment(id: string): Promise<ScrumEntry> {
+  const { data } = await apiClient.post<ScrumEntry>(`/scrum-entries/${id}/comment/dismiss`, {});
+  return data;
+}
+
+/** Supervisor removes their own comment entirely, history included (BUG-AR). */
+export async function deleteSupervisorComment(id: string): Promise<ScrumEntry> {
+  const { data } = await apiClient.delete<ScrumEntry>(`/scrum/${id}/comment`);
   return data;
 }
 

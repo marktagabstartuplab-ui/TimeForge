@@ -157,6 +157,11 @@ export async function postScrumComment(id: string, comment: string, version: num
   await apiClient.post(`/scrum/${id}/comment`, { comment, version });
 }
 
+/** Removes the supervisor comment from an entry entirely, history included (BUG-AR). */
+export async function deleteScrumComment(id: string): Promise<void> {
+  await apiClient.delete(`/scrum/${id}/comment`);
+}
+
 export async function postScrumFlag(id: string, version: number): Promise<void> {
   await apiClient.post(`/scrum/${id}/flag`, { version });
 }

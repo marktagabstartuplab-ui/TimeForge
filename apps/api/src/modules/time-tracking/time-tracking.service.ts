@@ -15,6 +15,15 @@ import { UploadService } from '../storage/upload.service';
 import { StorageService } from '../storage/storage.service';
 import { CreateTimeEntryDto, StartTimerDto, UpdateTimeEntryDto, TimeEntryQuery, TimeEntryAttachment } from './dto';
 
+/**
+ * Fields written by the Work Details form. A PATCH that touches any of them is
+ * a Work Details save, and must leave the entry with a complete set (BUG-AP) —
+ * the form previously accepted a fully blank submission, and the API had no
+ * opinion either. Other PATCH shapes (clock-out adjustments, timesheet edits
+ * that only move times) are unaffected.
+ */
+const WORK_DETAIL_FIELDS = ['task', 'description', 'deliverables', 'workCategoryId'] as const;
+
 @Injectable()
 export class TimeTrackingService {
   constructor(
@@ -162,6 +171,7 @@ export class TimeTrackingService {
     const end = dto.endTime ? new Date(dto.endTime) : entry.endTime;
     if (end && end <= start) throw new UnprocessableEntityException('endTime must be after startTime');
     await this.validateRefs(p, dto.projectId, dto.clientId, dto.workCategoryId, dto.departmentId);
+    this.assertWorkDetailsComplete(entry, dto);
 
     const updated = await this.prisma.timeEntry.update({
       where: { id },
@@ -183,6 +193,32 @@ export class TimeTrackingService {
     });
     await this.audit(p, AuditAction.ADMIN_ACTION, 'time_entry', id, { event: 'TIME_ENTRY_UPDATED' });
     return updated;
+  }
+
+  /**
+   * Rejects an incomplete Work Details save. Only runs when the payload actually
+   * touches the Work Details fieldset, and judges the *resulting* entry (a PATCH
+   * may legitimately re-send only the field being corrected) so a save is refused
+   * exactly when the stored record would end up missing mandatory context.
+   */
+  private assertWorkDetailsComplete(entry: TimeEntry, dto: UpdateTimeEntryDto): void {
+    const payload = dto as unknown as Record<string, unknown>;
+    if (!WORK_DETAIL_FIELDS.some((f) => payload[f] !== undefined)) return;
+
+    const resolved = {
+      Task: (dto.task ?? entry.task ?? '').trim(),
+      'Work Description': (dto.description ?? entry.description ?? '').trim(),
+      'Work Category': dto.workCategoryId ?? entry.workCategoryId ?? '',
+    };
+    const missing = Object.entries(resolved)
+      .filter(([, value]) => value.length === 0)
+      .map(([label]) => label);
+
+    if (missing.length > 0) {
+      throw new UnprocessableEntityException(
+        `${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} required to save work details`,
+      );
+    }
   }
 
   async remove(p: AuthPrincipal, id: string, version: number): Promise<void> {

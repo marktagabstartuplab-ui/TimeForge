@@ -494,3 +494,114 @@ describe('ScrumService — locked-entry edit requests', () => {
     expect(prisma.scrumEditRequest.update).not.toHaveBeenCalled();
   });
 });
+
+/**
+ * BUG-AQ / BUG-AR — the revision workflow's exit (resubmit) and the supervisor
+ * comment's dismiss/delete actions.
+ */
+describe('ScrumService — resubmission and comment dismissal', () => {
+  let service: ScrumService;
+  let prisma: any;
+
+  const unlockedEntry = {
+    id: 'entry-1',
+    userId: 'user-1',
+    tenantId: 'tenant-1',
+    organizationId: 'org-1',
+    isLocked: false,
+    version: 4,
+    progress: 50,
+    status: 'IN_PROGRESS',
+    entryDate: new Date('2026-07-30T00:00:00.000Z'),
+    supervisorNote: 'Please add the client name.',
+    supervisorNoteDismissedAt: null,
+  };
+
+  beforeEach(async () => {
+    prisma = {
+      scrumTask: { findMany: jest.fn().mockResolvedValue([]) },
+      scrumEntry: { findFirst: jest.fn(), update: jest.fn((args: any) => args.data) },
+      auditLog: { create: jest.fn() },
+      user: { findFirst: jest.fn() },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ScrumService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: NotificationsService, useValue: { create: jest.fn() } },
+        { provide: DepartmentScopeService, useValue: {} },
+        { provide: StorageService, useValue: {} },
+        {
+          provide: OrgTimeZoneService,
+          useValue: { forPrincipal: jest.fn().mockResolvedValue('Asia/Manila') },
+        },
+      ],
+    }).compile();
+
+    service = module.get(ScrumService);
+  });
+
+  it('locks the entry again on resubmit', async () => {
+    prisma.scrumEntry.findFirst.mockResolvedValue(unlockedEntry);
+
+    await service.resubmitEntry(principal, 'entry-1');
+
+    expect(prisma.scrumEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ isLocked: true, submittedAt: expect.any(Date) }),
+      }),
+    );
+    expect(prisma.auditLog.create).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({
+          metadata: expect.objectContaining({ event: 'SCRUM_ENTRY_RESUBMITTED' }),
+        }),
+      }),
+    );
+  });
+
+  it('does not claim completion when the commitments are unfinished', async () => {
+    prisma.scrumEntry.findFirst.mockResolvedValue(unlockedEntry);
+    prisma.scrumTask.findMany.mockResolvedValue([
+      { taskStatus: 'COMPLETED' },
+      { taskStatus: 'IN_PROGRESS' },
+    ]);
+
+    await service.resubmitEntry(principal, 'entry-1');
+
+    expect(prisma.scrumEntry.update).toHaveBeenCalledWith(
+      expect.objectContaining({
+        data: expect.objectContaining({ progress: 50, status: 'IN_PROGRESS' }),
+      }),
+    );
+  });
+
+  it('refuses to resubmit an entry that is already locked', async () => {
+    prisma.scrumEntry.findFirst.mockResolvedValue({ ...unlockedEntry, isLocked: true });
+
+    await expect(service.resubmitEntry(principal, 'entry-1')).rejects.toBeInstanceOf(
+      ConflictException,
+    );
+    expect(prisma.scrumEntry.update).not.toHaveBeenCalled();
+  });
+
+  it('dismisses a comment without erasing it, so history keeps the text', async () => {
+    prisma.scrumEntry.findFirst.mockResolvedValue(unlockedEntry);
+
+    await service.dismissComment(principal, 'entry-1');
+
+    const { data } = prisma.scrumEntry.update.mock.calls[0][0];
+    expect(data.supervisorNoteDismissedAt).toBeInstanceOf(Date);
+    expect(data).not.toHaveProperty('supervisorNote');
+  });
+
+  it('refuses a comment delete from someone without team scope', async () => {
+    prisma.scrumEntry.findFirst.mockResolvedValue({ ...unlockedEntry, userId: 'user-2' });
+
+    await expect(service.deleteComment(principal, 'entry-1')).rejects.toBeInstanceOf(
+      ForbiddenException,
+    );
+    expect(prisma.scrumEntry.update).not.toHaveBeenCalled();
+  });
+});
