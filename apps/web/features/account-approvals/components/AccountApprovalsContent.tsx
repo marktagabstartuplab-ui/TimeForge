@@ -103,6 +103,19 @@ export function AccountApprovalsContent() {
 
   const invalidateAll = () => queryClient.invalidateQueries({ queryKey: ["account-approvals"] });
 
+  // BUG-AS: approveTarget/rejectTarget are snapshots taken when the modal
+  // opened and are never reconciled against later refetches, so once the row's
+  // OCC `version` moved on, every retry re-sent the same stale token and the
+  // applicant could not be processed without a full page reload. Read the
+  // version off the live list row instead, and refetch on a 409 so the next
+  // click picks up fresh state.
+  const liveVersion = (row: PendingAccountRow): number =>
+    rows.find((r) => r.id === row.id)?.version ?? row.version;
+
+  const onConflict = (err: unknown) => {
+    if (err instanceof ApiError && err.status === 409) invalidateAll();
+  };
+
   function openApproveModal(row: PendingAccountRow) {
     setApproveTarget(row);
     setApproveDept(row.department?.id ?? "");
@@ -113,7 +126,7 @@ export function AccountApprovalsContent() {
   const approveMutation = useMutation({
     mutationFn: () =>
       approveAccount(approveTarget!.id, {
-        version: approveTarget!.version,
+        version: liveVersion(approveTarget!),
         departmentId: approveDept || undefined,
         employmentType: approveEmploymentType || undefined,
         roleKey: approveRole || undefined,
@@ -123,18 +136,24 @@ export function AccountApprovalsContent() {
       setApproveTarget(null);
       invalidateAll();
     },
-    onError: (err) => setToast({ message: err instanceof ApiError ? err.message : "Approval failed.", tone: "error" }),
+    onError: (err) => {
+      onConflict(err);
+      setToast({ message: err instanceof ApiError ? err.message : "Approval failed.", tone: "error" });
+    },
   });
 
   const rejectMutation = useMutation({
-    mutationFn: () => rejectAccount(rejectTarget!.id, rejectTarget!.version, rejectReason || undefined),
+    mutationFn: () => rejectAccount(rejectTarget!.id, liveVersion(rejectTarget!), rejectReason || undefined),
     onSuccess: () => {
       setToast({ message: `${rejectTarget!.firstName} ${rejectTarget!.lastName}'s registration was rejected.`, tone: "success" });
       setRejectTarget(null);
       setRejectReason("");
       invalidateAll();
     },
-    onError: (err) => setToast({ message: err instanceof ApiError ? err.message : "Rejection failed.", tone: "error" }),
+    onError: (err) => {
+      onConflict(err);
+      setToast({ message: err instanceof ApiError ? err.message : "Rejection failed.", tone: "error" });
+    },
   });
 
   return (
