@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { usePathname, useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeftIcon, ArrowRightIcon, SunsetIcon } from "lucide-react";
 import { PageHeader } from "@/components/shared/PageHeader";
@@ -15,8 +15,10 @@ import {
   getScrumEntry,
   listScrumTasks,
   getScrumCarryOver,
+  dismissSupervisorComment,
   type ScrumTask,
 } from "@/features/scrum/api/scrum.service";
+import { ApiError } from "@/lib/api/client";
 import { getMe } from "@/features/account/api/account.service";
 import { fetchDepartments } from "@/features/auth/api/auth.service";
 import { summarizeDay } from "../lib/day-summary";
@@ -172,7 +174,11 @@ export function TimeTrackingContent() {
     const all = historyQuery.data?.data ?? [];
     return (
       [...all]
-        .filter((e) => e.supervisorNote && e.supervisorNote.trim().length > 0)
+        // Dismissed comments drop off the active dashboard but stay on the
+        // record — Daily Scrum History still renders them (BUG-AR).
+        .filter(
+          (e) => e.supervisorNote && e.supervisorNote.trim().length > 0 && !e.supervisorNoteDismissedAt,
+        )
         // Sort by when the comment was actually posted (updatedAt), not which
         // scrum day it's attached to (entryDate). A supervisor can comment on
         // an older backlogged entry after already commenting on a newer one —
@@ -203,6 +209,21 @@ export function TimeTrackingContent() {
   }, [summary.running, onBreak, entries]);
 
   const queryClient = useQueryClient();
+
+  // Dismissing clears the banner from the active workspace only — the comment
+  // stays on the entry and is still shown in Daily Scrum History (BUG-AR).
+  const dismissComment = useMutation({
+    mutationFn: (entryId: string) => dismissSupervisorComment(entryId),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
+      setToast({ message: "Comment dismissed — still available in your scrum history." });
+    },
+    onError: (err) =>
+      setToast({
+        message: err instanceof ApiError ? err.message : "Could not dismiss the comment",
+        tone: "error",
+      }),
+  });
 
   // Always refetch scrum data when opening Daily Scrum so supervisor comments
   // appear without requiring a notification deep link first.
@@ -412,6 +433,8 @@ export function TimeTrackingContent() {
               note={latestFeedbackEntry.supervisorNote!}
               entryDate={latestFeedbackEntry.entryDate}
               viewHref={`/time-tracking?scrum=${latestFeedbackEntry.id}`}
+              onDismiss={() => dismissComment.mutate(latestFeedbackEntry.id)}
+              dismissing={dismissComment.isPending}
             />
           ) : null}
 

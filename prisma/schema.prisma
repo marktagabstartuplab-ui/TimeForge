@@ -773,6 +773,8 @@ model ScrumEntry {
   kpi            String?
   plannedTarget  String?         @map("planned_target")
   supervisorNote String?         @map("supervisor_note")
+  /// When the employee dismissed the supervisor comment. Set = hidden from their active dashboard; the note itself is kept so history still shows it.
+  supervisorNoteDismissedAt DateTime? @map("supervisor_note_dismissed_at") @db.Timestamptz
   createdBy      String?         @map("created_by") @db.Uuid
   updatedBy      String?         @map("updated_by") @db.Uuid
   createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz

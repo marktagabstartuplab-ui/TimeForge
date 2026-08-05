@@ -1,4 +1,4 @@
-import { Body, Controller, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Query } from '@nestjs/common';
+import { Body, Controller, Delete, Get, HttpCode, Param, ParseIntPipe, ParseUUIDPipe, Post, Query } from '@nestjs/common';
 import { ApiBearerAuth, ApiOperation, ApiQuery, ApiTags } from '@nestjs/swagger';
 import { ScrumService, ScrumBlockersQuery, ScrumMgmtQuery } from './scrum.service';
 import { AuthPrincipal, CurrentUser } from '../../common/decorators';
@@ -105,6 +105,13 @@ export class ScrumDashboardController {
     @Body() dto: CommentScrumEntryDto,
   ) {
     return this.svc.comment(u, id, dto);
+  }
+
+  @Delete(':id/comment')
+  @HttpCode(200)
+  @ApiOperation({ summary: 'Delete the supervisor comment on a scrum entry (Supervisor / Admin)' })
+  deleteComment(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {
+    return this.svc.deleteComment(u, id);
   }
 
   @Post(':id/unlock')

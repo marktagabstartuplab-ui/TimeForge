@@ -41,21 +41,31 @@ export const dailyScrumSchema = z.object({
 
 export type DailyScrumValues = z.infer<typeof dailyScrumSchema>;
 
-/** Work Details card — context saved onto the running time entry. */
+/**
+ * Work Details card — context saved onto the running time entry.
+ *
+ * Task, Work Description and Work Category are mandatory (BUG-AP): they are what
+ * makes a logged session auditable, and the card previously accepted a fully
+ * blank save. Deliverables stays optional — a session can legitimately end with
+ * work in progress and nothing shippable to name, and forcing a value there just
+ * produces filler text in the payroll/performance exports that read the field.
+ */
 export const workDetailsSchema = z.object({
   task: z
     .string()
-    .min(1, "Task is required — briefly describe what you're working on")
+    .trim()
+    .min(1, "This field is required")
     .max(200, "Keep the task name under 200 characters"),
   workDescription: z
     .string()
-    .min(1, "Work Description is required — detail the specific work for this session")
+    .trim()
+    .min(1, "This field is required")
     .max(4500, "Keep the description under 4500 characters"),
   deliverables: z.string().max(5000, "Keep the deliverables under 5000 characters").optional(),
   departmentId: z.string().optional(),
   clientId: z.string().optional(),
   projectId: z.string().optional(),
-  workCategoryId: z.string().optional(),
+  workCategoryId: z.string().trim().min(1, "This field is required"),
 });
 
 export type WorkDetailsValues = z.infer<typeof workDetailsSchema>;
