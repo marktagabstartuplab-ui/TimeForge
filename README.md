@@ -83,6 +83,7 @@ Source: `Project Brief - TimeForge.pdf` (StartupLab). Legend: ✅ complete · �
 9. ✅ **Department isActive field** — Prisma schema + migration adds `isActive` boolean to Department model, surfaced in department detail page and directory table.
 10. ✅ **KPI Management** — Re-wired auto-progress to support all metric types (COUNT, HOURS, CUSTOM) and added manual progress endpoint for Admins. Replaced mock values in dashboard with real history and target vs actual.
 11. ✅ **Daily Rate Basis (BUG-AW)** — Added `CompensationType` enum (`HOURLY`, `DAILY`), `daily_rate`, and `days_per_week` to DB schema & DTOs; extended payroll engine for `days_worked × daily_rate` with prorated partial days; updated Admin/Employee Profile rate configuration UI and payroll table/PDF/Excel exports.
+12. ✅ **Philippine Statutory IDs & Exporters (BUG-AZ)** — Added `tin`, `sss_number`, `philhealth_number`, `pagibig_number` columns and form fields with digit masks & validation in Employee Profile ("201 File"); added official SSS, PhilHealth, Pag-IBIG remittance collection list exporters (CSV/Excel) and "Generate Government Reports" section on HR Statutory Reports dashboard.
 
 ---
 
