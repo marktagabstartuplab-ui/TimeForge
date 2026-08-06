@@ -56,6 +56,7 @@ export const TENANT_MODELS = new Set([
   'BugComment',
   'BugActivityLog',
   'Grievance',
+  'EmployeeCalendarEvent',
 ]);
 
 const READ_ACTIONS = ['findMany', 'findFirst', 'count', 'aggregate', 'groupBy'];

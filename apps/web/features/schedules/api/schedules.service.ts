@@ -114,3 +114,61 @@ export async function updateShift(id: string, payload: UpdateShiftPayload): Prom
 export async function deleteShift(id: string, version: number): Promise<void> {
   await apiClient.delete(`/schedules/${id}`, { params: { version } });
 }
+
+// ── Employee Personal Calendar Events ──────────────────────────────────────────
+
+export type EmployeeCalendarEventType = 'REMINDER' | 'APPOINTMENT' | 'LEAVE_REQUEST';
+
+export interface EmployeeCalendarEvent {
+  id: string;
+  userId: string;
+  title: string;
+  eventType: EmployeeCalendarEventType;
+  /** ISO date string YYYY-MM-DD */
+  eventDate: string;
+  startTime: string | null;
+  endTime: string | null;
+  notes: string | null;
+  version: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateCalendarEventPayload {
+  title: string;
+  eventType: EmployeeCalendarEventType;
+  eventDate: string;
+  startTime?: string;
+  endTime?: string;
+  notes?: string;
+}
+
+export interface UpdateCalendarEventPayload {
+  title?: string;
+  eventType?: EmployeeCalendarEventType;
+  eventDate?: string;
+  startTime?: string;
+  endTime?: string;
+  notes?: string;
+  version: number;
+}
+
+export async function getCalendarEvents(params: { from: string; to: string }): Promise<EmployeeCalendarEvent[]> {
+  const { data } = await apiClient.get<EmployeeCalendarEvent[]>('/calendar-events', { params });
+  return data;
+}
+
+export async function createCalendarEvent(payload: CreateCalendarEventPayload): Promise<EmployeeCalendarEvent> {
+  const { data } = await apiClient.post<EmployeeCalendarEvent>('/calendar-events', payload);
+  return data;
+}
+
+export async function updateCalendarEvent(id: string, payload: UpdateCalendarEventPayload): Promise<EmployeeCalendarEvent> {
+  const { data } = await apiClient.patch<EmployeeCalendarEvent>(`/calendar-events/${id}`, payload);
+  return data;
+}
+
+export async function deleteCalendarEvent(id: string, version: number): Promise<void> {
+  await apiClient.delete(`/calendar-events/${id}`, { params: { version } });
+}
+
