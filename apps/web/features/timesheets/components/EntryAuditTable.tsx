@@ -9,8 +9,10 @@ import { listProjects, listWorkCategories, listClients } from "@/features/time-t
 import { listDepartments } from "@/features/schedules/api/departments-picker.service";
 import { updateTimeEntry, deleteTimeEntry, type TimeEntry } from "@/features/time-tracking/api/time-entries.service";
 import type { TimesheetPaymentStatus } from "../api/timesheets.service";
-import { formatClockTime, formatMinutesClock, minutesBetween, toIsoDate } from "@/lib/time";
-import { Edit2, Trash2, X, Loader2 } from "lucide-react";
+import { formatClockTime, formatMinutesClock, minutesBetween, toIsoDate, toOrgIsoDate } from "@/lib/time";
+import { Edit2, Trash2, X, Loader2, Building2, Plus } from "lucide-react";
+import { listScrumEntries, listScrumTasks, type ScrumTask } from "@/features/scrum/api/scrum.service";
+import { cn } from "@/lib/utils";
 
 const COLLAPSED_ROWS = 6;
 
@@ -86,6 +88,8 @@ export function EntryAuditTable({
   const [editDescription, setEditDescription] = useState("");
   const [editDeliverables, setEditDeliverables] = useState("");
   const [formError, setFormError] = useState("");
+  // BUG-AV: track whether the user selected a scrum task chip or typed manually
+  const [selectedScrumTaskId, setSelectedScrumTaskId] = useState<string | null>(null);
 
   const { data: projects } = useQuery({ queryKey: ["catalog", "projects"], queryFn: listProjects });
   const { data: clients } = useQuery({ queryKey: ["catalog", "clients"], queryFn: listClients });
@@ -94,6 +98,25 @@ export function EntryAuditTable({
     queryKey: ["catalog", "work-categories"],
     queryFn: listWorkCategories,
   });
+
+  // BUG-AV: Fetch today's scrum entry so we can show commitments as a checklist.
+  const todayStr = toOrgIsoDate(new Date());
+  const { data: scrumEntriesPage } = useQuery({
+    queryKey: ["scrum", "today-entry"],
+    queryFn: () => listScrumEntries({ from: todayStr, to: todayStr, limit: 1 }),
+    staleTime: 30_000,
+  });
+  const todayScrumEntry = scrumEntriesPage?.data?.[0] ?? null;
+  const { data: scrumTasks = [] } = useQuery({
+    queryKey: ["scrum", "tasks", todayScrumEntry?.id],
+    queryFn: () => listScrumTasks(todayScrumEntry!.id),
+    enabled: Boolean(todayScrumEntry?.id),
+    staleTime: 30_000,
+  });
+  // Only show IN_PROGRESS / PENDING tasks (not already completed ones)
+  const availableScrumTasks: ScrumTask[] = scrumTasks.filter(
+    (t) => t.taskStatus !== "COMPLETED"
+  );
 
   const startEditing = (e: TimeEntry) => {
     setEditingEntry(e);
@@ -107,6 +130,7 @@ export function EntryAuditTable({
     setEditDescription(e.description ?? "");
     setEditDeliverables(e.deliverables ?? "");
     setFormError("");
+    setSelectedScrumTaskId(null);
   };
 
   const updateMutation = useMutation({
@@ -354,6 +378,17 @@ export function EntryAuditTable({
               </button>
             </div>
 
+            {/* BUG-AV: Department read-only badge */}
+            {employeeDepartmentName && (
+              <div className="mb-4 flex items-center gap-2">
+                <Building2 className="h-4 w-4 text-brand shrink-0" aria-hidden="true" />
+                <span className="text-xs text-brand-muted">Logged under:</span>
+                <span className="rounded-full bg-brand/10 px-3 py-0.5 text-xs font-bold text-brand">
+                  {employeeDepartmentName}
+                </span>
+              </div>
+            )}
+
             <div className="mb-4 rounded-lg bg-amber-50 border border-amber-200 px-3 py-2.5 text-xs text-amber-800">
               <span className="font-bold">Date, Start Time, End Time, and Department are locked. </span>
               You may update the description, deliverables, task, project, and client.
@@ -438,13 +473,64 @@ export function EntryAuditTable({
                 </div>
               </div>
 
+              {/* BUG-AV: Scrum commitments checklist */}
+              {availableScrumTasks.length > 0 && (
+                <div>
+                  <p className="text-xs font-semibold text-brand-muted mb-1.5">
+                    FROM TODAY&apos;S SCRUM
+                    <span className="ml-1 font-normal text-brand-muted">(click to attach)</span>
+                  </p>
+                  <div className="flex flex-wrap gap-1.5 mb-2">
+                    {availableScrumTasks.map((t) => (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          if (selectedScrumTaskId === t.id) {
+                            // Deselect
+                            setSelectedScrumTaskId(null);
+                            setEditTask("");
+                          } else {
+                            setSelectedScrumTaskId(t.id);
+                            setEditTask(t.title);
+                          }
+                        }}
+                        className={cn(
+                          "rounded-full border px-2.5 py-1 text-[11px] font-semibold transition-all",
+                          selectedScrumTaskId === t.id
+                            ? "border-brand bg-brand text-white"
+                            : "border-[#c3c6d2] bg-white text-brand-navy hover:border-brand hover:text-brand"
+                        )}
+                      >
+                        {t.title}
+                      </button>
+                    ))}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedScrumTaskId(null);
+                        setEditTask("");
+                      }}
+                      className="flex items-center gap-1 rounded-full border border-dashed border-[#c3c6d2] px-2.5 py-1 text-[11px] font-semibold text-brand-muted hover:border-brand hover:text-brand transition-all"
+                    >
+                      <Plus className="h-3 w-3" />
+                      Add Unplanned Task
+                    </button>
+                  </div>
+                </div>
+              )}
+
               <div>
                 <label className="text-xs font-semibold text-brand-muted block mb-1">Task Title</label>
                 <input
                   type="text"
                   value={editTask}
-                  onChange={(e) => setEditTask(e.target.value)}
-                  placeholder="e.g. UI Refactoring"
+                  onChange={(e) => {
+                    setEditTask(e.target.value);
+                    // If the user types manually, clear the scrum chip selection
+                    if (selectedScrumTaskId) setSelectedScrumTaskId(null);
+                  }}
+                  placeholder={availableScrumTasks.length > 0 ? "Select a scrum task above or type manually" : "e.g. UI Refactoring"}
                   className="w-full h-10 rounded-lg border border-[#c3c6d2] px-3 text-sm focus:border-brand outline-none"
                 />
               </div>
