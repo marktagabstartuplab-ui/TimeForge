@@ -11,6 +11,7 @@ import { AuthPrincipal } from '../../common/decorators';
 import { BirTaxService } from './bir-tax.service';
 import { DeductionService } from './deduction.service';
 import { DEFAULT_PAYROLL_SETTINGS, PayrollSettingsService } from './payroll-settings.service';
+import { CompensationBenefitsService } from './compensation-benefits.service';
 import { PayrollPeriodScheduler } from './payroll-period.scheduler';
 
 /**
@@ -57,6 +58,12 @@ async function buildService(prismaOverrides: Record<string, unknown> = {}) {
       {
         provide: PayrollSettingsService,
         useValue: { forPrincipal: jest.fn().mockResolvedValue({ ...DEFAULT_PAYROLL_SETTINGS }) },
+      },
+      // BUG-BC: payroll now reads de minimis totals per period. Stubbed empty
+      // so these cases keep asserting the statutory figures in isolation.
+      {
+        provide: CompensationBenefitsService,
+        useValue: { deMinimisTotalsForPeriod: jest.fn().mockResolvedValue(new Map()) },
       },
       { provide: getQueueToken('payroll-export'), useValue: { add: jest.fn() } },
     ],
@@ -303,9 +310,24 @@ describe('BUG-AX — scheduler generates standardized, non-overlapping semi-mont
 
 // ── BUG-AY: payment lifecycle ────────────────────────────────────────────────
 
-describe('BUG-AY — payroll generation drives the timesheet payment lifecycle', () => {
-  /** Runs generateReport against a period with one approved timesheet. */
-  async function generate(groupByRows: { paymentStatus: string; _count: { _all: number } }[] = []) {
+/**
+   * Runs generateReport against a period with approved timesheets.
+   *
+   * `users` / `approved` default to a single paid employee. `unclearedChecklists`
+   * simulates BUG-BB offboarding holds.
+   */
+  async function generate(
+    groupByRows: { paymentStatus: string; _count: { _all: number } }[] = [],
+    opts: {
+      users?: { id: string; hourlyRate: number }[];
+      approved?: { id: string; userId: string; totalMinutes: number; overtimeMinutesOverride: number | null }[];
+      unclearedChecklists?: {
+        employeeId: string;
+        status: string;
+        employee: { firstName: string; lastName: string };
+      }[];
+    } = {},
+  ) {
     const reportUpdates: Record<string, unknown>[] = [];
     const tx = {
       payrollReport: {
@@ -325,9 +347,10 @@ describe('BUG-AY — payroll generation drives the timesheet payment lifecycle',
       },
     };
 
-    const approvedTimesheets = [
+    const approvedTimesheets = opts.approved ?? [
       { id: 'ts-1', userId: 'user-1', totalMinutes: 480, overtimeMinutesOverride: null },
     ];
+    const users = opts.users ?? [{ id: 'user-1', hourlyRate: 100 }];
 
     const prisma = {
       payrollPeriod: {
@@ -346,10 +369,12 @@ describe('BUG-AY — payroll generation drives the timesheet payment lifecycle',
           .mockResolvedValueOnce([])
           .mockResolvedValueOnce([]),
       },
-      user: { findMany: jest.fn().mockResolvedValue([{ id: 'user-1', hourlyRate: 100 }]) },
+      user: { findMany: jest.fn().mockResolvedValue(users) },
       timeEntry: { findMany: jest.fn().mockResolvedValue([]) },
       holiday: { findMany: jest.fn().mockResolvedValue([]) },
-      clearanceChecklist: { findFirst: jest.fn().mockResolvedValue(null) },
+      clearanceChecklist: {
+        findMany: jest.fn().mockResolvedValue(opts.unclearedChecklists ?? []),
+      },
       shift: { findMany: jest.fn().mockResolvedValue([]) },
       payrollLineItem: { groupBy: jest.fn().mockResolvedValue([]) },
       birTaxTable: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -367,6 +392,7 @@ describe('BUG-AY — payroll generation drives the timesheet payment lifecycle',
     return { tx, prisma, reportUpdates };
   }
 
+describe('BUG-AY — payroll generation drives the timesheet payment lifecycle', () => {
   it('excludes already-PAID timesheets from the run (no duplicate processing)', async () => {
     const { prisma } = await generate();
 
@@ -412,5 +438,83 @@ describe('BUG-AY — payroll generation drives the timesheet payment lifecycle',
       PROCESSING: 0,
       PAID: 0,
     });
+  });
+});
+
+// ── BUG-BB: clearance holds are per employee, not per run ────────────────────
+
+describe('BUG-BB — an incomplete clearance holds only that employee, not the whole run', () => {
+  const twoUsers = [
+    { id: 'user-1', hourlyRate: 100 },
+    { id: 'user-exiting', hourlyRate: 100 },
+  ];
+  const twoTimesheets = [
+    { id: 'ts-1', userId: 'user-1', totalMinutes: 480, overtimeMinutesOverride: null },
+    { id: 'ts-exiting', userId: 'user-exiting', totalMinutes: 480, overtimeMinutesOverride: null },
+  ];
+  const heldExiting = [
+    {
+      employeeId: 'user-exiting',
+      status: 'IN_PROGRESS',
+      employee: { firstName: 'Exiting', lastName: 'Employee' },
+    },
+  ];
+
+  it('still pays everyone else — one offboarding employee cannot stop the payroll', async () => {
+    const { tx } = await generate([], {
+      users: twoUsers,
+      approved: twoTimesheets,
+      unclearedChecklists: heldExiting,
+    });
+
+    const paidUserIds = (tx.payrollLineItem.create as jest.Mock).mock.calls.map(
+      (call) => call[0].data.userId,
+    );
+    expect(paidUserIds).toEqual(['user-1']);
+  });
+
+  it('leaves the held employee\'s timesheets UNPAID so a later run can still pay them', async () => {
+    const { tx } = await generate([], {
+      users: twoUsers,
+      approved: twoTimesheets,
+      unclearedChecklists: heldExiting,
+    });
+
+    // The stranding hazard: advancing ts-exiting to PROCESSING against a report
+    // that has no line item for that user would hide the sheet from both the
+    // unpaid and the paid views.
+    expect(tx.timesheet.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({ id: { in: ['ts-1'] } }),
+      }),
+    );
+  });
+
+  it('names the held employee on the report totals rather than short-paying silently', async () => {
+    const { reportUpdates } = await generate([], {
+      users: twoUsers,
+      approved: twoTimesheets,
+      unclearedChecklists: heldExiting,
+    });
+
+    const totals = reportUpdates[0].totals as Record<string, unknown>;
+    expect(totals.headcount).toBe(1);
+    expect(totals.blockedByClearance).toEqual([
+      { userId: 'user-exiting', name: 'Exiting Employee', clearanceStatus: 'IN_PROGRESS' },
+    ]);
+  });
+
+  it('pays everyone and blocks nobody when all clearances are complete', async () => {
+    const { tx, reportUpdates } = await generate([], {
+      users: twoUsers,
+      approved: twoTimesheets,
+      unclearedChecklists: [],
+    });
+
+    const paidUserIds = (tx.payrollLineItem.create as jest.Mock).mock.calls.map(
+      (call) => call[0].data.userId,
+    );
+    expect(paidUserIds).toEqual(['user-1', 'user-exiting']);
+    expect((reportUpdates[0].totals as Record<string, unknown>).blockedByClearance).toEqual([]);
   });
 });

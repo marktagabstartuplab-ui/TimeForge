@@ -28,6 +28,12 @@ export interface PayrollLineItemSelf {
   restDayPay?: string | number;
   grossTotal?: string | number;
   totalDeductions?: string | number;
+  /**
+   * BUG-BC: non-taxable de minimis benefits for the period. Added to `netPay`
+   * but excluded from `grossTotal`, so it is rendered as its own line rather
+   * than inside the earnings subtotal.
+   */
+  deMinimisTotal?: string | number;
   netPay?: string | number;
   hourlyRate: string | number;
   estimatedPay: string | number;

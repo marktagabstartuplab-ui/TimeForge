@@ -471,6 +471,16 @@ export function PayslipsContent() {
                       </span>
                     </div>
                   ) : null}
+                  {selected.deMinimisTotal && Number(selected.deMinimisTotal) !== 0 ? (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-brand-muted">
+                        De Minimis Benefits (non-taxable)
+                      </span>
+                      <span className="font-semibold text-emerald-700">
+                        +₱{Number(selected.deMinimisTotal).toFixed(2)}
+                      </span>
+                    </div>
+                  ) : null}
                 </div>
               </div>
 

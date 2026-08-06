@@ -1,6 +1,6 @@
 import { IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
-import { PayrollPeriodType } from '@prisma/client';
+import { DeMinimisType, PayrollPeriodType } from '@prisma/client';
 
 export class CreatePayrollPeriodDto {
   @IsEnum(PayrollPeriodType)
@@ -162,4 +162,38 @@ export class PayrollRejectActionDto {
 
   @IsString()
   reason!: string;
+}
+
+// ─── BUG-BC: Compensation & Benefits ────────────────────────────────────────
+
+/** Query for the 13th-month YTD basic-salary tracker. */
+export class ThirteenthMonthQuery {
+  /** Tax year to aggregate. Defaults to the current calendar year. */
+  @Type(() => Number) @IsInt() @Min(2018) @Max(2100) @IsOptional() year?: number;
+
+  /** Narrow to one employee. Omitted returns the whole organisation. */
+  @IsUUID() @IsOptional() employeeId?: string;
+}
+
+/**
+ * Assign or amend a de minimis benefit. `monthlyAmount` is what HR intends to
+ * pay; anything above the BIR ceiling for the type is clamped server-side and
+ * reported back via `wasCapped` rather than rejected, because the excess is
+ * simply taxable compensation rather than an invalid entry.
+ */
+export class AssignDeMinimisDto {
+  @IsUUID() employeeId!: string;
+
+  @IsEnum(DeMinimisType) benefitType!: DeMinimisType;
+
+  @IsNumber() @Min(0) monthlyAmount!: number;
+
+  @IsBoolean() @IsOptional() isActive?: boolean;
+
+  @IsString() @IsOptional() notes?: string;
+}
+
+/** Query for listing de minimis assignments. */
+export class DeMinimisQuery {
+  @IsUUID() @IsOptional() employeeId?: string;
 }

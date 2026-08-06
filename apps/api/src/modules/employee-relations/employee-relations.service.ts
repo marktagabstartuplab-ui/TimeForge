@@ -119,6 +119,23 @@ export class EmployeeRelationsService {
       },
     });
 
+    // Twin-Notice Rule: the explanation only counts as received once the issuer
+    // is actually told about it, so close the loop back to the HR officer who
+    // raised the memo rather than leaving it to be discovered on a dashboard.
+    await this.notifications.create({
+      tenantId: p.tenantId,
+      organizationId: p.organizationId,
+      userId: nte.issuerId,
+      senderId: p.userId,
+      type: 'ANNOUNCEMENT',
+      category: 'ACCOUNT',
+      priority: 'HIGH',
+      title: 'NTE Response Submitted',
+      message: `An employee has submitted a written explanation for "${nte.title}".`,
+      actionUrl: '/hr/employee-relations',
+      actionLabel: 'Review Explanation',
+    });
+
     return updated;
   }
 
@@ -201,6 +218,21 @@ export class EmployeeRelationsService {
       },
     });
 
+    await this.notifications.create({
+      tenantId: p.tenantId,
+      organizationId: p.organizationId,
+      userId: dto.employeeId,
+      senderId: p.userId,
+      type: 'ANNOUNCEMENT',
+      category: 'ACCOUNT',
+      priority: 'HIGH',
+      title: 'Offboarding Clearance Started',
+      message:
+        'Your exit clearance has been initiated. Final pay is released once IT, Finance and HR have all signed off.',
+      actionUrl: '/my-records',
+      actionLabel: 'View Clearance Status',
+    });
+
     return checklist;
   }
 
@@ -265,6 +297,24 @@ export class EmployeeRelationsService {
         metadata: { event: 'CLEARANCE_ITEM_APPROVED', checklistId, department: item.department, nextStatus },
       },
     });
+
+    // Completion is the event that unblocks final payroll, so it is announced
+    // rather than left for the next payroll run to surface as a 422.
+    if (nextStatus === ClearanceStatus.COMPLETED) {
+      await this.notifications.create({
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        userId: checklist.employeeId,
+        senderId: p.userId,
+        type: 'ANNOUNCEMENT',
+        category: 'ACCOUNT',
+        priority: 'HIGH',
+        title: 'Clearance Completed',
+        message: 'All departments have signed off on your clearance. Final pay can now be processed.',
+        actionUrl: '/my-records',
+        actionLabel: 'View Clearance',
+      });
+    }
 
     return this.prisma.clearanceChecklist.findUnique({
       where: { id: checklistId },

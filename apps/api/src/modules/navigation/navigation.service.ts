@@ -37,6 +37,9 @@ const MENU_CATALOG: MenuItemDef[] = [
   { id: 'departments',  label: 'Departments',  icon: 'building-2',   route: '/admin/departments',  section: 'MANAGEMENT',       permission: 'org:read_dashboard' },
   { id: 'holiday-calendar', label: 'Holiday Calendar', icon: 'calendar-days', route: '/admin/holidays', section: 'MANAGEMENT', permission: 'holiday:read' },
   { id: 'employee-relations', label: 'Employee Relations', icon: 'shield-alert', route: '/hr/employee-relations', section: 'MANAGEMENT', permission: 'discipline:read_org' },
+  // BUG-BC: 13th-month accrual + de minimis assignment. Gated on compensation:read
+  // so Finance sees it read-only while HR gets the assignment controls.
+  { id: 'compensation-benefits', label: 'Compensation & Benefits', icon: 'wallet', route: '/hr/compensation', section: 'MANAGEMENT', permission: 'compensation:read' },
   { id: 'approvals',    label: 'Approvals',    icon: 'check-square', route: '/admin/approvals',    section: 'MANAGEMENT',       permission: 'user:update',               badge: 'pendingApprovals' },
   // ── FINANCE & REPORTS ──
   { id: 'payroll',      label: 'Payroll',      icon: 'wallet',       route: '/payslips',           section: 'FINANCE_REPORTS',  permission: 'payroll:read_self',         badge: 'pendingPayroll' },
@@ -77,6 +80,9 @@ const MENU_CATALOG: MenuItemDef[] = [
   // ── SUPPORT ──
   // Grievance/Complaint Channel (BUG-AL): Employees can submit complaints privately to HR.
   { id: 'submit-complaint', label: 'Submit a Complaint', icon: 'shield-alert', route: '/grievances', section: 'SUPPORT', permission: 'grievance:create' },
+  // BUG-BB: employee-side view of their own NTEs (where the written explanation
+  // is submitted) and their offboarding clearance progress.
+  { id: 'my-records',   label: 'My HR Records',         icon: 'file-text',     route: '/my-records', section: 'SUPPORT', permission: 'discipline:read_self' },
   { id: 'hr-grievances',    label: 'HR Complaints Inbox', icon: 'inbox',        route: '/admin/grievances', section: 'SUPPORT', permission: 'grievance:read_org' },
   // Every role can raise a bug; only triage-capable roles (bug:read_team /
   // bug:read_org) get the queue view.

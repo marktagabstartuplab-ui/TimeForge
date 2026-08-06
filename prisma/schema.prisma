@@ -387,6 +387,7 @@ model User {
   disciplineRecords     DisciplineRecord[]    @relation("DisciplineEmployee")
   disciplineIssued      DisciplineRecord[]    @relation("DisciplineIssuer")
   clearanceChecklists   ClearanceChecklist[]  @relation("ClearanceEmployee")
+  deMinimisBenefits     DeMinimisBenefit[]    @relation("DeMinimisEmployee")
 
   @@unique([tenantId, id])
   // Uniqueness on (tenantId, email) is enforced by a partial unique index
@@ -1585,6 +1586,13 @@ model PayrollLineItem {
 
   isThirteenthMonth Boolean @default(false) @map("is_thirteenth_month")
 
+  /// BUG-BC: non-taxable de minimis benefits paid this period, already capped at
+  /// the BIR ceiling. Snapshotted alongside the rest of the breakdown. It is
+  /// added to `netPay` but deliberately excluded from `grossTotal`,
+  /// `ytdTaxableIncome` and every contribution base — a de minimis benefit
+  /// within its ceiling is not compensation income.
+  deMinimisTotal Decimal @default(0) @map("de_minimis_total") @db.Decimal(12, 2)
+
   createdBy       String?  @map("created_by") @db.Uuid
   updatedBy       String?  @map("updated_by") @db.Uuid
   createdAt       DateTime @default(now()) @map("created_at") @db.Timestamptz
@@ -2197,6 +2205,55 @@ model ClearanceItem {
 
   @@index([tenantId, checklistId])
   @@map("clearance_checklist_items")
+}
+
+// ─── De Minimis Benefits (BUG-BC) ───────────────────────────────────────────
+
+/// Benefit types recognised as de minimis by BIR RR 11-2018. Anything outside
+/// this list, or the portion of an assignment above its ceiling, is ordinary
+/// taxable compensation and is not represented here.
+enum DeMinimisType {
+  RICE_SUBSIDY
+  CLOTHING_ALLOWANCE
+  LAUNDRY_ALLOWANCE
+  MEDICAL_ALLOWANCE
+  MEDICAL_CASH_ALLOWANCE_DEPENDENTS
+  MEAL_ALLOWANCE
+  OTHER
+}
+
+/// A recurring non-taxable allowance assigned to one employee. `monthlyAmount`
+/// is stored already clamped to `birMonthlyCap`, so the payroll run can consume
+/// it without re-deriving the ceiling; `requestedAmount` keeps what HR actually
+/// entered so an over-cap assignment stays visible and auditable.
+model DeMinimisBenefit {
+  id              String        @id @default(uuid()) @db.Uuid
+  tenantId        String        @map("tenant_id") @db.Uuid
+  organizationId  String        @map("organization_id") @db.Uuid
+  employeeId      String        @map("employee_id") @db.Uuid
+  benefitType     DeMinimisType @map("benefit_type")
+  /// Effective monthly amount, already capped at `birMonthlyCap`.
+  monthlyAmount   Decimal       @map("monthly_amount") @db.Decimal(12, 2)
+  /// What HR entered before capping. Equal to `monthlyAmount` when within cap.
+  requestedAmount Decimal       @map("requested_amount") @db.Decimal(12, 2)
+  /// BIR monthly ceiling snapshotted at assignment time. Null = no fixed peso
+  /// ceiling in the regulation (e.g. the overtime meal benefit, which is a
+  /// percentage of the minimum wage).
+  birMonthlyCap   Decimal?      @map("bir_monthly_cap") @db.Decimal(12, 2)
+  isActive        Boolean       @default(true) @map("is_active")
+  notes           String?
+  effectiveFrom   DateTime      @default(now()) @map("effective_from") @db.Timestamptz
+  createdBy       String?       @map("created_by") @db.Uuid
+  updatedBy       String?       @map("updated_by") @db.Uuid
+  createdAt       DateTime      @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt       DateTime      @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt       DateTime?     @map("deleted_at") @db.Timestamptz
+
+  employee User @relation("DeMinimisEmployee", fields: [employeeId], references: [id])
+
+  @@index([tenantId, organizationId, isActive])
+  @@index([tenantId, employeeId])
+  @@map("de_minimis_benefits")
 }
 
 
