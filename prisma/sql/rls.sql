@@ -1,5 +1,6 @@
 -- TimeForge — Row-Level Security setup (Phase 2 layer 4 / Phase 3 §6).
--- Run AFTER `prisma migrate` with an OWNER/superuser connection (DIRECT_URL):
+-- Run AFTER `prisma migrate` as the table OWNER over DIRECT_URL (on Supabase
+-- that is `postgres` — owner + BYPASSRLS, though not a superuser):
 --   npm run db:rls
 -- Idempotent: safe to run repeatedly.
 
@@ -79,9 +80,19 @@ CREATE POLICY tenant_self ON tenants
   WITH CHECK (id = current_setting('app.tenant_id', true)::uuid);
 
 -- 4) Non-tenant-scoped RBAC catalog tables: enable RLS for defense-in-depth.
---    These tables have no tenant_id column. The backend connects as a superuser
---    (bypasses RLS), while the timeforge_app role is given access via policy.
---    Supabase anon/authenticated roles have no matching policy and are denied.
+--    These tables have no tenant_id column. The backend connects as `postgres`,
+--    which on Supabase is NOT a superuser but does carry the BYPASSRLS
+--    attribute — that, not superuser status, is why the backend reads straight
+--    through every policy here. The timeforge_app role is given access via
+--    policy instead. Supabase anon/authenticated have no matching policy and
+--    are denied.
+--
+--    This distinction matters if the backend is ever repointed at timeforge_app
+--    (BYPASSRLS = false, by design — see step 1). Every tenant policy below keys
+--    on current_setting('app.tenant_id'), which is only ever SET by the
+--    withTenant() helper in apps/api/src/common/prisma/prisma.service.ts —
+--    ordinary Prisma calls never set it. Under timeforge_app those queries would
+--    silently return zero rows rather than erroring.
 DO $$
 DECLARE
   t text;
@@ -101,7 +112,7 @@ BEGIN
 END
 $$;
 
--- 5) _prisma_migrations: Prisma internal table — block all non-superuser access.
+-- 5) _prisma_migrations: Prisma internal table — deny every non-BYPASSRLS role.
 ALTER TABLE _prisma_migrations ENABLE ROW LEVEL SECURITY;
--- No policy means default-deny for any non-superuser role. Prisma CLI connects
--- as superuser and bypasses RLS, so migrations continue to function normally.
+-- No policy means default-deny. The Prisma CLI connects as `postgres`, which
+-- holds BYPASSRLS, so migrations continue to function normally.
