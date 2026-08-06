@@ -164,6 +164,12 @@ Supabase is used as **managed PostgreSQL + object storage** only — NOT Supabas
 - Pooled connection: `DATABASE_URL` via Supavisor (port 6543)
 - Direct connection: `DIRECT_URL` for migrations/seeding/RLS (port 5432)
 - Prisma ORM manages schema via migrations — no direct Supabase DB management
+- Both connect as `postgres`, which on Supabase is **not a superuser** but does
+  hold `BYPASSRLS`. That attribute — not superuser status — is why the API reads
+  through every RLS policy. Don't repoint the API at `timeforge_app`
+  (`BYPASSRLS = false`) without reading the note in `prisma/sql/rls.sql` §4:
+  policies key on `app.tenant_id`, which only `withTenant()` sets, so ordinary
+  Prisma calls would silently return zero rows.
 
 ### Storage (provider-swappable)
 - `apps/api/src/modules/storage/` — abstracted behind `StorageProvider` interface
