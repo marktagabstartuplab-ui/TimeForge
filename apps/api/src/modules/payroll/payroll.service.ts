@@ -282,11 +282,16 @@ export class PayrollService {
     const priorTaxable = Math.max(0, priorGross - priorContributions);
     const priorTaxWithheld = Number(input.prior?.incomeTaxWithheld ?? 0);
 
+    // Regular payroll withholds against the table for its own frequency
+    // (RR 11-2018), so tax appears from the first cutoff and stays level. A
+    // 13th-month payout is a lump-sum benefit and keeps the cumulative annual
+    // treatment — periodsPerYear 0 selects it.
     const tax = this.birTax.calculateIncomeTax(
       taxableThisPeriod,
       priorTaxable,
       priorTaxWithheld,
       brackets,
+      input.thirteenthMonth ? 0 : input.periodsInMonth * 12,
     );
 
     const totalDeductions = round2(employeeContributions + tax.taxInThisPeriod);

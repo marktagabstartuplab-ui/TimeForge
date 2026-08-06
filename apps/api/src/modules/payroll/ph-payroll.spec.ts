@@ -3,6 +3,7 @@ import {
   BirTaxService,
   annualTaxOn,
   bracketFor,
+  perPeriodBrackets,
 } from './bir-tax.service';
 import { DeductionService, periodsPerMonth } from './deduction.service';
 import {
@@ -45,7 +46,60 @@ describe('FEAT-3 — BIR income tax (2026 TRAIN schedule)', () => {
     expect(annualTaxOn(350_000, BIR_2026_BRACKETS)).toBe(15_000);
   });
 
-  it('withholds cumulatively — period tax is annual liability less what was already withheld', () => {
+  // Regular payroll uses the per-period table (RR 11-2018). The cumulative
+  // method it replaced withheld ₱0.00 until an employee crossed ₱250,000 YTD —
+  // roughly period 13 — so every payslip in production showed no tax.
+  describe('per-period withholding table (RR 11-2018)', () => {
+    it('reproduces the published semi-monthly thresholds from the annual schedule', () => {
+      const semiMonthly = perPeriodBrackets(BIR_2026_BRACKETS, 24);
+      expect(semiMonthly[1].minIncome).toBeCloseTo(10_416.67, 2);
+      expect(semiMonthly[2].minIncome).toBeCloseTo(16_666.67, 2);
+      expect(semiMonthly[2].baseTax).toBeCloseTo(937.5, 2);
+    });
+
+    // The real line item that prompted this: ₱21,607.50 gross less ₱1,377.69 of
+    // contributions. Published table: 937.50 + 20% of the excess over 16,666.67.
+    it('withholds on the first cutoff of the year', () => {
+      const result = svc.calculateIncomeTax(20_229.81, 0, 0, BIR_2026_BRACKETS, 24);
+      expect(result.taxInThisPeriod).toBeCloseTo(1_650.13, 2);
+      expect(result.yearToDateTaxableIncome).toBe(20_229.81);
+    });
+
+    it('withholds nothing below the exemption floor', () => {
+      // 10,416.67 semi-monthly = 250,000 a year, the top of the zero bracket.
+      expect(svc.calculateIncomeTax(10_000, 0, 0, BIR_2026_BRACKETS, 24).taxInThisPeriod).toBe(0);
+      expect(svc.calculateIncomeTax(0, 0, 0, BIR_2026_BRACKETS, 24).taxInThisPeriod).toBe(0);
+    });
+
+    it('stays level across the year rather than back-loading', () => {
+      const perPeriod = 20_229.81;
+      const amounts: number[] = [];
+      let ytdIncome = 0;
+      let ytdTax = 0;
+      for (let i = 0; i < 24; i++) {
+        const r = svc.calculateIncomeTax(perPeriod, ytdIncome, ytdTax, BIR_2026_BRACKETS, 24);
+        amounts.push(r.taxInThisPeriod);
+        ytdIncome = r.yearToDateTaxableIncome;
+        ytdTax = r.yearToDateTax;
+      }
+      // Every period withholds the same amount — the defect was the first
+      // twelve withholding zero.
+      expect(new Set(amounts).size).toBe(1);
+      expect(amounts[0]).toBeGreaterThan(0);
+
+      // And the year still lands on the annual liability for that income.
+      expect(ytdTax).toBeCloseTo(annualTaxOn(perPeriod * 24, BIR_2026_BRACKETS), 0);
+    });
+
+    it('monthly payroll uses the 12-period table', () => {
+      const monthly = svc.calculateIncomeTax(40_459.62, 0, 0, BIR_2026_BRACKETS, 12);
+      const semiMonthlyPair = svc.calculateIncomeTax(20_229.81, 0, 0, BIR_2026_BRACKETS, 24);
+      // One monthly period must cost the same as the two semi-monthly halves.
+      expect(monthly.taxInThisPeriod).toBeCloseTo(semiMonthlyPair.taxInThisPeriod * 2, 1);
+    });
+  });
+
+  it('withholds cumulatively when no frequency is given — the 13th-month path', () => {
     // Month 1: ₱30,000 taxable. Still inside the 250k exemption → no tax.
     const m1 = svc.calculateIncomeTax(30_000, 0, 0, BIR_2026_BRACKETS);
     expect(m1.taxInThisPeriod).toBe(0);
