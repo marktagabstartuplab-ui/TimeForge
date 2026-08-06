@@ -222,12 +222,18 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
   // every commitment is complete.
   const editApproved = !locked && editRequest?.status === "APPROVED";
 
+  // BUG-BP: saving the daily plan locks the plan itself — commitments, blockers
+  // and the yesterday/notes fields go read-only — while the day stays open for
+  // the EOD review. Mirrors the server's `planLockedAt` guard, including its
+  // supervisor-approval escape hatch.
+  const planLocked = locked || (Boolean(entry?.planLockedAt) && !editApproved);
+
   // Quick Select → planner. Recent tasks fill the description/project; a
   // carried-over commitment brings its whole plan (output, criteria, KPI,
   // target) so continuing yesterday's work is a single click. Keyed on `seq`
   // so re-picking the same card re-applies.
   useEffect(() => {
-    if (!prefill || locked) return;
+    if (!prefill || planLocked) return;
     setEditingTaskId(null);
     setTaskDesc(prefill.title);
     setTaskOutput(prefill.expectedOutput ?? "");
@@ -517,14 +523,14 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
   };
 
   const handleEditBlockerClick = (item: ScrumBlocker) => {
-    if (locked) return;
+    if (planLocked) return;
     setEditingBlockerId(item.id);
     setBlockerDesc(item.title);
     setBlockerSeverity(item.severity === "CRITICAL" ? "HIGH" : item.severity);
   };
 
   const handleDeleteBlocker = (item: ScrumBlocker) => {
-    if (locked) return;
+    if (planLocked) return;
     removeBlocker.mutate(item);
   };
 
@@ -613,6 +619,13 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
               <Lock className="h-3 w-3" aria-hidden="true" />
               Completed &amp; Locked
             </span>
+          ) : entry && planLocked ? (
+            /* BUG-BP: the plan is submitted but the day is still open — say so
+               explicitly rather than showing only the day-status pill. */
+            <span className="flex items-center gap-1.5 rounded-full bg-amber-50 px-2.5 py-0.5 text-xs font-bold text-amber-800 ring-1 ring-amber-200">
+              <Lock className="h-3 w-3" aria-hidden="true" />
+              Plan Locked
+            </span>
           ) : entry ? (
             <StatusBadge {...DAY_STATUS_META[entry.status]} />
           ) : (
@@ -650,7 +663,7 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
         </div>
       </div>
 
-      {!locked && (
+      {!planLocked && (
         <AiScrumDraftPanel
           userId={user?.id ?? ""}
           // Today's Commitments drive the draft's "Today" section — without
@@ -847,7 +860,7 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
       </div>
 
       {/* Plan New Task Form (Section 3) */}
-      {!locked && (
+      {!planLocked && (
         <div ref={plannerRef} className="p-4 rounded-[12px] border border-[#c3c6d2]/40 bg-[#f6f3f4]/10 space-y-4">
           <div className="flex flex-wrap items-center justify-between gap-2">
             <h4 className="text-sm font-bold text-brand-navy uppercase tracking-[0.5px]">
@@ -1085,20 +1098,27 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
                   >
                     {b.status === "RESOLVED" ? "Reopen" : "Resolve"}
                   </button>
-                  <button
-                    type="button"
-                    onClick={() => handleEditBlockerClick(b)}
-                    className="h-7 w-7 rounded-[6px] border border-[#c3c6d2] flex items-center justify-center text-brand-navy hover:bg-[#f6f3f4]"
-                  >
-                    <Edit3 className="h-3 w-3" />
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleDeleteBlocker(b)}
-                    className="h-7 w-7 rounded-[6px] border border-red-200 flex items-center justify-center text-red-600 hover:bg-red-50"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                  </button>
+                  {/* BUG-BP: once the plan is saved a blocker can still be
+                      resolved or reopened — that is progress, not re-planning —
+                      but the edit and delete affordances go away. */}
+                  {!planLocked && (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => handleEditBlockerClick(b)}
+                        className="h-7 w-7 rounded-[6px] border border-[#c3c6d2] flex items-center justify-center text-brand-navy hover:bg-[#f6f3f4]"
+                      >
+                        <Edit3 className="h-3 w-3" />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => handleDeleteBlocker(b)}
+                        className="h-7 w-7 rounded-[6px] border border-red-200 flex items-center justify-center text-red-600 hover:bg-red-50"
+                      >
+                        <Trash2 className="h-3 w-3" />
+                      </button>
+                    </>
+                  )}
                 </div>
               )}
             </div>
@@ -1112,7 +1132,7 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
         </div>
 
         {/* Add Blocker Form */}
-        {!locked && (
+        {!planLocked && (
           <div className="flex flex-wrap items-end gap-3 bg-[#f6f3f4]/20 p-3 rounded-[10px] border border-[#c3c6d2]/20">
             <div className="flex-1 min-w-[200px]">
               <FieldLabel htmlFor="blocker-desc">Blocker Description</FieldLabel>
@@ -1167,7 +1187,7 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
             <Textarea
               id="yesterday-accomplish"
               rows={3}
-              disabled={locked}
+              disabled={planLocked}
               placeholder="What did you complete yesterday?"
               invalid={Boolean(errors.yesterday)}
               className="bg-white"
@@ -1188,7 +1208,7 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
             <Textarea
               id="scrum-notes"
               rows={3}
-              disabled={locked}
+              disabled={planLocked}
               placeholder="Any private notes or context for your manager?"
               invalid={Boolean(errors.notes)}
               className="bg-white"
@@ -1232,6 +1252,23 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
                 {editRequest?.status === "DECLINED" ? "Request again" : "Request Edit"}
               </button>
             ) : null}
+          </div>
+        ) : planLocked ? (
+          /* BUG-BP: the plan is submitted. The day is still open — the EOD
+             review reports results against these commitments — but nothing in
+             the plan can be added, edited or removed from here. Reopening runs
+             through the same supervisor request offered above. */
+          <div className="flex flex-wrap items-center gap-3 rounded-[12px] border border-amber-200 bg-amber-50 px-4 py-3.5">
+            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-700">
+              <Lock className="h-4 w-4" aria-hidden="true" />
+            </span>
+            <div className="min-w-0 flex-1">
+              <p className="text-sm font-bold text-amber-800">Daily Plan Locked</p>
+              <p className="text-xs text-amber-700">
+                Saved at {entry?.planLockedAt ? formatClockTime(entry.planLockedAt) : "—"} · Commitments and
+                blockers are read-only. Report your results in the End of Day review.
+              </p>
+            </div>
           </div>
         ) : (
         <div className="flex flex-wrap items-center justify-between gap-3 border-t border-[#c3c6d2]/40 pt-4">
@@ -1304,7 +1341,7 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
         description={
           willComplete
             ? "All of today's commitments are complete, so submitting locks this entry — you will not be able to edit it afterward without asking your supervisor to unlock it."
-            : "Your accomplishments and notes will be saved. Today's entry stays editable until every commitment is complete."
+            : "Your plan will be saved and locked — commitments, blockers and these notes become read-only. You will still report your results in the End of Day review."
         }
         confirmLabel={willComplete ? "Yes, submit and lock" : "Yes, save"}
         pending={save.isPending}
