@@ -17,7 +17,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { PayrollService } from './payroll.service';
-import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, RunActionDto, PayrollExportRequestDto, PayrollActionDto, PayrollRejectActionDto, GeneratePayrollDto, UpdatePayrollSettingsDto, StatutoryReportQuery } from './dto';
+import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, RunActionDto, PayrollExportRequestDto, PayrollActionDto, PayrollRejectActionDto, GeneratePayrollDto, UpdatePayrollSettingsDto, StatutoryReportQuery, UpdateRateDto } from './dto';
 import { PayrollSettingsService } from './payroll-settings.service';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
