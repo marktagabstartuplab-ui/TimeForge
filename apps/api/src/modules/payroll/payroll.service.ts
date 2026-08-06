@@ -34,6 +34,7 @@ import { PayrollSettingsService, ResolvedPayrollSettings } from './payroll-setti
 import { CompensationBenefitsService } from './compensation-benefits.service';
 import { dateKeysBetween, dateOnlyKey, nightShiftMinutes } from './premium-hours';
 import { formatStatutoryId } from './statutory-ids';
+import { defaultPeriodCutoff } from './payroll-period.scheduler';
 import {
   AGENCY_ID_FIELD,
   buildContributionSheet,
@@ -527,6 +528,20 @@ export class PayrollService {
       );
     }
 
+    // BUG-BM: an explicit cutoff wins; otherwise every period still gets one, so
+    // a submission against it can always be classified on-time or late.
+    let cutoffDate = defaultPeriodCutoff(endDate);
+    if (dto.cutoffDate) {
+      const parsed = new Date(dto.cutoffDate);
+      if (isNaN(parsed.getTime())) {
+        throw new UnprocessableEntityException('cutoffDate must be a valid date');
+      }
+      if (parsed < startDate) {
+        throw new UnprocessableEntityException('cutoffDate must not precede startDate');
+      }
+      cutoffDate = parsed;
+    }
+
     const period = await this.prisma.payrollPeriod.create({
       data: {
         tenantId: p.tenantId,
@@ -535,6 +550,7 @@ export class PayrollService {
         status: 'OPEN',
         startDate,
         endDate,
+        cutoffDate,
         name: dto.name?.trim() || undefined,
         createdBy: p.userId,
         updatedBy: p.userId,
@@ -605,8 +621,19 @@ export class PayrollService {
       status: { in: ['APPROVED', 'PAYROLL_READY'] },
       paymentStatus: { not: 'PAID' },
       deletedAt: null,
-      periodStart: { gte: period.startDate },
-      periodEnd: { lte: period.endDate },
+      // BUG-BL: honour the explicit period link the employee chose at submission
+      // (and that BUG-BM keeps pinned), falling back to the work-date range only
+      // for sheets not linked to any period. Same predicate as the send-to-bank
+      // step, so a sheet routed here is paid here — a late submission against a
+      // historical period is picked up by that period's run, not a neighbour's.
+      OR: [
+        { payrollPeriodId: periodId },
+        {
+          payrollPeriodId: null,
+          periodStart: { gte: period.startDate },
+          periodEnd: { lte: period.endDate },
+        },
+      ],
     };
     if (employeeIds && employeeIds.length > 0) {
       tsWhere.userId = { in: employeeIds };

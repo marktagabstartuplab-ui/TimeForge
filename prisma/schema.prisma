@@ -756,7 +756,12 @@ model Timesheet {
   decidedAt      DateTime?              @map("decided_at") @db.Timestamptz
   /// BUG-AJ: auto-linked to the system-generated payroll period whose date range
   /// contains this timesheet's periodStart/periodEnd. Set on supervisor APPROVE.
+  /// BUG-BL: the employee may instead pick the period explicitly at submission
+  /// time; BUG-BM: once set, it is never overwritten (a late submission stays on
+  /// its original work period rather than migrating to the current one).
   payrollPeriodId String?               @map("payroll_period_id") @db.Uuid
+  /// BUG-BM: true when `submittedAt` fell after the linked period's cutoffDate.
+  isLateSubmission Boolean              @default(false) @map("is_late_submission")
   createdBy      String?                @map("created_by") @db.Uuid
   updatedBy      String?                @map("updated_by") @db.Uuid
   createdAt      DateTime               @default(now()) @map("created_at") @db.Timestamptz
@@ -774,6 +779,7 @@ model Timesheet {
   @@index([tenantId, status, organizationId])
   @@index([tenantId, organizationId, status, periodStart])
   @@index([tenantId, payrollPeriodId])
+  @@index([tenantId, organizationId, isLateSubmission])
   @@map("timesheets")
 }
 
@@ -1476,6 +1482,10 @@ model PayrollPeriod {
   status           PayrollPeriodStatus     @default(OPEN)
   startDate        DateTime                @map("start_date") @db.Date
   endDate          DateTime                @map("end_date") @db.Date
+  /// BUG-BM: submission deadline for this period. A timesheet submitted after
+  /// this instant is accepted but flagged `Timesheet.isLateSubmission`. Set
+  /// explicitly at creation, or defaulted to end-of-day one day after `endDate`.
+  cutoffDate       DateTime?               @map("cutoff_date") @db.Timestamptz
   name             String?                 @map("name")
   lockedAt         DateTime?               @map("locked_at") @db.Timestamptz
   exportedAt       DateTime?               @map("exported_at") @db.Timestamptz

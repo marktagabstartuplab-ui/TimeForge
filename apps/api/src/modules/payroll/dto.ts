@@ -18,6 +18,15 @@ export class CreatePayrollPeriodDto {
   @IsString()
   @IsOptional()
   name?: string;
+
+  /**
+   * BUG-BM: submission deadline for this period, as an ISO date or date-time.
+   * Omitted defaults to end-of-day one day after `endDate` (see
+   * `defaultPeriodCutoff`). Submissions after it are accepted but flagged late.
+   */
+  @IsString()
+  @IsOptional()
+  cutoffDate?: string;
 }
 
 export class GeneratePayrollDto {

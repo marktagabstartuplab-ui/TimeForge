@@ -12,6 +12,7 @@ import {
   Info,
   CalendarDays,
   Eye,
+  AlertTriangle,
 } from "lucide-react";
 import { MetricCard } from "@/components/shared/MetricCard";
 import { StatusBadge, timesheetStatusTone } from "@/components/shared/StatusBadge";
@@ -61,6 +62,8 @@ export function HRTimesheetsContent() {
   const [search, setSearch] = useState("");
   const [departmentId, setDepartmentId] = useState("");
   const [status, setStatus] = useState("ALL");
+  // BUG-BM: Finance's "Only Late Submissions" filter.
+  const [lateOnly, setLateOnly] = useState(false);
   const [weekFilter, setWeekFilter] = useState("1");
   const [from, setFrom] = useState("");
   const [to, setTo] = useState("");
@@ -79,6 +82,7 @@ export function HRTimesheetsContent() {
     search: search || undefined,
     departmentId: departmentId || undefined,
     status: status === "ALL" ? undefined : status,
+    lateOnly: lateOnly ? "true" : undefined,
     from: effectiveFrom || undefined,
     to: effectiveTo || undefined,
     cursor,
@@ -257,6 +261,16 @@ export function HRTimesheetsContent() {
               </div>
             </div>
           </div>
+          {/* BUG-BM: late-submission filter */}
+          <label className="mt-4 flex w-fit cursor-pointer items-center gap-2 text-sm text-brand-ink">
+            <input
+              type="checkbox"
+              checked={lateOnly}
+              onChange={(e) => { setLateOnly(e.target.checked); resetPagination(); }}
+              className="h-4 w-4 rounded border-[#c3c6d2] accent-brand"
+            />
+            Only Late Submissions
+          </label>
         </div>
       ) : null}
 
@@ -345,7 +359,17 @@ export function HRTimesheetsContent() {
                           {r.totalHours.toFixed(2)} h
                         </td>
                         <td className="py-3.5 px-5">
-                          <StatusBadge label={label} tone={tone} />
+                          <div className="flex flex-wrap items-center gap-1.5">
+                            <StatusBadge label={label} tone={tone} />
+                            {/* BUG-BM: late submissions are flagged prominently, but
+                                still show their original period in the Period column. */}
+                            {r.isLateSubmission ? (
+                              <span className="inline-flex items-center gap-1 rounded-full border border-red-200 bg-red-50 px-2 py-0.5 text-[11px] font-bold uppercase tracking-wide text-red-700">
+                                <AlertTriangle className="h-3 w-3" aria-hidden="true" />
+                                Late Submission
+                              </span>
+                            ) : null}
+                          </div>
                         </td>
                         <td className="py-3.5 px-5">
                           {r.supervisorRemark ? (
@@ -467,7 +491,12 @@ export function HRTimesheetsContent() {
               </div>
               <div>
                 <p className="text-xs font-semibold text-brand-muted uppercase">Submitted</p>
-                <p className="text-brand-ink">{selectedDetail.submittedAt ? formatDate(selectedDetail.submittedAt) : "Not submitted"}</p>
+                <p className="text-brand-ink">
+                  {selectedDetail.submittedAt ? formatDate(selectedDetail.submittedAt) : "Not submitted"}
+                  {selectedDetail.isLateSubmission ? (
+                    <span className="ml-1.5 font-semibold text-red-700">(late)</span>
+                  ) : null}
+                </p>
               </div>
               <div>
                 <p className="text-xs font-semibold text-brand-muted uppercase">Decided</p>

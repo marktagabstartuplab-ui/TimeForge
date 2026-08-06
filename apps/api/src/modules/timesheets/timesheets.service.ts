@@ -5,7 +5,14 @@ import {
   NotFoundException,
   UnprocessableEntityException,
 } from '@nestjs/common';
-import { AuditAction, Prisma, Timesheet, TimesheetStatus } from '@prisma/client';
+import {
+  AuditAction,
+  PayrollPeriod,
+  PayrollPeriodStatus,
+  Prisma,
+  Timesheet,
+  TimesheetStatus,
+} from '@prisma/client';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { buildPage, decodeCursor, PageResult } from '../../common/crud/crud.service';
 import { AuthPrincipal } from '../../common/decorators';
@@ -21,6 +28,7 @@ import {
   BulkApproveTimesheetsDto,
   BulkRejectTimesheetsDto,
   CreateTimesheetDto,
+  SelectablePayrollPeriod,
   SubmitTimesheetDto,
   TimesheetChartQuery,
   TimesheetHistoryQuery,
@@ -35,6 +43,15 @@ type SortableField = (typeof SORTABLE_FIELDS)[number];
 
 /** A timesheet's total minutes exceeding this, pro-rated for its period length, is flagged as overtime. */
 const WEEKLY_OVERTIME_CAP_MINUTES = 60 * 60;
+
+/**
+ * BUG-BL: the period statuses an employee may still submit a timesheet against.
+ * OPEN is untouched. GENERATED is "partially processed" — a report exists but
+ * the period is not locked, so a late arrival can still be folded in by
+ * re-generating. LOCKED and EXPORTED are closed, and so is anything carrying a
+ * `lockedAt` stamp.
+ */
+const SUBMITTABLE_PERIOD_STATUSES: readonly PayrollPeriodStatus[] = ['OPEN', 'GENERATED'];
 
 export interface BulkTimesheetResult {
   results: { id: string; status: 'ok' | 'error'; error?: string }[];
@@ -526,6 +543,65 @@ export class TimesheetsService {
     return [header, ...lines].join('\n');
   }
 
+  // ─── BUG-BL: payroll periods an employee may submit against ───────────────
+  //
+  // Deliberately not GET /payroll/periods: that endpoint requires
+  // `payroll_period:read`, which the EMPLOYEE role does not hold. This is a
+  // narrow, read-only projection for the submission dropdown instead of
+  // widening a payroll permission to every employee.
+
+  async selectablePayrollPeriods(p: AuthPrincipal): Promise<SelectablePayrollPeriod[]> {
+    const now = new Date();
+    const periods = await this.prisma.payrollPeriod.findMany({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        deletedAt: null,
+        status: { in: [...SUBMITTABLE_PERIOD_STATUSES] },
+        lockedAt: null,
+      },
+      orderBy: [{ endDate: 'desc' }, { id: 'asc' }],
+      take: 50,
+    });
+
+    return periods.map((period) => ({
+      id: period.id,
+      type: period.type,
+      status: period.status,
+      startDate: period.startDate.toISOString(),
+      endDate: period.endDate.toISOString(),
+      cutoffDate: period.cutoffDate?.toISOString() ?? null,
+      name: period.name,
+      pastCutoff: period.cutoffDate ? now > period.cutoffDate : false,
+    }));
+  }
+
+  /**
+   * BUG-BL: resolves an employee-selected period, refusing anything closed to
+   * submissions. Past the cutoff is NOT a refusal — that submission is accepted
+   * and flagged late instead (BUG-BM (2)).
+   */
+  private async assertSubmittablePeriod(
+    p: AuthPrincipal,
+    payrollPeriodId: string,
+  ): Promise<PayrollPeriod> {
+    const period = await this.prisma.payrollPeriod.findFirst({
+      where: {
+        id: payrollPeriodId,
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        deletedAt: null,
+      },
+    });
+    if (!period) throw new NotFoundException('Payroll period not found');
+    if (period.lockedAt || !SUBMITTABLE_PERIOD_STATUSES.includes(period.status)) {
+      throw new ConflictException(
+        'That payroll period is locked and no longer accepts timesheet submissions.',
+      );
+    }
+    return period;
+  }
+
   // -- Employee writes --
 
   async create(p: AuthPrincipal, dto: CreateTimesheetDto): Promise<Timesheet> {
@@ -548,6 +624,12 @@ export class TimesheetsService {
     });
     if (conflict) throw new ConflictException('A timesheet for this exact period already exists');
 
+    // BUG-BL: an explicitly chosen period is validated up front, so a stale
+    // dropdown can't silently route work into a locked run.
+    const selected = dto.payrollPeriodId
+      ? await this.assertSubmittablePeriod(p, dto.payrollPeriodId)
+      : null;
+
     return this.prisma.timesheet.create({
       data: {
         tenantId: p.tenantId,
@@ -556,6 +638,7 @@ export class TimesheetsService {
         status: 'DRAFT',
         periodStart: start,
         periodEnd: end,
+        payrollPeriodId: selected?.id ?? null,
         totalMinutes: 0,
         summary: dto.summary ?? null,
         createdBy: p.userId,
@@ -624,6 +707,27 @@ export class TimesheetsService {
       _sum: { durationMinutes: true },
     });
     const totalMinutes = agg._sum.durationMinutes ?? 0;
+    const submittedAt = new Date();
+
+    // BUG-BL: the employee's dropdown choice is applied here, but only while the
+    // sheet is still a DRAFT. A REJECTED / REVISION_REQUESTED resubmit keeps the
+    // period it was originally routed to — BUG-BM (3) requires the original
+    // period_id to survive, never to be rewritten to whatever is current.
+    let period: PayrollPeriod | null = null;
+    if (sheet.status === 'DRAFT' && dto.payrollPeriodId) {
+      period = await this.assertSubmittablePeriod(p, dto.payrollPeriodId);
+    } else if (sheet.payrollPeriodId) {
+      period = await this.prisma.payrollPeriod.findFirst({
+        where: { id: sheet.payrollPeriodId, tenantId: p.tenantId, deletedAt: null },
+      });
+    }
+
+    // BUG-BM (2): past the cutoff the submission is still accepted — it is
+    // flagged, not blocked. With no period linked (the frontline auto-assignment
+    // path) there is no cutoff to judge it against, so the flag is left alone.
+    const isLateSubmission = period?.cutoffDate
+      ? submittedAt > period.cutoffDate
+      : sheet.isLateSubmission;
 
     const updated = await this.prisma.timesheet.update({
       where: { id },
@@ -631,7 +735,9 @@ export class TimesheetsService {
         status: 'SUBMITTED',
         totalMinutes,
         summary: dto.summary ?? sheet.summary,
-        submittedAt: new Date(),
+        submittedAt,
+        payrollPeriodId: period?.id ?? sheet.payrollPeriodId,
+        isLateSubmission,
         updatedBy: p.userId,
         version: { increment: 1 },
       },
@@ -773,6 +879,8 @@ export class TimesheetsService {
       organizationId: p.organizationId,
       deletedAt: null,
       ...(query.status ? { status: query.status as TimesheetStatus } : {}),
+      // BUG-BM: Finance's "Only Late Submissions" filter.
+      ...(query.lateOnly === 'true' ? { isLateSubmission: true } : {}),
       ...(query.from || query.to
         ? {
             periodStart: {
@@ -827,6 +935,11 @@ export class TimesheetsService {
       totalHours: +(t.totalMinutes / 60).toFixed(2),
       status: t.status,
       summary: t.summary,
+      // BUG-BM: drives the "Late Submission" badge on Timesheet Approvals. The
+      // period link travels with it so Finance can see that a late sheet is
+      // still on its original work period, not the current one.
+      isLateSubmission: t.isLateSubmission,
+      payrollPeriodId: t.payrollPeriodId,
       submittedAt: t.submittedAt?.toISOString() ?? null,
       decidedAt: t.decidedAt?.toISOString() ?? null,
       createdAt: t.createdAt.toISOString(),
