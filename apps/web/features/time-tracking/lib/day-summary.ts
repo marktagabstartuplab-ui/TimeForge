@@ -43,10 +43,28 @@ export function summarizeDay(entries: TimeEntry[], now = new Date()): DaySummary
   let running: TimeEntry | null = null;
   let prevEnd: string | null = null;
 
+  const dayStart = new Date(now);
+  dayStart.setHours(0, 0, 0, 0);
+  const dayEnd = new Date(now);
+  dayEnd.setHours(23, 59, 59, 999);
+  const dayStartTime = dayStart.getTime();
+  const dayEndTime = dayEnd.getTime();
+
   for (const entry of sorted) {
-    const end = entry.endTime ?? now.toISOString();
+    const rawEndIso = entry.endTime ?? now.toISOString();
     if (!entry.endTime) running = entry;
-    tracked += entry.durationMinutes ?? minutesBetween(entry.startTime, end);
+
+    const entryStartMs = new Date(entry.startTime).getTime();
+    const entryEndMs = new Date(rawEndIso).getTime();
+
+    // Clamp entry interval to today's 24-hour window
+    const clampedStartMs = Math.max(entryStartMs, dayStartTime);
+    const clampedEndMs = Math.min(entryEndMs, dayEndTime);
+
+    if (clampedEndMs > clampedStartMs) {
+      tracked += (clampedEndMs - clampedStartMs) / 60_000;
+    }
+
     if (prevEnd) {
       const gap = minutesBetween(prevEnd, entry.startTime);
       if (gap >= MIN_BREAK_MINUTES) {
@@ -54,7 +72,7 @@ export function summarizeDay(entries: TimeEntry[], now = new Date()): DaySummary
         breakCount += 1;
       }
     }
-    if (!prevEnd || end > prevEnd) prevEnd = end;
+    if (!prevEnd || rawEndIso > prevEnd) prevEnd = rawEndIso;
   }
 
   const last = sorted[sorted.length - 1] ?? null;
