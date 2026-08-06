@@ -274,7 +274,7 @@ export function TimeTrackingContent() {
   // durable "already reviewed" marker across reloads; `dayClosed` covers the
   // moment between submit and refetch.
   const alreadyReviewed = dayClosed || Boolean(scrumEntry?.today?.includes("EOD Review —"));
-  const canReviewDay = hasScrumPlan && entries.length > 0 && hasWorkDetails && !alreadyReviewed;
+  const canReviewDay = hasScrumPlan && entries.length > 0 && !alreadyReviewed;
   const reviewBlockedReason = canReviewDay
     ? null
     : alreadyReviewed
@@ -282,9 +282,6 @@ export function TimeTrackingContent() {
       : [
           !hasScrumPlan ? "save today's Daily Scrum commitments" : null,
           hasScrumPlan && entries.length === 0 ? "clock in and log some work" : null,
-          entries.length > 0 && !hasWorkDetails
-            ? "complete and save Work Details (task & description)"
-            : null,
         ]
           .filter((r): r is string => Boolean(r))
           .reduce((sentence, part, i, arr) => {
@@ -372,7 +369,6 @@ export function TimeTrackingContent() {
   const submitChecklist = [
     { label: "Planned today's commitments", done: planDone },
     { label: `Logged ${summary.entryCount} work ${summary.entryCount === 1 ? "session" : "sessions"}`, done: entries.length > 0 },
-    { label: "Saved your work details", done: hasWorkDetails },
     { label: "Completed the end of day review", done: alreadyReviewed },
   ];
 

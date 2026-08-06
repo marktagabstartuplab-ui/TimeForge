@@ -516,7 +516,6 @@ export function FinancePayrollProcessingContent() {
                       <th className="py-3 px-4">Gross Payroll</th>
                       <th className="py-3 px-4">Pay Multiplier</th>
                       <th className="py-3 px-4">Status</th>
-                      <th className="py-3 px-4 text-right">Work Details</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-[#c3c6d2]/30">
@@ -588,16 +587,6 @@ export function FinancePayrollProcessingContent() {
                         <td className="py-3 px-4 text-brand-ink">{emp.payMultiplier.toFixed(2)}x</td>
                         <td className="py-3 px-4">
                           <StatusBadge label={emp.rowStatus} tone={STATUS_TONE[emp.rowStatus] ?? "neutral"} />
-                        </td>
-                        <td className="py-3 px-4 text-right">
-                          <Button
-                            type="button"
-                            variant="outline"
-                            size="xs"
-                            onClick={() => setWorkDetailsEmp(emp)}
-                          >
-                            View
-                          </Button>
                         </td>
                       </tr>
                     ))}

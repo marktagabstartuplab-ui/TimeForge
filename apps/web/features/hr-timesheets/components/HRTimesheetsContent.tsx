@@ -489,12 +489,6 @@ export function HRTimesheetsContent() {
                 <p className="text-sm text-brand-ink bg-[#f6f3f4] rounded-[12px] p-3">{selectedDetail.summary}</p>
               </div>
             ) : null}
-            {/* Work details recorded by the employee, as approved by the supervisor —
-                fetched from the existing timesheet detail endpoint (org-read RBAC). */}
-            <div className="mt-4">
-              <p className="text-xs font-semibold text-brand-muted uppercase mb-2">Work Details</p>
-              <TimesheetWorkDetails timesheetId={selectedDetail.id} />
-            </div>
             <div className="mt-4 flex justify-end">
               <Button variant="outline" size="sm" onClick={() => setSelectedDetail(null)}>Close</Button>
             </div>

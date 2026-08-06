@@ -4,7 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import { Controller, useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
-import { Clock3, Coffee, Loader2, LogOut, Target } from "lucide-react";
+import { Clock3, Coffee, Loader2, LogOut, Plus, Target } from "lucide-react";
 import {
   Dialog,
   DialogClose,
@@ -13,11 +13,13 @@ import {
   DialogTitle,
 } from "@/components/ui/dialog";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Button } from "@/components/ui/button";
 import { ConfirmationDialog } from "@/components/shared/ConfirmationDialog";
 import { Textarea } from "@/components/ui/textarea";
 import { FieldError, FormBanner } from "@/features/auth/components/FormMessages";
 import {
   createScrumEntry,
+  createScrumTask,
   getScrumEntry,
   listScrumEntries,
   listScrumTasks,
@@ -41,33 +43,24 @@ interface EodReviewModalProps {
   onSubmitted?: () => void;
 }
 
-/** Leading numeric prefix of a target string ("50", "50 calls" → 50); null when non-numeric. */
-function parseNumericTarget(value: string | null | undefined): number | null {
-  if (!value) return null;
-  const match = String(value).trim().match(/^-?\d+(\.\d+)?/);
-  if (!match) return null;
-  const parsed = Number(match[0]);
-  return Number.isFinite(parsed) ? parsed : null;
-}
-
-/** A commitment participates in the actual-vs-planned flow only if it carries a numeric planned target. */
-function isKpiLinked(task: ScrumTask): boolean {
-  return parseNumericTarget(task.plannedTarget) !== null;
-}
-
 /** Per-commitment EOD answers, keyed by task id. */
 interface TaskReview {
-  actual: string;
+  completed: boolean;
   continueTomorrow: boolean | null;
   reason: string;
 }
 
-const EMPTY_REVIEW: TaskReview = { actual: "", continueTomorrow: null, reason: "" };
+interface AdHocTaskItem {
+  id: string;
+  title: string;
+  completed: boolean;
+}
+
+const EMPTY_REVIEW: TaskReview = { completed: false, continueTomorrow: null, reason: "" };
 
 /**
- * One commitment in the review. KPI-linked commitments (those with a numeric
- * Planned Target) get the mandatory "Actual Completed" input plus the shortfall
- * follow-ups; everything else keeps the plain status badge.
+ * One commitment in the review checklist. Features an intuitive checkbox to mark "Done" or "Pending",
+ * preserving planned target references as secondary info.
  */
 function CommitmentReviewRow({
   task,
@@ -80,125 +73,84 @@ function CommitmentReviewRow({
   error?: string;
   onChange: (patch: Partial<TaskReview>) => void;
 }) {
-  const planned = parseNumericTarget(task.plannedTarget);
-  const actual = parseNumericTarget(review.actual);
-  const answered = review.actual.trim() !== "" && actual !== null && actual >= 0;
-  // A zero target is trivially met — treat it as 100% rather than dividing by zero.
-  const percent = answered && planned !== null ? (planned > 0 ? Math.round((actual / planned) * 100) : 100) : null;
-  const shortfall = answered && planned !== null && actual < planned;
+  const completed = review.completed;
 
   return (
     <li className="rounded-[12px] border border-[#c3c6d2]/50 bg-white p-4 shadow-[0px_1px_1px_rgba(0,0,0,0.05)]">
       <div className="flex items-start justify-between gap-3">
         <div className="flex items-start gap-2.5">
-          <Target className="mt-0.5 h-5 w-5 shrink-0 text-brand" aria-hidden="true" />
+          <Checkbox
+            id={`task-check-${task.id}`}
+            checked={completed}
+            onCheckedChange={(checked) => onChange({ completed: checked === true })}
+            className="mt-0.5 size-5 rounded-[6px]"
+          />
           <div>
-            <p className="text-sm font-semibold text-brand-ink">{task.title}</p>
+            <label htmlFor={`task-check-${task.id}`} className="cursor-pointer text-sm font-semibold text-brand-ink">
+              {task.title}
+            </label>
             {task.expectedOutput ? (
               <p className="mt-0.5 text-xs text-brand-muted">{task.expectedOutput}</p>
+            ) : null}
+            {task.plannedTarget ? (
+              <p className="mt-0.5 text-[11px] font-semibold text-brand-muted">Target: {task.plannedTarget}</p>
             ) : null}
             {task.kpi ? (
               <p className="mt-0.5 text-[11px] font-semibold uppercase tracking-[0.5px] text-brand-muted">{task.kpi}</p>
             ) : null}
           </div>
         </div>
-        {planned === null ? (
-          <span
-            className={
-              task.taskStatus === "COMPLETED"
-                ? "shrink-0 rounded-full bg-[#f0fdf4] px-2.5 py-0.5 text-xs font-bold text-[#16a34a]"
-                : "shrink-0 rounded-full bg-[#f6f3f4] px-2.5 py-0.5 text-xs font-bold text-brand-muted"
-            }
-          >
-            {task.taskStatus === "COMPLETED" ? "Completed" : task.taskStatus === "IN_PROGRESS" ? "In progress" : "Pending"}
-          </span>
-        ) : percent !== null ? (
-          <span
-            className={
-              shortfall
-                ? "shrink-0 rounded-full bg-[#fef2f2] px-2.5 py-0.5 text-xs font-bold text-[#dc2626]"
-                : "shrink-0 rounded-full bg-[#f0fdf4] px-2.5 py-0.5 text-xs font-bold text-[#16a34a]"
-            }
-          >
-            {percent}% {shortfall ? "Below target" : percent > 100 ? "Above target" : "On target"}
-          </span>
-        ) : null}
+        <span
+          className={
+            completed
+              ? "shrink-0 rounded-full bg-[#f0fdf4] px-2.5 py-0.5 text-xs font-bold text-[#16a34a]"
+              : "shrink-0 rounded-full bg-[#f6f3f4] px-2.5 py-0.5 text-xs font-bold text-brand-muted"
+          }
+        >
+          {completed ? "Completed" : "In progress"}
+        </span>
       </div>
 
-      {planned !== null ? (
+      {!completed ? (
         <div className="mt-3 space-y-3 border-t border-[#c3c6d2]/40 pt-3">
-          <div className="flex flex-wrap items-end gap-4">
+          <div className="space-y-3 rounded-[10px] bg-[#fef2f2] px-3 py-3">
+            <fieldset>
+              <legend className="text-xs font-bold text-[#b91c1c]">Will you continue this tomorrow?</legend>
+              <div className="mt-2 flex gap-4">
+                {[
+                  { label: "Yes", value: true },
+                  { label: "No", value: false },
+                ].map((option) => (
+                  <label key={option.label} className="flex cursor-pointer items-center gap-2 text-sm text-brand-ink">
+                    <input
+                      type="radio"
+                      name={`eod-continue-${task.id}`}
+                      checked={review.continueTomorrow === option.value}
+                      onChange={() => onChange({ continueTomorrow: option.value })}
+                      className="size-4 accent-[#dc2626]"
+                    />
+                    {option.label}
+                  </label>
+                ))}
+              </div>
+            </fieldset>
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-[1px] text-brand-muted">Planned Target</p>
-              <p className="mt-1 text-sm font-bold text-brand-ink">{task.plannedTarget}</p>
-            </div>
-            <div className="min-w-[140px]">
               <label
-                htmlFor={`eod-actual-${task.id}`}
-                className="text-[10px] font-bold uppercase tracking-[1px] text-brand-muted"
+                htmlFor={`eod-reason-${task.id}`}
+                className="text-xs font-bold text-[#b91c1c]"
               >
-                Actual Completed <span className="text-red-600">*</span>
+                Why was this not completed?
               </label>
-              <input
-                id={`eod-actual-${task.id}`}
-                type="number"
-                min={0}
-                step="any"
-                inputMode="decimal"
-                value={review.actual}
-                onChange={(event) => onChange({ actual: event.target.value })}
-                aria-invalid={Boolean(error)}
-                className={
-                  error
-                    ? "mt-1 h-10 w-full rounded-[10px] border border-red-400 bg-white px-3 text-sm text-brand-ink outline-none focus:border-red-500"
-                    : "mt-1 h-10 w-full rounded-[10px] border border-[#c3c6d2] bg-white px-3 text-sm text-brand-ink outline-none focus:border-brand"
-                }
+              <Textarea
+                id={`eod-reason-${task.id}`}
+                rows={2}
+                value={review.reason}
+                onChange={(event) => onChange({ reason: event.target.value })}
+                placeholder="What got in the way?"
+                className="mt-1"
               />
             </div>
           </div>
-
-          {shortfall ? (
-            <div className="space-y-3 rounded-[10px] bg-[#fef2f2] px-3 py-3">
-              <fieldset>
-                <legend className="text-xs font-bold text-[#b91c1c]">Will you continue this tomorrow?</legend>
-                <div className="mt-2 flex gap-4">
-                  {[
-                    { label: "Yes", value: true },
-                    { label: "No", value: false },
-                  ].map((option) => (
-                    <label key={option.label} className="flex cursor-pointer items-center gap-2 text-sm text-brand-ink">
-                      <input
-                        type="radio"
-                        name={`eod-continue-${task.id}`}
-                        checked={review.continueTomorrow === option.value}
-                        onChange={() => onChange({ continueTomorrow: option.value })}
-                        className="size-4 accent-[#dc2626]"
-                      />
-                      {option.label}
-                    </label>
-                  ))}
-                </div>
-              </fieldset>
-              <div>
-                <label
-                  htmlFor={`eod-reason-${task.id}`}
-                  className="text-xs font-bold text-[#b91c1c]"
-                >
-                  Why was this not completed? <span className="text-red-600">*</span>
-                </label>
-                <Textarea
-                  id={`eod-reason-${task.id}`}
-                  rows={2}
-                  value={review.reason}
-                  onChange={(event) => onChange({ reason: event.target.value })}
-                  placeholder="What got in the way?"
-                  invalid={Boolean(error)}
-                  className="mt-1"
-                />
-              </div>
-            </div>
-          ) : null}
-
           <FieldError message={error} />
         </div>
       ) : null}
@@ -257,6 +209,10 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
   });
   const commitments = scrumTasks ?? [];
 
+  const [adHocTasks, setAdHocTasks] = useState<AdHocTaskItem[]>([]);
+  const [newAdHocTitle, setNewAdHocTitle] = useState("");
+  const [showAdHocInput, setShowAdHocInput] = useState(false);
+
   const {
     register,
     control,
@@ -277,13 +233,15 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
       setCommitmentDone(false);
       setTaskErrors({});
       setPendingSubmit(null);
+      setAdHocTasks([]);
+      setNewAdHocTitle("");
+      setShowAdHocInput(false);
       taskVersions.current = {};
     }
   }, [open, reset]);
 
-  // Seed the per-commitment answers from whatever was already reported (the
-  // inline "Actual Completed" field on ScrumTaskCard writes the same columns),
-  // so re-opening the review doesn't wipe an earlier entry.
+  // Seed the per-commitment answers from whatever was already reported,
+  // defaulting completed status to taskStatus === "COMPLETED".
   useEffect(() => {
     if (!open) return;
     setReviews(
@@ -291,7 +249,7 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
         commitments.map((task) => [
           task.id,
           {
-            actual: task.actualCompleted ?? "",
+            completed: task.taskStatus === "COMPLETED",
             continueTomorrow: task.continueTomorrow ?? null,
             reason: task.notCompletedReason ?? "",
           },
@@ -310,24 +268,30 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
     });
   };
 
-  /** Empty when every KPI-linked commitment is answered; otherwise error text by task id. */
+  const handleAddAdHocTask = () => {
+    if (!newAdHocTitle.trim()) return;
+    setAdHocTasks((prev) => [
+      ...prev,
+      { id: `adhoc-${Date.now()}`, title: newAdHocTitle.trim(), completed: true },
+    ]);
+    setNewAdHocTitle("");
+    setShowAdHocInput(false);
+  };
+
+  const toggleAdHocTask = (id: string, completed: boolean) => {
+    setAdHocTasks((prev) =>
+      prev.map((item) => (item.id === id ? { ...item, completed } : item)),
+    );
+  };
+
+  /** Check for required reasons if any commitment is marked incomplete. */
   const validateCommitments = (): Record<string, string> => {
     const errs: Record<string, string> = {};
     for (const task of commitments) {
-      if (!isKpiLinked(task)) continue;
-      const planned = parseNumericTarget(task.plannedTarget)!;
       const review = reviews[task.id] ?? EMPTY_REVIEW;
-      const actual = parseNumericTarget(review.actual);
-
-      if (review.actual.trim() === "") {
-        errs[task.id] = "Enter what you actually completed";
-      } else if (actual === null || actual < 0) {
-        errs[task.id] = "Enter a number of 0 or more";
-      } else if (actual < planned) {
+      if (!review.completed) {
         if (review.continueTomorrow === null) {
           errs[task.id] = "Tell us whether you'll continue this tomorrow";
-        } else if (!review.reason.trim()) {
-          errs[task.id] = "Explain why this wasn't completed";
         }
       }
     }
@@ -336,41 +300,29 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
 
   const submit = useMutation({
     mutationFn: async (values: EodReviewValues) => {
-      // Persist the per-commitment actuals BEFORE clocking out — if a task write
-      // fails (stale version, locked entry) the user is still on the clock and
-      // can retry, rather than being timed out with the numbers lost.
-
-      // Pass 1 — KPI-linked commitments: record actuals and derive status from
-      // whether the numeric target was met.
+      // Pass 1 — Save status of all morning commitments.
       for (const task of commitments) {
-        if (!isKpiLinked(task)) continue;
-        const planned = parseNumericTarget(task.plannedTarget)!;
         const review = reviews[task.id] ?? EMPTY_REVIEW;
-        const actual = parseNumericTarget(review.actual)!;
-        const shortfall = actual < planned;
+        const isDone = review.completed;
         const updated = await updateScrumTask(task.id, {
-          actualCompleted: review.actual.trim(),
-          taskStatus: shortfall ? "IN_PROGRESS" : "COMPLETED",
-          continueTomorrow: shortfall ? review.continueTomorrow ?? false : false,
-          notCompletedReason: shortfall ? review.reason.trim() : "",
+          taskStatus: isDone ? "COMPLETED" : "IN_PROGRESS",
+          actualCompleted: isDone ? "Done" : "Pending",
+          continueTomorrow: !isDone ? review.continueTomorrow ?? false : false,
+          notCompletedReason: !isDone ? review.reason.trim() : "",
           version: taskVersions.current[task.id] ?? task.version,
         });
         taskVersions.current[task.id] = updated.version;
       }
 
-      // Pass 2 — Non-KPI commitments (no numeric planned target): mark COMPLETED
-      // at EOD unless they were already marked complete by the employee earlier.
-      // These tasks have no measurable shortfall, so EOD submission = implicit
-      // completion. The backend's isEodReportOnly() guard allows this write even
-      // on a locked entry (taskStatus is an EOD-report field, not a plan edit).
-      for (const task of commitments) {
-        if (isKpiLinked(task)) continue;
-        if (task.taskStatus === "COMPLETED") continue;
-        const updated = await updateScrumTask(task.id, {
-          taskStatus: "COMPLETED",
-          version: taskVersions.current[task.id] ?? task.version,
-        });
-        taskVersions.current[task.id] = updated.version;
+      // Pass 2 — Create any ad-hoc/unexpected tasks added mid-shift.
+      if (scrum) {
+        for (const adHoc of adHocTasks) {
+          await createScrumTask(scrum.id, {
+            title: adHoc.title,
+            taskStatus: adHoc.completed ? "COMPLETED" : "IN_PROGRESS",
+            actualCompleted: adHoc.completed ? "Done" : "Pending",
+          });
+        }
       }
 
       if (workSession?.session?.isActive) {
@@ -507,10 +459,13 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
             </div>
 
             <div>
-              <p className="mb-2 text-xs font-bold uppercase tracking-[1px] text-brand-muted">
-                Today&apos;s Commitments
-              </p>
-              {commitments.length > 0 ? (
+              <div className="flex items-center justify-between mb-2">
+                <p className="text-xs font-bold uppercase tracking-[1px] text-brand-muted">
+                  Today&apos;s Commitments & Tasks
+                </p>
+              </div>
+
+              {commitments.length > 0 || adHocTasks.length > 0 ? (
                 <ul className="flex flex-col gap-2">
                   {commitments.map((task) => (
                     <CommitmentReviewRow
@@ -520,6 +475,35 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
                       error={taskErrors[task.id]}
                       onChange={(patch) => patchReview(task.id, patch)}
                     />
+                  ))}
+                  {adHocTasks.map((adHoc) => (
+                    <li key={adHoc.id} className="rounded-[12px] border border-amber-200 bg-amber-50/40 p-4 shadow-[0px_1px_1px_rgba(0,0,0,0.05)]">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-2.5">
+                          <Checkbox
+                            id={`adhoc-check-${adHoc.id}`}
+                            checked={adHoc.completed}
+                            onCheckedChange={(checked) => toggleAdHocTask(adHoc.id, checked === true)}
+                            className="mt-0.5 size-5 rounded-[6px]"
+                          />
+                          <div>
+                            <label htmlFor={`adhoc-check-${adHoc.id}`} className="cursor-pointer text-sm font-semibold text-brand-ink">
+                              {adHoc.title}
+                            </label>
+                            <p className="mt-0.5 text-[10px] font-bold uppercase tracking-[0.5px] text-amber-700">Unexpected / Mid-Shift Task</p>
+                          </div>
+                        </div>
+                        <span
+                          className={
+                            adHoc.completed
+                              ? "shrink-0 rounded-full bg-[#f0fdf4] px-2.5 py-0.5 text-xs font-bold text-[#16a34a]"
+                              : "shrink-0 rounded-full bg-[#f6f3f4] px-2.5 py-0.5 text-xs font-bold text-brand-muted"
+                          }
+                        >
+                          {adHoc.completed ? "Done" : "Pending"}
+                        </span>
+                      </div>
+                    </li>
                   ))}
                 </ul>
               ) : scrum?.today ? (
@@ -538,14 +522,61 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
                       />
                     </label>
                   </div>
-                  <p className="mt-2 text-xs text-brand-muted/80">
-                    Completion tracking is visual only — needs backend support.
-                  </p>
                 </div>
               ) : (
                 <p className="rounded-[12px] bg-[#f6f3f4] px-4 py-3 text-sm text-brand-muted">
-                  No scrum entry for today — your commitments would appear here.
+                  No morning scrum entry for today. You can add unexpected tasks below.
                 </p>
+              )}
+
+              {showAdHocInput ? (
+                <div className="mt-3 flex flex-col gap-2 rounded-[12px] border border-brand/30 bg-brand-cyan/5 p-3">
+                  <p className="text-xs font-bold text-brand-navy">Add Unexpected / Mid-Shift Task</p>
+                  <input
+                    type="text"
+                    placeholder="Enter unexpected task name..."
+                    value={newAdHocTitle}
+                    onChange={(e) => setNewAdHocTitle(e.target.value)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter") {
+                        e.preventDefault();
+                        handleAddAdHocTask();
+                      }
+                    }}
+                    className="h-9 w-full rounded-[8px] border border-[#c3c6d2] bg-white px-3 text-xs text-brand-ink outline-none focus:border-brand"
+                  />
+                  <div className="flex justify-end gap-2">
+                    <Button
+                      type="button"
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setShowAdHocInput(false);
+                        setNewAdHocTitle("");
+                      }}
+                      className="h-8 text-xs"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      type="button"
+                      size="sm"
+                      onClick={handleAddAdHocTask}
+                      disabled={!newAdHocTitle.trim()}
+                      className="h-8 bg-brand text-xs font-bold text-white hover:bg-[#1467d6]"
+                    >
+                      Add Task & Mark Done
+                    </Button>
+                  </div>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => setShowAdHocInput(true)}
+                  className="mt-3 inline-flex items-center gap-1.5 text-xs font-bold text-brand hover:underline"
+                >
+                  <Plus className="h-4 w-4" /> + Add Unexpected Task
+                </button>
               )}
             </div>
 

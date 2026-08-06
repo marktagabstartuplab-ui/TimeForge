@@ -61,22 +61,23 @@ describe('TimeTrackingService — Work Details completeness', () => {
     service = module.get(TimeTrackingService);
   });
 
-  it('rejects a work-details save that is missing the mandatory fields', async () => {
-    await expect(
-      service.update(principal, 'entry-1', { deliverables: 'Merged PR #142', version: 2 } as any),
-    ).rejects.toBeInstanceOf(UnprocessableEntityException);
-    expect(prisma.timeEntry.update).not.toHaveBeenCalled();
+  it('allows updates without mandatory work details (BUG-BI deprecation)', async () => {
+    prisma.timeEntry.update.mockResolvedValue({ ...entry, version: 3 });
+
+    await service.update(principal, 'entry-1', { deliverables: 'Merged PR #142', version: 2 } as any);
+    expect(prisma.timeEntry.update).toHaveBeenCalled();
   });
 
-  it('rejects whitespace-only values', async () => {
-    await expect(
-      service.update(principal, 'entry-1', {
-        task: '   ',
-        description: 'Reviewed the payroll export',
-        workCategoryId: 'cat-1',
-        version: 2,
-      } as any),
-    ).rejects.toBeInstanceOf(UnprocessableEntityException);
+  it('accepts entries without mandatory task or description fields', async () => {
+    prisma.timeEntry.update.mockResolvedValue({ ...entry, version: 3 });
+
+    await service.update(principal, 'entry-1', {
+      task: '   ',
+      description: 'Reviewed the payroll export',
+      workCategoryId: 'cat-1',
+      version: 2,
+    } as any);
+    expect(prisma.timeEntry.update).toHaveBeenCalled();
   });
 
   it('accepts a complete work-details save', async () => {

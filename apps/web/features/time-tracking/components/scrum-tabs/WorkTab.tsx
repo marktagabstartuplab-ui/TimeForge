@@ -64,16 +64,6 @@ export function WorkTab({
           reviewBlockedReason={reviewBlockedReason}
         />
 
-        <WorkDetailsCard
-          key={editableEntry?.id ?? "idle"}
-          running={editableEntry}
-          selectedTask={selectedTask}
-          profileDepartmentId={profileDepartmentId}
-          departments={departments}
-          plannedTasks={plannedTasks}
-          onToast={onToast}
-        />
-
         <TodayEntriesList entries={entries} />
       </div>
 
