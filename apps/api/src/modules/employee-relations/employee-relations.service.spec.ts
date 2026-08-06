@@ -12,19 +12,17 @@ describe('EmployeeRelationsService (BUG-BB)', () => {
 
   const mockPrincipal: AuthPrincipal = {
     userId: 'usr-hr-1',
-    email: 'hr@demo.test',
     tenantId: 't-1',
     organizationId: 'org-1',
-    roleKeys: ['HR'],
+    roles: ['HR'],
     permissions: ['discipline:create', 'discipline:read_org', 'discipline:respond', 'grievance:read_org', 'clearance:create', 'clearance:read_org', 'clearance:approve'],
   };
 
   const mockEmployeePrincipal: AuthPrincipal = {
     userId: 'usr-emp-1',
-    email: 'employee@demo.test',
     tenantId: 't-1',
     organizationId: 'org-1',
-    roleKeys: ['EMPLOYEE'],
+    roles: ['EMPLOYEE'],
     permissions: ['discipline:read_self', 'discipline:respond', 'grievance:create', 'clearance:read_self'],
   };
 

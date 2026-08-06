@@ -14,16 +14,20 @@ export interface Me {
   hourlyRate?: string | number | null;
   dailyRate?: string | number | null;
   daysPerWeek?: string | number | null;
+  /**
+   * BUG-AZ — Philippine statutory identifiers, stored digits-only. Absent
+   * entirely when the viewer isn't the employee themselves or HR/Finance/Admin.
+   */
+  tin?: string | null;
+  sssNumber?: string | null;
+  philhealthNumber?: string | null;
+  pagibigNumber?: string | null;
   departmentId: string | null;
   department: { id: string; name: string } | null;
   organization: { id: string; name: string };
   avatarUrl: string | null;
   lastLoginAt: string | null;
   createdAt: string;
-  tin?: string | null;
-  sssNumber?: string | null;
-  philhealthNumber?: string | null;
-  pagibigNumber?: string | null;
   supervisor: { id: string; firstName: string; lastName: string; email: string; avatarUrl: string | null } | null;
   roles: { role: { key: string; name: string } }[];
 }
