@@ -64,6 +64,12 @@ export class DeductionService {
     settings: ResolvedPayrollSettings,
   ): ContributionShare {
     const gross = Math.max(0, monthlyGross);
+    // No compensation for the period means no premium. The floor below is a
+    // floor on a *contribution that is due*, not a charge that applies in the
+    // absence of pay — applying it unconditionally billed employees with zero
+    // gross ₱125 and produced a negative net pay of -₱125 on real line items.
+    if (gross <= 0) return { employee: 0, employer: 0, total: 0 };
+
     const combinedRate = settings.philhealthEmployeeRate + settings.philhealthEmployerRate;
     const rawTotal = gross * combinedRate;
     const total = Math.max(settings.philhealthMin, Math.min(settings.philhealthMax, rawTotal));

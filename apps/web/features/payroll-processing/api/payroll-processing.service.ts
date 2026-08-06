@@ -38,6 +38,16 @@ export interface PayrollLineItem {
   overtimeHours: string;
   hourlyRate: string;
   estimatedPay: string;
+  // FEAT-3 statutory breakdown. The report endpoint has always returned these
+  // (it `include`s the whole line item) — they were simply never declared here,
+  // so the payroll table could not show what it was deducting.
+  grossTotal: string;
+  sssContribution: string;
+  philhealthContribution: string;
+  pagibigContribution: string;
+  incomeTaxWithheld: string;
+  totalDeductions: string;
+  netPay: string;
   user: {
     firstName: string;
     lastName: string;

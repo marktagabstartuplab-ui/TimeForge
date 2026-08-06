@@ -120,6 +120,22 @@ describe('FEAT-3 — statutory contributions (2026 rates)', () => {
     expect(high.employee).toBe(2_500);
   });
 
+  // The floor is a floor on a premium that is due, not a charge that applies
+  // with no pay to assess. Real line items carried gross 0 / PhilHealth 125 and
+  // a net pay of -125 because the clamp ran unconditionally.
+  it('PhilHealth: no gross means no premium, the floor does not apply', () => {
+    const none = svc.calculatePhilHealthContribution(0, settings);
+    expect(none.total).toBe(0);
+    expect(none.employee).toBe(0);
+    expect(none.employer).toBe(0);
+  });
+
+  it('a period with no pay produces no deductions and a net pay of zero', () => {
+    const contributions = svc.calculateAll(0, 2, settings);
+    expect(contributions.employeeTotal).toBe(0);
+    expect(contributions.employerTotal).toBe(0);
+  });
+
   it('Pag-IBIG: 1% at or below ₱1,500, 2% above, employee share capped at ₱200', () => {
     // At the threshold → the low rate still applies.
     expect(svc.calculatePagIBIGContribution(1_500, settings).employee).toBe(15);
