@@ -381,7 +381,7 @@ export function PayrollProcessingContent() {
                 <p className="text-sm text-brand-muted">
                   Recalculate to regenerate hours and pay from the current state of approved timesheets. Safe to re-run — it always reflects live data.
                 </p>
-                <Button onClick={() => generateMutation.mutate()} disabled={!canRecalculate || isBusy} className="shrink-0">
+                <Button onClick={() => generateMutation.mutate(undefined)} disabled={!canRecalculate || isBusy} className="shrink-0">
                   {generateMutation.isPending ? <Loader2 className="h-4 w-4 animate-spin" /> : <RefreshCw className="h-4 w-4" />}
                   Recalculate
                 </Button>
@@ -460,7 +460,7 @@ export function PayrollProcessingContent() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => generateMutation.mutate()}
+                onClick={() => generateMutation.mutate(undefined)}
                 disabled={!canRecalculate || isBusy}
                 className="shrink-0 border-amber-300 bg-white text-xs text-amber-700 hover:bg-amber-50"
               >
@@ -500,7 +500,7 @@ export function PayrollProcessingContent() {
                     <RefreshCw className="mr-1 h-3.5 w-3.5" /> Process Selected ({selectedUserIds.length})
                   </Button>
                 ) : null}
-                <Button variant="outline" size="sm" onClick={() => generateMutation.mutate()} disabled={!canRecalculate || isBusy} className="h-9 text-xs">
+                <Button variant="outline" size="sm" onClick={() => generateMutation.mutate(undefined)} disabled={!canRecalculate || isBusy} className="h-9 text-xs">
                   <RefreshCw className="h-3.5 w-3.5" /> Recalculate All
                 </Button>
               </div>
@@ -716,7 +716,6 @@ export function PayrollProcessingContent() {
                 <div className="flex h-10 items-center rounded-[10px] border border-[#c3c6d2] bg-[#f6f3f4] px-3 text-sm text-brand-ink">
                   Custom (off-cycle)
                 </div>
-              </div>
                 <p className="mt-1 text-xs text-brand-muted">
                   Semi-monthly periods (1st–15th, 16th–end of month) are generated automatically.
                 </p>

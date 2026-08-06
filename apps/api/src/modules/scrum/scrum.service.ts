@@ -777,9 +777,16 @@ export class ScrumService {
         employeeId: p.userId,
         title: dto.title,
         description: dto.description ?? null,
-        expectedOutput: dto.expectedOutput,
-        measurement: dto.measurement,
+        // BUG-BH: both columns are non-nullable, and an ad-hoc task has no
+        // planned expectation to record — empty string, not filler text.
+        expectedOutput: dto.expectedOutput ?? '',
+        measurement: dto.measurement ?? '',
         projectId: dto.projectId ?? null,
+        taskStatus: dto.taskStatus ?? 'PENDING',
+        // Mirrors updateTask: a task that arrives already COMPLETED gets its
+        // completion timestamp now, so EOD-added finished work isn't left with a
+        // COMPLETED status and a null completedAt.
+        completedAt: dto.taskStatus === 'COMPLETED' ? new Date() : null,
         priority: dto.priority ?? 'MEDIUM',
         kpiTemplateId: dto.kpiTemplateId ?? null,
         kpi: kpiFields?.kpi ?? dto.kpi ?? null,
