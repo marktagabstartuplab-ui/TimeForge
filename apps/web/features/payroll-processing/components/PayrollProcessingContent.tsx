@@ -37,6 +37,7 @@ import {
   flagDiscrepancies,
   exportPayroll,
   mostRecentlyUpdatedPeriod,
+  type PayrollLineItem,
 } from "../api/payroll-processing.service";
 import { runAndPollAiJob } from "@/features/scrum-management/api/ai-insight.service";
 import { AiFormattedText } from "@/components/shared/AiFormattedText";
@@ -59,6 +60,17 @@ function rowStatus(approvedHours: number, rejectedHours: number): RowStatus {
   if (rejectedHours > 0) return "Discrepancy";
   if (approvedHours > 0) return "Validated";
   return "Pending";
+}
+
+/**
+ * The three mandatory employee contributions. Shown as one figure with the split
+ * on hover: `totalDeductions` is deliberately not reused here because it also
+ * folds in withholding tax, which has its own column.
+ */
+function contributionsOf(li: PayrollLineItem): number {
+  return (
+    Number(li.sssContribution) + Number(li.philhealthContribution) + Number(li.pagibigContribution)
+  );
 }
 
 // Decimal hours -> HH:MM. Displaying rounded decimals (e.g. 0.02) made the hours
@@ -549,6 +561,13 @@ export function PayrollProcessingContent() {
                       <th className="py-3 px-4">Overtime (HH:MM)</th>
                       <th className="py-3 px-4">Rate</th>
                       <th className="py-3 px-4">Gross Pay</th>
+                      {/* The statutory breakdown was computed and stored at
+                          generation time and returned by the report endpoint all
+                          along — it just had nowhere to land, so the screen showed
+                          gross pay as if it were take-home. */}
+                      <th className="py-3 px-4">Contributions</th>
+                      <th className="py-3 px-4">Tax Withheld</th>
+                      <th className="py-3 px-4">Net Pay</th>
                       <th className="py-3 px-4">Status</th>
                       <th className="py-3 px-4">Actions</th>
                     </tr>
@@ -601,6 +620,14 @@ export function PayrollProcessingContent() {
                               : `₱${Number(li.hourlyRate).toFixed(2)}/hr`}
                           </td>
                           <td className="py-3 px-4 font-semibold text-brand-ink">{formatCurrency(Number(li.estimatedPay))}</td>
+                          <td
+                            className="py-3 px-4 text-brand-ink tabular-nums"
+                            title={`SSS ${formatCurrency(Number(li.sssContribution))} · PhilHealth ${formatCurrency(Number(li.philhealthContribution))} · Pag-IBIG ${formatCurrency(Number(li.pagibigContribution))}`}
+                          >
+                            {formatCurrency(contributionsOf(li))}
+                          </td>
+                          <td className="py-3 px-4 text-brand-ink tabular-nums">{formatCurrency(Number(li.incomeTaxWithheld))}</td>
+                          <td className="py-3 px-4 font-semibold text-brand-navy tabular-nums">{formatCurrency(Number(li.netPay))}</td>
                           <td className="py-3 px-4">
                             <StatusBadge label={status} tone={ROW_STATUS_TONE[status]} />
                           </td>
