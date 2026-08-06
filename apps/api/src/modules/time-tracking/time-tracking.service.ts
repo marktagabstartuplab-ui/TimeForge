@@ -201,24 +201,9 @@ export class TimeTrackingService {
    * may legitimately re-send only the field being corrected) so a save is refused
    * exactly when the stored record would end up missing mandatory context.
    */
-  private assertWorkDetailsComplete(entry: TimeEntry, dto: UpdateTimeEntryDto): void {
-    const payload = dto as unknown as Record<string, unknown>;
-    if (!WORK_DETAIL_FIELDS.some((f) => payload[f] !== undefined)) return;
-
-    const resolved = {
-      Task: (dto.task ?? entry.task ?? '').trim(),
-      'Work Description': (dto.description ?? entry.description ?? '').trim(),
-      'Work Category': dto.workCategoryId ?? entry.workCategoryId ?? '',
-    };
-    const missing = Object.entries(resolved)
-      .filter(([, value]) => value.length === 0)
-      .map(([label]) => label);
-
-    if (missing.length > 0) {
-      throw new UnprocessableEntityException(
-        `${missing.join(', ')} ${missing.length === 1 ? 'is' : 'are'} required to save work details`,
-      );
-    }
+  private assertWorkDetailsComplete(_entry: TimeEntry, _dto: UpdateTimeEntryDto): void {
+    // Deprecated for BUG-BI — Work Details module is removed; no mandatory field enforcement on entries.
+    return;
   }
 
   async remove(p: AuthPrincipal, id: string, version: number): Promise<void> {

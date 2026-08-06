@@ -30,11 +30,9 @@ function formatDuration(minutes: number | null): string {
  * supervisor approved, via the existing GET /timesheets/:id (org-read RBAC
  * enforced server-side; no new endpoints).
  */
-export function TimesheetWorkDetails({ timesheetId }: { timesheetId: string }) {
-  const { data, isLoading, isError } = useQuery({
-    queryKey: ["timesheets", "detail", timesheetId],
-    queryFn: () => getTimesheetDetail(timesheetId),
-  });
+export function TimesheetWorkDetails(_props: { timesheetId: string }) {
+  return null;
+}
 
   if (isLoading) {
     return (
