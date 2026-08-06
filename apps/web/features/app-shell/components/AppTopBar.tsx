@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Bell, HelpCircle, Menu } from "lucide-react";
+import { Logo } from "@/components/brand/Logo";
 import { getUnreadCount } from "@/features/notifications/api/notifications.service";
 import { useNotificationCenterStore } from "@/features/notifications/store/notification-center.store";
 import { RunningTimerChip } from "@/features/time-tracking/components/RunningTimerChip";
@@ -10,7 +11,12 @@ import { SupportModal } from "@/features/auth/components/SupportModal";
 import { useSidebarStore } from "../store/sidebar.store";
 import { UserMenu } from "./UserMenu";
 
-export function AppTopBar() {
+interface AppTopBarProps {
+  /** Where the mobile brand lockup links — mirrors SidebarHeader's homeHref. */
+  homeHref?: string;
+}
+
+export function AppTopBar({ homeHref = "/dashboard" }: AppTopBarProps = {}) {
   const openMobile = useSidebarStore((s) => s.openMobile);
   const openNotifications = useNotificationCenterStore((s) => s.open);
   const [supportOpen, setSupportOpen] = useState(false);
@@ -31,6 +37,12 @@ export function AppTopBar() {
         >
           <Menu className="h-5 w-5" aria-hidden="true" />
         </button>
+
+        {/* BUG-BN: the brand lockup otherwise lives only in the sidebar, which
+            is `hidden lg:flex` — so below lg every page (HR, Admin, Finance,
+            Employee) rendered with no branding at all. Desktop keeps the single
+            sidebar lockup; this is the same asset, not a second variant. */}
+        <Logo href={homeHref} className="lg:hidden" />
       </div>
 
       <div className="flex shrink-0 items-center gap-1.5 sm:gap-4">
