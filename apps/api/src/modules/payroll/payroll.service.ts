@@ -578,6 +578,10 @@ export class PayrollService {
     if (period.status === 'EXPORTED') {
       throw new ConflictException('Payroll period is already exported and locked (BR-PAY-04)');
     }
+    const isFinanceRole = p.roles.some((r) => r === 'FINANCE') && !p.roles.some((r) => r === 'ADMIN' || r === 'HR');
+    if (isFinanceRole && (period.processingStatus === 'DRAFT' || period.status === 'OPEN')) {
+      throw new ForbiddenException('Cannot recalculate: Payroll period is pending HR submission');
+    }
 
     // M2: if this exact key was already processed, return the cached report untouched.
     const idemKey = `payroll-generate:${idempotencyKey}`;
@@ -2061,6 +2065,9 @@ export class PayrollService {
 
   async getProcessingDashboard(p: AuthPrincipal, periodId: string) {
     const period = await this.findOnePeriod(p, periodId);
+    if (period.processingStatus === 'DRAFT' || period.status === 'OPEN') {
+      throw new ForbiddenException('Pending HR Submission — HR is currently reviewing');
+    }
 
     const report = await this.prisma.payrollReport.findFirst({
       where: { payrollPeriodId: periodId, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },

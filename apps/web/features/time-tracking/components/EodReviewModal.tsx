@@ -486,7 +486,13 @@ export function EodReviewModal({ open, onOpenChange, summary, scrumEntry, onSubm
                 </span>
                 <div>
                   <p className="text-[10px] font-bold uppercase tracking-[1px] text-brand-muted">Total Tracked</p>
-                  <p className="text-xl font-bold text-brand">{formatMinutes(summary.trackedMinutes)}</p>
+                  {summary.trackedMinutes > 1440 ? (
+                    <p className="text-sm font-bold text-red-600" title="Total tracked time cannot exceed 24 hours in a single day">
+                      Error (&gt;24h)
+                    </p>
+                  ) : (
+                    <p className="text-xl font-bold text-brand">{formatMinutes(summary.trackedMinutes)}</p>
+                  )}
                 </div>
               </div>
               <div className="flex items-center gap-3 rounded-[12px] border border-[#c3c6d2]/50 bg-[#f6f3f4] px-4 py-4">

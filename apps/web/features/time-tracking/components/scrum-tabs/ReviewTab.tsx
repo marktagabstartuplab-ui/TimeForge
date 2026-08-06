@@ -62,7 +62,7 @@ export function ReviewTab({
           <StatTile
             icon={<ClockIcon className="h-5 w-5" aria-hidden="true" />}
             label="Total tracked"
-            value={formatMinutes(summary.trackedMinutes)}
+            value={summary.trackedMinutes > 1440 ? "Error (>24h)" : formatMinutes(summary.trackedMinutes)}
           />
           <StatTile
             icon={<CoffeeIcon className="h-5 w-5" aria-hidden="true" />}

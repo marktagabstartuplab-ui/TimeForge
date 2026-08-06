@@ -390,8 +390,19 @@ export function FinancePayrollProcessingContent() {
             </div>
           ))}
         </div>
-      ) : isDashError ? (
-        <EmptyState message="Could not load payroll dashboard. Try selecting a different period." />
+      ) : activePeriod?.status === "OPEN" || processingStatus === "DRAFT" || isDashError ? (
+        <div className="rounded-[16px] border border-[#c3c6d2]/50 bg-white p-12 text-center shadow-sm flex flex-col items-center justify-center gap-3">
+          <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600">
+            <Clock className="h-7 w-7" />
+          </div>
+          <h3 className="text-xl font-bold text-brand-navy">Pending HR Submission</h3>
+          <p className="max-w-md text-sm text-brand-muted">
+            HR is currently reviewing and auditing timesheets for this period. Payroll processing and calculations will be unlocked once HR submits the finalized report to Finance.
+          </p>
+          <div className="mt-2 inline-flex items-center rounded-full bg-amber-100/60 px-3.5 py-1.5 text-xs font-semibold text-amber-800">
+            Status: Pending HR Submission — HR is currently reviewing
+          </div>
+        </div>
       ) : (
         <>
           <div className="rounded-[16px] border border-[#c3c6d2]/50 bg-white p-5 shadow-sm">
