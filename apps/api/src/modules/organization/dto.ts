@@ -1,5 +1,6 @@
 import { IsEnum, IsInt, IsBoolean, IsDateString, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
 import { Type } from 'class-transformer';
+import { HolidayType } from '@prisma/client';
 
 export class UpdateOrgDto {
   @IsOptional()
@@ -31,6 +32,10 @@ export class CreateHolidayDto {
 
   @IsDateString()
   date!: string;
+
+  @IsOptional()
+  @IsEnum(HolidayType)
+  type?: HolidayType;
 
   @IsOptional()
   @IsBoolean()

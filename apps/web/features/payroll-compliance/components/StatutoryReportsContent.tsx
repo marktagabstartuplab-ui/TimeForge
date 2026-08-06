@@ -5,6 +5,7 @@ import { useQueries, useQuery } from "@tanstack/react-query";
 import { Download, FileSpreadsheet, RefreshCw } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import {
+  downloadContributionExport,
   getBirReport,
   getContributionReport,
   type ContributionAgency,
@@ -202,7 +203,28 @@ export function StatutoryReportsContent() {
     { gross: 0, contributions: 0, taxable: 0, withheld: 0 },
   );
 
+  const [exportingAgency, setExportingAgency] = useState<string | null>(null);
   const rowCount = isBir ? visibleBir.length : visibleCombined.length;
+
+  const handleAgencyExport = async (agency: ContributionAgency, format: "csv" | "xlsx" = "csv") => {
+    try {
+      setExportingAgency(`${agency}-${format}`);
+      const { blob, filename } = await downloadContributionExport(agency, {
+        periodId: periodId || undefined,
+        format,
+      });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = filename;
+      link.click();
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error(`Failed to export ${agency} report`, err);
+    } finally {
+      setExportingAgency(null);
+    }
+  };
 
   const handleExport = () => {
     if (!reportPeriod) return;
@@ -246,6 +268,62 @@ export function StatutoryReportsContent() {
         <p className="text-sm text-brand-muted">
           Remittance and withholding summaries for SSS, PhilHealth, Pag-IBIG and the BIR.
         </p>
+      </div>
+
+      {/* Generate Government Reports Card */}
+      <div className="rounded-[16px] border border-[#c3c6d2]/50 bg-white p-5 shadow-[0px_1px_2px_rgba(0,0,0,0.05)]">
+        <div className="flex flex-col gap-3">
+          <div>
+            <h2 className="text-base font-semibold text-brand-navy">Generate Government Reports</h2>
+            <p className="text-xs text-brand-muted mt-0.5">
+              Export monthly contribution collection lists formatted for official Philippine agency employer portals (SSS, PhilHealth, Pag-IBIG).
+            </p>
+          </div>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            {AGENCIES.map((agency) => (
+              <div
+                key={agency.key}
+                className="flex flex-col justify-between rounded-xl border border-[#c3c6d2]/40 bg-[#fbfcfd] p-3.5"
+              >
+                <div>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-bold text-brand-navy">{agency.label} Portal Export</span>
+                    <span className="text-[10px] font-semibold px-2 py-0.5 rounded bg-brand/10 text-brand">
+                      {agency.key.toUpperCase()}
+                    </span>
+                  </div>
+                  <p className="text-xs text-brand-muted">
+                    Official remittance layout including statutory IDs and EE/ER breakdown.
+                  </p>
+                </div>
+                <div className="flex items-center gap-2 mt-3 pt-2 border-t border-[#c3c6d2]/30">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-7 text-xs"
+                    disabled={exportingAgency !== null}
+                    onClick={() => handleAgencyExport(agency.key, "csv")}
+                  >
+                    <Download className="h-3 w-3 mr-1" />
+                    CSV
+                  </Button>
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="flex-1 h-7 text-xs"
+                    disabled={exportingAgency !== null}
+                    onClick={() => handleAgencyExport(agency.key, "xlsx")}
+                  >
+                    <FileSpreadsheet className="h-3 w-3 mr-1 text-emerald-600" />
+                    Excel
+                  </Button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
       </div>
 
       {/* Controls */}

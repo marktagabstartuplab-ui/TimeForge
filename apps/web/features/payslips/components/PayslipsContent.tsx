@@ -351,6 +351,142 @@ export function PayslipsContent() {
         )}
       </div>
 
+      {/* ── Category Breakdown Card (NSD, Holiday, Rest Day, OT, Deductions) ── */}
+      {selected ? (
+        <div className="rounded-[16px] border border-[#c3c6d2]/50 bg-white p-6 shadow-[0px_1px_2px_rgba(0,0,0,0.05)]">
+          <div className="flex items-center justify-between border-b border-[#c3c6d2]/30 pb-4 mb-4">
+            <div>
+              <h3 className="text-lg font-bold text-brand-navy">
+                Payslip Category Breakdown — {periodLabel(selected)}
+              </h3>
+              <p className="text-xs text-brand-muted mt-0.5">
+                Itemized breakdown of regular vs. Philippine labor premium categories.
+              </p>
+            </div>
+            <StatusBadge {...payrollStatusTone(selected.payrollReport.period.status)} />
+          </div>
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* Earnings / Premium Hours Table */}
+            <div>
+              <h4 className="text-xs font-bold uppercase tracking-wider text-brand mb-3">
+                Earnings &amp; Premium Hours
+              </h4>
+              <div className="space-y-2.5 text-sm">
+                <div className="flex items-center justify-between py-1.5 border-b border-gray-100">
+                  <span className="text-brand-muted">Regular Hours</span>
+                  <div className="text-right">
+                    <span className="font-semibold text-brand-navy">
+                      {(Number(selected.approvedHours) - Number(selected.overtimeHours)).toFixed(1)} hrs
+                    </span>
+                    {selected.regularPay ? (
+                      <span className="ml-3 font-bold text-brand-navy">₱{Number(selected.regularPay).toFixed(2)}</span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between py-1.5 border-b border-gray-100">
+                  <span className="text-brand-muted">Overtime Hours</span>
+                  <div className="text-right">
+                    <span className="font-semibold text-brand-navy">
+                      {Number(selected.overtimeHours).toFixed(1)} hrs
+                    </span>
+                    {selected.overtimePay ? (
+                      <span className="ml-3 font-bold text-brand">₱{Number(selected.overtimePay).toFixed(2)}</span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between py-1.5 border-b border-gray-100">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-emerald-700 font-medium">Night Shift Differential (NSD)</span>
+                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-emerald-50 text-emerald-700 border border-emerald-200">
+                      +10%
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-semibold text-emerald-700">
+                      {Number(selected.nightDiffHours ?? 0).toFixed(1)} hrs
+                    </span>
+                    {selected.nightDifferential ? (
+                      <span className="ml-3 font-bold text-emerald-700">₱{Number(selected.nightDifferential).toFixed(2)}</span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between py-1.5 border-b border-gray-100">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-blue-700 font-medium">Holiday Hours</span>
+                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-blue-50 text-blue-700 border border-blue-200">
+                      100% / 30%
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-semibold text-blue-700">
+                      {Number(selected.holidayHours ?? 0).toFixed(1)} hrs
+                    </span>
+                    {selected.holidayPay ? (
+                      <span className="ml-3 font-bold text-blue-700">₱{Number(selected.holidayPay).toFixed(2)}</span>
+                    ) : null}
+                  </div>
+                </div>
+
+                <div className="flex items-center justify-between py-1.5 border-b border-gray-100">
+                  <div className="flex items-center gap-1.5">
+                    <span className="text-purple-700 font-medium">Rest Day Hours</span>
+                    <span className="text-[10px] font-bold uppercase px-1.5 py-0.5 rounded bg-purple-50 text-purple-700 border border-purple-200">
+                      +30%
+                    </span>
+                  </div>
+                  <div className="text-right">
+                    <span className="font-semibold text-purple-700">
+                      {Number(selected.restDayHours ?? 0).toFixed(1)} hrs
+                    </span>
+                    {selected.restDayPay ? (
+                      <span className="ml-3 font-bold text-purple-700">₱{Number(selected.restDayPay).toFixed(2)}</span>
+                    ) : null}
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            {/* Financial Totals Summary */}
+            <div className="bg-[#faf9f9] rounded-xl p-5 border border-[#c3c6d2]/30 flex flex-col justify-between">
+              <div>
+                <h4 className="text-xs font-bold uppercase tracking-wider text-brand-navy mb-3">
+                  Summary Totals
+                </h4>
+                <div className="space-y-3">
+                  <div className="flex items-center justify-between text-sm">
+                    <span className="text-brand-muted">Gross Earnings</span>
+                    <span className="font-bold text-brand-navy text-base">
+                      {selected.grossTotal ? `₱${Number(selected.grossTotal).toFixed(2)}` : `₱${Number(selected.estimatedPay).toFixed(2)}`}
+                    </span>
+                  </div>
+                  {selected.totalDeductions ? (
+                    <div className="flex items-center justify-between text-sm">
+                      <span className="text-brand-muted">Statutory Deductions (SSS/PhilHealth/Pag-IBIG/BIR)</span>
+                      <span className="font-semibold text-red-600">
+                        -₱{Number(selected.totalDeductions).toFixed(2)}
+                      </span>
+                    </div>
+                  ) : null}
+                </div>
+              </div>
+
+              <div className="pt-4 border-t border-[#c3c6d2]/40 mt-4 flex items-center justify-between">
+                <div>
+                  <span className="text-xs font-bold uppercase tracking-wider text-brand-muted block">Net Take-Home Pay</span>
+                  <span className="text-2xl font-extrabold text-brand">
+                    {selected.netPay ? `₱${Number(selected.netPay).toFixed(2)}` : `₱${Number(selected.estimatedPay).toFixed(2)}`}
+                  </span>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      ) : null}
+
       <SectionCard title="Historical Records">
         <DataTable
           aria-label="Payslip history"

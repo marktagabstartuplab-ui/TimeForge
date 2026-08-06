@@ -18,6 +18,17 @@ export interface PayrollLineItemSelf {
   pendingHours: string | number;
   rejectedHours: string | number;
   overtimeHours: string | number;
+  holidayHours?: string | number;
+  nightDiffHours?: string | number;
+  restDayHours?: string | number;
+  regularPay?: string | number;
+  overtimePay?: string | number;
+  nightDifferential?: string | number;
+  holidayPay?: string | number;
+  restDayPay?: string | number;
+  grossTotal?: string | number;
+  totalDeductions?: string | number;
+  netPay?: string | number;
   hourlyRate: string | number;
   estimatedPay: string | number;
   createdAt: string;

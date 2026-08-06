@@ -12,6 +12,7 @@ import type { TimesheetPaymentStatus } from "../api/timesheets.service";
 import { formatClockTime, formatMinutesClock, minutesBetween, toIsoDate, toOrgIsoDate } from "@/lib/time";
 import { Edit2, Trash2, X, Loader2, Building2, Plus } from "lucide-react";
 import { listScrumEntries, listScrumTasks, type ScrumTask } from "@/features/scrum/api/scrum.service";
+import { calculateNightShiftMinutes } from "../lib/period-summary";
 import { cn } from "@/lib/utils";
 
 const COLLAPSED_ROWS = 6;
@@ -254,16 +255,28 @@ export function EntryAuditTable({
     },
     {
       key: "status",
-      header: "Status",
+      header: "Status / Premiums",
       className: "text-right",
       render: (e) => {
-        if (overtimeDays.has(toIsoDate(new Date(e.startTime)))) {
-          return <StatusBadge label="Overtime" tone="info" className="bg-brand-cyan/25 text-brand" />;
-        }
-        return e.timesheetId ? (
-          <StatusBadge label="Verified" tone="success" />
-        ) : (
-          <StatusBadge label="Unassigned" tone="neutral" />
+        const start = new Date(e.startTime);
+        const mins = e.durationMinutes ?? minutesBetween(e.startTime, e.endTime ?? new Date().toISOString());
+        const nsdMins = calculateNightShiftMinutes(start, mins);
+        const isOT = overtimeDays.has(toIsoDate(start));
+
+        return (
+          <div className="flex flex-wrap justify-end items-center gap-1">
+            {nsdMins > 0 ? (
+              <StatusBadge label="NSD (+10%)" tone="success" className="bg-emerald-50 text-emerald-700 border-emerald-200 font-bold" />
+            ) : null}
+            {isOT ? (
+              <StatusBadge label="Overtime" tone="info" className="bg-brand-cyan/25 text-brand" />
+            ) : null}
+            {e.timesheetId ? (
+              <StatusBadge label="Verified" tone="success" />
+            ) : (
+              <StatusBadge label="Unassigned" tone="neutral" />
+            )}
+          </div>
         );
       },
     },

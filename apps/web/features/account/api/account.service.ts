@@ -20,6 +20,10 @@ export interface Me {
   avatarUrl: string | null;
   lastLoginAt: string | null;
   createdAt: string;
+  tin?: string | null;
+  sssNumber?: string | null;
+  philhealthNumber?: string | null;
+  pagibigNumber?: string | null;
   supervisor: { id: string; firstName: string; lastName: string; email: string; avatarUrl: string | null } | null;
   roles: { role: { key: string; name: string } }[];
 }
@@ -29,6 +33,10 @@ export interface UpdateProfilePayload {
   lastName?: string;
   email?: string;
   phone?: string;
+  tin?: string;
+  sssNumber?: string;
+  philhealthNumber?: string;
+  pagibigNumber?: string;
 }
 
 export interface ChangePasswordPayload {

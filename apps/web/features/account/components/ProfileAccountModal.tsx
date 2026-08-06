@@ -18,6 +18,7 @@ import { getEmployee, updateEmployee, listEmployees, assignRoles, type EmployeeR
 import { useProfileModalStore } from "../store/profile-modal.store";
 import { PersonalInfoCard } from "./PersonalInfoCard";
 import { ProfessionalDetailsCard } from "./ProfessionalDetailsCard";
+import { StatutoryIdsCard } from "./StatutoryIdsCard";
 import { SecuritySection } from "./SecuritySection";
 import { apiClient } from "@/lib/api/client";
 import { useAuth } from "@/providers/auth-provider";
@@ -84,17 +85,35 @@ export function ProfileAccountModal() {
   const {
     register,
     handleSubmit,
+    setValue,
+    watch,
     reset,
     formState: { errors, isDirty },
   } = useForm<ProfileValues>({
     resolver: zodResolver(profileSchema),
-    defaultValues: { firstName: "", lastName: "", phone: "" },
+    defaultValues: {
+      firstName: "",
+      lastName: "",
+      phone: "",
+      tin: "",
+      sssNumber: "",
+      philhealthNumber: "",
+      pagibigNumber: "",
+    },
   });
 
   // Prefill once the profile loads (or reloads after a save elsewhere, e.g. avatar upload).
   useEffect(() => {
     if (meQuery.data) {
-      reset({ firstName: meQuery.data.firstName, lastName: meQuery.data.lastName, phone: meQuery.data.phone ?? "" });
+      reset({
+        firstName: meQuery.data.firstName,
+        lastName: meQuery.data.lastName,
+        phone: meQuery.data.phone ?? "",
+        tin: meQuery.data.tin ?? "",
+        sssNumber: meQuery.data.sssNumber ?? "",
+        philhealthNumber: meQuery.data.philhealthNumber ?? "",
+        pagibigNumber: meQuery.data.pagibigNumber ?? "",
+      });
       if (isViewingOther) {
         setEditDepartmentId(meQuery.data.departmentId ?? "");
         setEditEmploymentType(meQuery.data.employmentType ?? "EMPLOYEE");
@@ -169,7 +188,15 @@ export function ProfileAccountModal() {
         queryClient.invalidateQueries({ queryKey: ["employee-management", "employees"] });
         queryClient.invalidateQueries({ queryKey: ["payroll"] });
       }
-      reset({ firstName: updated.firstName, lastName: updated.lastName, phone: updated.phone ?? "" });
+      reset({
+        firstName: updated.firstName,
+        lastName: updated.lastName,
+        phone: updated.phone ?? "",
+        tin: updated.tin ?? "",
+        sssNumber: updated.sssNumber ?? "",
+        philhealthNumber: updated.philhealthNumber ?? "",
+        pagibigNumber: updated.pagibigNumber ?? "",
+      });
       if (isViewingOther) {
         setEditDepartmentId(updated.departmentId ?? "");
         setEditEmploymentType(updated.employmentType ?? "EMPLOYEE");
@@ -199,7 +226,15 @@ export function ProfileAccountModal() {
   function handleDiscardConfirmed() {
     setConfirmDiscardOpen(false);
     if (meQuery.data) {
-      reset({ firstName: meQuery.data.firstName, lastName: meQuery.data.lastName, phone: meQuery.data.phone ?? "" });
+      reset({
+        firstName: meQuery.data.firstName,
+        lastName: meQuery.data.lastName,
+        phone: meQuery.data.phone ?? "",
+        tin: meQuery.data.tin ?? "",
+        sssNumber: meQuery.data.sssNumber ?? "",
+        philhealthNumber: meQuery.data.philhealthNumber ?? "",
+        pagibigNumber: meQuery.data.pagibigNumber ?? "",
+      });
       if (isViewingOther) {
         setEditDepartmentId(meQuery.data.departmentId ?? "");
         setEditEmploymentType(meQuery.data.employmentType ?? "EMPLOYEE");
@@ -281,6 +316,13 @@ export function ProfileAccountModal() {
                     onRoleChange={setEditRoleKey}
                   />
                 </div>
+                <StatutoryIdsCard
+                  register={register}
+                  setValue={setValue}
+                  watch={watch}
+                  errors={errors}
+                  readOnly={isViewingOther ? !canEditOtherProfile : false}
+                />
                 {isViewingOther ? null : <SecuritySection me={meQuery.data} onToast={setToast} />}
               </div>
             )}

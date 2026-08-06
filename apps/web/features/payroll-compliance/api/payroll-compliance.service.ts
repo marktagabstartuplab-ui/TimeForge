@@ -137,3 +137,25 @@ export async function getBirReport(periodId?: string): Promise<BirReport> {
   });
   return data;
 }
+
+export async function downloadContributionExport(
+  agency: ContributionAgency,
+  options?: { periodId?: string; format?: "csv" | "xlsx"; departmentId?: string },
+): Promise<{ blob: Blob; filename: string }> {
+  const response = await apiClient.get<ArrayBuffer>(`/payroll/reports/${agency}/export`, {
+    params: options,
+    responseType: "arraybuffer",
+  });
+  const disposition = (response.headers["content-disposition"] as string) ?? "";
+  const match = /filename="?([^";]+)"?/.exec(disposition);
+  const filename = match ? match[1] : `${agency}-contributions.${options?.format === "xlsx" ? "xlsx" : "csv"}`;
+  const contentType =
+    (response.headers["content-type"] as string) ??
+    (options?.format === "xlsx"
+      ? "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
+      : "text/csv");
+  return {
+    blob: new Blob([response.data], { type: contentType }),
+    filename,
+  };
+}

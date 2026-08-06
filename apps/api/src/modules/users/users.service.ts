@@ -30,6 +30,7 @@ import { MailerService } from '../../infra/mailer.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { UploadService } from '../storage/upload.service';
 import { StorageService, withAvatarUrl } from '../storage/storage.service';
+import { normalizeStatutoryId } from '../payroll/statutory-ids';
 
 type ProfileUser = Prisma.UserGetPayload<{
   include: {
@@ -77,6 +78,26 @@ function roleFilterWhere(role: string): Record<string, unknown> {
 const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
 const AVATAR_MIME_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 
+/** BUG-AZ — statutory identifier columns on User, in one place. */
+const STATUTORY_ID_FIELDS = ['tin', 'sssNumber', 'philhealthNumber', 'pagibigNumber'] as const;
+
+/**
+ * Stores statutory identifiers digits-only so the export formatter is the one
+ * place that decides each agency portal's punctuation. An empty string is kept
+ * distinct from `undefined`: it means "clear this", and maps to NULL.
+ */
+function normalizeStatutoryIdFields<T extends object>(dto: T): T {
+  const out = { ...dto };
+  const writable = out as Record<string, unknown>;
+  for (const field of STATUTORY_ID_FIELDS) {
+    const raw = writable[field];
+    if (typeof raw !== 'string') continue;
+    const digits = normalizeStatutoryId(raw);
+    writable[field] = digits === '' ? null : digits;
+  }
+  return out;
+}
+
 @Injectable()
 export class UsersService {
   constructor(
@@ -116,6 +137,23 @@ export class UsersService {
       // Hidden only from other employees/interns
       const { hourlyRate: _rate, dailyRate: _dailyRate, ...rest } = safe;
       return rest;
+    }
+
+    // BUG-AZ — government IDs are the most sensitive field on the record. A
+    // Supervisor may see a report's rates but has no business reason to read a
+    // subordinate's TIN, so they are held to the same bar as Finance/HR/Admin.
+    const canReadStatutoryIds =
+      caller.permissions.includes('*') ||
+      caller.roles.some((r) => r === 'FINANCE' || r === 'ADMIN' || r === 'HR');
+    if (!canReadStatutoryIds && caller.userId !== safe.id) {
+      const {
+        tin: _tin,
+        sssNumber: _sss,
+        philhealthNumber: _phil,
+        pagibigNumber: _pagibig,
+        ...withoutIds
+      } = safe;
+      return withoutIds;
     }
     return safe;
   }
@@ -344,7 +382,7 @@ export class UsersService {
     });
     if (!role) throw new NotFoundException(`Role '${dto.role}' not found`);
 
-    const { role: _roleKey, ...userData } = dto;
+    const { role: _roleKey, ...userData } = normalizeStatutoryIdFields(dto);
 
     // Department-based supervision (Department.managerId) is the single source
     // of truth — new hires default to their department's head unless the
@@ -368,6 +406,10 @@ export class UsersService {
         teamId: userData.teamId ?? null,
         supervisorId,
         payrollEligible: userData.payrollEligible ?? (userData.employmentType !== 'INTERN'),
+        tin: userData.tin ?? null,
+        sssNumber: userData.sssNumber ?? null,
+        philhealthNumber: userData.philhealthNumber ?? null,
+        pagibigNumber: userData.pagibigNumber ?? null,
         status: UserStatus.INVITED,
         createdBy: caller.userId,
         updatedBy: caller.userId,
@@ -579,7 +621,7 @@ export class UsersService {
       if (existingEmail) throw new ConflictException('A user with this email already exists');
     }
 
-    const { version, email: _rawEmail, ...rest } = dto;
+    const { version, email: _rawEmail, ...rest } = normalizeStatutoryIdFields(dto);
 
     // Transferring an employee to a new department re-points their supervisor to
     // that department's head (null when it has none), unless the caller set
@@ -890,9 +932,10 @@ export class UsersService {
       });
       if (existing) throw new ConflictException('A user with this email already exists');
     }
+    const { email: _rawEmail, ...rest } = normalizeStatutoryIdFields(dto);
     await this.prisma.user.update({
       where: { id: caller.userId },
-      data: { ...dto, email, updatedBy: caller.userId, version: { increment: 1 } },
+      data: { ...rest, ...(email ? { email } : {}), updatedBy: caller.userId, version: { increment: 1 } },
     });
     return this.findMe(caller);
   }

@@ -23,6 +23,7 @@ export interface ResolvedPayrollSettings {
   regularHolidayWorkedRate: number;
   regularHolidayUnworkedRate: number;
   specialHolidayWorkedRate: number;
+  restDayWorkedRate: number;
   thirteenthMonthExemptionCap: number;
   birTaxTableYear: number;
 }
@@ -47,6 +48,7 @@ export const DEFAULT_PAYROLL_SETTINGS: ResolvedPayrollSettings = {
   regularHolidayWorkedRate: 2,
   regularHolidayUnworkedRate: 1,
   specialHolidayWorkedRate: 1.3,
+  restDayWorkedRate: 1.3,
   thirteenthMonthExemptionCap: 90_000,
   birTaxTableYear: 2026,
 };
@@ -87,6 +89,7 @@ export class PayrollSettingsService {
       regularHolidayWorkedRate: Number(row.regularHolidayWorkedRate),
       regularHolidayUnworkedRate: Number(row.regularHolidayUnworkedRate),
       specialHolidayWorkedRate: Number(row.specialHolidayWorkedRate),
+      restDayWorkedRate: Number(row.restDayWorkedRate),
       thirteenthMonthExemptionCap: Number(row.thirteenthMonthExemptionCap),
       birTaxTableYear: row.birTaxTableYear,
     };

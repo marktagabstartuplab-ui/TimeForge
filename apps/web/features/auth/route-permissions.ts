@@ -22,6 +22,7 @@ export const ROUTE_PERMISSIONS: Record<string, string> = {
   // management
   '/admin/employees': 'user:read',
   '/admin/departments': 'org:read_dashboard',
+  '/admin/holidays': 'holiday:read',
   '/admin/approvals': 'user:update',
   // finance & reports
   '/payslips': 'payroll:read_self',

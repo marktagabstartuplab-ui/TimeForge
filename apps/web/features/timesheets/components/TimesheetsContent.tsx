@@ -12,6 +12,7 @@ import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip
 import { listTimeEntries } from "@/features/time-tracking/api/time-entries.service";
 import { listProjects } from "@/features/time-tracking/api/catalog.service";
 import { getMe } from "@/features/account/api/account.service";
+import { getHolidays } from "@/features/org-management/api/holidays.service";
 import {
   attachEntries,
   createTimesheet,
@@ -102,11 +103,23 @@ export function TimesheetsContent() {
     (a) => a.resultingState === "REJECTED" || a.resultingState === "REVISION_REQUESTED",
   );
 
+  const { data: holidaysList = [] } = useQuery({
+    queryKey: ["holidays"],
+    queryFn: getHolidays,
+  });
+
+  const formattedHolidays = useMemo(() => {
+    return holidaysList.map((h) => ({
+      date: toOrgIsoDate(new Date(h.date)),
+      type: h.type,
+    }));
+  }, [holidaysList]);
+
   // ── Period-level aggregation ───────────────────────────────────────────────
   const entries = useMemo(() => entriesQuery.data?.data ?? [], [entriesQuery.data]);
   const summary = useMemo(
-    () => summarizePeriod(entries, projects, period.start, period.end, now),
-    [entries, projects, period, now],
+    () => summarizePeriod(entries, projects, period.start, period.end, now, formattedHolidays),
+    [entries, projects, period, now, formattedHolidays],
   );
 
   // ── Today-level aggregation (Session Summary + Timeline) ──────────────────
@@ -255,16 +268,34 @@ export function TimesheetsContent() {
               {minutesToHours(summary.totalMinutes).toFixed(1)}
               <span className="ml-1 text-base font-normal text-brand-muted">hrs</span>
             </p>
-            <div className="mt-1 flex items-center justify-between text-sm">
+            <div className="mt-1 flex items-center justify-between text-xs">
               <span className="text-brand-muted">Regular Hours</span>
               <span className="font-bold text-brand-ink">
                 {minutesToHours(summary.regularMinutes).toFixed(1)} hrs
               </span>
             </div>
-            <div className="flex items-center justify-between text-sm">
-              <span className="text-brand-muted">Overtime</span>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-brand-muted">Overtime Hours</span>
               <span className="font-bold text-brand">
                 {minutesToHours(summary.overtimeMinutes).toFixed(1)} hrs
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-emerald-700 font-medium">Night Diff (NSD)</span>
+              <span className="font-bold text-emerald-700">
+                {minutesToHours(summary.nightDiffMinutes).toFixed(1)} hrs
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-blue-700 font-medium">Holiday Hours</span>
+              <span className="font-bold text-blue-700">
+                {minutesToHours(summary.holidayMinutes).toFixed(1)} hrs
+              </span>
+            </div>
+            <div className="flex items-center justify-between text-xs">
+              <span className="text-purple-700 font-medium">Rest Day Hours</span>
+              <span className="font-bold text-purple-700">
+                {minutesToHours(summary.restDayMinutes).toFixed(1)} hrs
               </span>
             </div>
             <ProgressBar percent={summary.targetPercent} label="Period target progress" className="mt-1" />
