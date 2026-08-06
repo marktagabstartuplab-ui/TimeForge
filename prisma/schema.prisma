@@ -200,6 +200,11 @@ enum PayrollProcessingStatus {
   SENT_TO_BANK
 }
 
+enum CompensationType {
+  HOURLY
+  DAILY
+}
+
 
 // ─── Tenancy & Core Organization ────────────────────────────────────────────
 
@@ -303,9 +308,12 @@ model User {
   // request only — the admin assigns the real Role/UserRole on approval. Stored
   // for the approval UI + admin notification; not a security boundary.
   requestedRole   String?        @map("requested_role")
-  employmentType  EmploymentType @default(EMPLOYEE) @map("employment_type")
-  hourlyRate      Decimal?       @map("hourly_rate") @db.Decimal(12, 2)
-  payrollEligible Boolean        @default(true) @map("payroll_eligible")
+  employmentType  EmploymentType   @default(EMPLOYEE) @map("employment_type")
+  compensationType CompensationType @default(HOURLY) @map("compensation_type")
+  hourlyRate      Decimal?         @map("hourly_rate") @db.Decimal(12, 2)
+  dailyRate       Decimal?         @map("daily_rate") @db.Decimal(12, 2)
+  daysPerWeek     Decimal?         @default(5) @map("days_per_week") @db.Decimal(4, 2)
+  payrollEligible Boolean          @default(true) @map("payroll_eligible")
   avatarKey       String?        @map("avatar_key")
   lastLoginAt     DateTime?      @map("last_login_at") @db.Timestamptz
   emailVerifiedAt DateTime?      @map("email_verified_at") @db.Timestamptz
@@ -1516,12 +1524,16 @@ model PayrollLineItem {
   organizationId  String   @map("organization_id") @db.Uuid
   payrollReportId String   @map("payroll_report_id") @db.Uuid
   userId          String   @map("user_id") @db.Uuid
-  approvedHours   Decimal  @default(0) @map("approved_hours") @db.Decimal(8, 2)
-  pendingHours    Decimal  @default(0) @map("pending_hours") @db.Decimal(8, 2)
-  rejectedHours   Decimal  @default(0) @map("rejected_hours") @db.Decimal(8, 2)
-  overtimeHours   Decimal  @default(0) @map("overtime_hours") @db.Decimal(8, 2)
-  hourlyRate      Decimal  @map("hourly_rate") @db.Decimal(12, 2)
-  estimatedPay    Decimal  @map("estimated_pay") @db.Decimal(14, 2)
+  approvedHours   Decimal          @default(0) @map("approved_hours") @db.Decimal(8, 2)
+  pendingHours    Decimal          @default(0) @map("pending_hours") @db.Decimal(8, 2)
+  rejectedHours   Decimal          @default(0) @map("rejected_hours") @db.Decimal(8, 2)
+  overtimeHours   Decimal          @default(0) @map("overtime_hours") @db.Decimal(8, 2)
+  compensationType CompensationType @default(HOURLY) @map("compensation_type")
+  hourlyRate      Decimal          @map("hourly_rate") @db.Decimal(12, 2)
+  dailyRate       Decimal?         @map("daily_rate") @db.Decimal(12, 2)
+  daysPerWeek     Decimal?         @default(5) @map("days_per_week") @db.Decimal(4, 2)
+  daysWorked      Decimal          @default(0) @map("days_worked") @db.Decimal(6, 2)
+  estimatedPay    Decimal          @map("estimated_pay") @db.Decimal(14, 2)
 
   // -- FEAT-3: Philippine statutory breakdown ---------------------------------
   // Every column below is derived at generation time and snapshotted, so a later

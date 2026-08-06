@@ -14,7 +14,7 @@ import {
   ValidateNested,
 } from 'class-validator';
 import { Type } from 'class-transformer';
-import { EmploymentType, UserStatus } from '@prisma/client';
+import { CompensationType, EmploymentType, UserStatus } from '@prisma/client';
 import { STRONG_PASSWORD_REGEX, STRONG_PASSWORD_MESSAGE } from '../auth/dto';
 
 export class CreateUserDto {
@@ -53,6 +53,18 @@ export class CreateUserDto {
   @IsBoolean()
   @Type(() => Boolean)
   payrollEligible?: boolean;
+
+  @IsOptional()
+  @IsEnum(CompensationType)
+  compensationType?: CompensationType;
+
+  @IsOptional()
+  @Type(() => Number)
+  dailyRate?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  daysPerWeek?: number;
 }
 
 export class BulkImportEmployeesDto {
@@ -120,6 +132,18 @@ export class UpdateUserDto {
   @IsBoolean()
   @Type(() => Boolean)
   payrollEligible?: boolean;
+
+  @IsOptional()
+  @IsEnum(CompensationType)
+  compensationType?: CompensationType;
+
+  @IsOptional()
+  @Type(() => Number)
+  dailyRate?: number;
+
+  @IsOptional()
+  @Type(() => Number)
+  daysPerWeek?: number;
 
   @IsOptional()
   @IsEnum(UserStatus)

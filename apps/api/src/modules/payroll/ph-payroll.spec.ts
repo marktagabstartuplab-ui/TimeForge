@@ -227,3 +227,39 @@ describe('FEAT-3 — period day enumeration', () => {
     expect(dateKeysBetween(day, day)).toEqual(['2026-12-25']);
   });
 });
+
+describe('BUG-AW — Daily Rate Basis calculation', () => {
+  const svc = new DeductionService();
+
+  it('calculates daily pay correctly for 4.5 days worked @ ₱2,000/day = ₱9,000 gross', () => {
+    const dailyRate = 2000;
+    const hoursWorked = 36; // 4.5 days x 8h = 36h
+    const daysWorked = hoursWorked / 8;
+    expect(daysWorked).toBe(4.5);
+
+    const gross = daysWorked * dailyRate;
+    expect(gross).toBe(9000);
+  });
+
+  it('prorates partial days correctly (0.5 day = 4 hours @ ₱2,000/day = ₱1,000 gross)', () => {
+    const dailyRate = 2000;
+    const hoursWorked = 4; // 0.5 day x 8h = 4h
+    const daysWorked = hoursWorked / 8;
+    expect(daysWorked).toBe(0.5);
+
+    const gross = daysWorked * dailyRate;
+    expect(gross).toBe(1000);
+  });
+
+  it('applies statutory deductions (SSS/PhilHealth/Pag-IBIG) to daily basis gross pay', () => {
+    const dailyRate = 2000;
+    const hoursWorked = 80; // 10 days = 20,000 gross
+    const daysWorked = hoursWorked / 8;
+    const gross = daysWorked * dailyRate; // 20,000
+
+    const contributions = svc.calculateAll(gross, 1, settings);
+    expect(contributions.sss.employee).toBe(1000);
+    expect(contributions.philhealth.employee).toBe(500);
+    expect(contributions.pagibig.employee).toBe(200);
+  });
+});

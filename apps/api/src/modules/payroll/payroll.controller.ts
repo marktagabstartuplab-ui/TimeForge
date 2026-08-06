@@ -253,10 +253,20 @@ export class PayrollController {
   updateRate(
     @CurrentUser() u: AuthPrincipal,
     @Param('userId', ParseUUIDPipe) userId: string,
-    @Query('rate', ParseFloatPipe) rate: number,
-    @Query('version', ParseIntPipe) version: number,
+    @Query('rate') rateQuery?: string,
+    @Query('version') versionQuery?: string,
+    @Body() dto?: UpdateRateDto,
   ) {
-    return this.svc.updateRate(u, userId, rate, version);
+    const rateVal = rateQuery !== undefined ? parseFloat(rateQuery) : dto?.rate;
+    const versionVal = versionQuery !== undefined ? parseInt(versionQuery, 10) : dto?.version;
+    return this.svc.updateRate(u, userId, {
+      compensationType: dto?.compensationType,
+      rate: rateVal,
+      hourlyRate: dto?.hourlyRate,
+      dailyRate: dto?.dailyRate,
+      daysPerWeek: dto?.daysPerWeek,
+      version: versionVal,
+    });
   }
 
   // -- Payroll Oversight Endpoints --

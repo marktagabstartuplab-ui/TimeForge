@@ -493,7 +493,8 @@ export function PayrollProcessingContent() {
                   <thead>
                     <tr className="border-b border-[#c3c6d2]/40 text-xs font-semibold text-brand-muted uppercase tracking-wider">
                       <th className="py-3 px-4">Employee</th>
-                      <th className="py-3 px-4">Approved Hours (HH:MM)</th>
+                      <th className="py-3 px-4">Basis</th>
+                      <th className="py-3 px-4">Approved Hours / Days</th>
                       <th className="py-3 px-4">Overtime (HH:MM)</th>
                       <th className="py-3 px-4">Rate</th>
                       <th className="py-3 px-4">Gross Pay</th>
@@ -504,6 +505,8 @@ export function PayrollProcessingContent() {
                   <tbody className="divide-y divide-[#c3c6d2]/30">
                     {filteredRows.map((li) => {
                       const status = rowStatus(Number(li.approvedHours), Number(li.rejectedHours));
+                      const isDaily = (li as any).compensationType === "DAILY";
+                      const daysWorkedNum = Number((li as any).daysWorked ?? (Number(li.approvedHours) / 8));
                       return (
                         <tr key={li.id} className={status === "Discrepancy" ? "bg-red-50/40" : "hover:bg-gray-50/50 transition-colors"}>
                           <td className="py-3 px-4">
@@ -512,9 +515,27 @@ export function PayrollProcessingContent() {
                             </div>
                             <div className="text-xs text-brand-muted">{li.user.jobTitle ?? li.user.department?.name ?? li.user.employmentType}</div>
                           </td>
-                          <td className="py-3 px-4 text-brand-ink tabular-nums">{formatHoursHm(Number(li.approvedHours))}</td>
+                          <td className="py-3 px-4">
+                            <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-xs font-medium ${isDaily ? "bg-purple-100 text-purple-700 dark:bg-purple-950/40 dark:text-purple-300" : "bg-blue-100 text-blue-700 dark:bg-blue-950/40 dark:text-blue-300"}`}>
+                              {isDaily ? "Daily" : "Hourly"}
+                            </span>
+                          </td>
+                          <td className="py-3 px-4 text-brand-ink tabular-nums">
+                            {isDaily ? (
+                              <span>
+                                <strong className="font-semibold text-brand-navy">{daysWorkedNum.toFixed(2)} days</strong>
+                                <span className="ml-1 text-xs text-brand-muted">({formatHoursHm(Number(li.approvedHours))})</span>
+                              </span>
+                            ) : (
+                              formatHoursHm(Number(li.approvedHours))
+                            )}
+                          </td>
                           <td className="py-3 px-4 text-brand-ink tabular-nums">{formatHoursHm(Number(li.overtimeHours))}</td>
-                          <td className="py-3 px-4 text-brand-ink">₱{Number(li.hourlyRate).toFixed(2)}/hr</td>
+                          <td className="py-3 px-4 text-brand-ink">
+                            {isDaily
+                              ? `₱${Number((li as any).dailyRate ?? (Number(li.hourlyRate) * 8)).toFixed(2)}/day`
+                              : `₱${Number(li.hourlyRate).toFixed(2)}/hr`}
+                          </td>
                           <td className="py-3 px-4 font-semibold text-brand-ink">{formatCurrency(Number(li.estimatedPay))}</td>
                           <td className="py-3 px-4">
                             <StatusBadge label={status} tone={ROW_STATUS_TONE[status]} />
