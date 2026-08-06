@@ -20,6 +20,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "ai:trigger_self", "ai:read",
     "project:read", "client:read", "work_category:read", "department:read", "team:read",
     "schedule:read",
+    "holiday:read",
     "leave_request:create", "leave_request:read", "leave_request:cancel", "leave_balance:read",
     "schedule:read",
     "bug:create", "bug:read", "bug:comment",
@@ -37,6 +38,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "dashboard:read_self", "dashboard:read_team",
     "project:read", "client:read", "work_category:read", "department:read", "team:read",
     "schedule:read", "schedule:read_team",
+    "holiday:read",
     "ai:trigger_self", "ai:trigger_team", "ai:read",
     "leave_request:create", "leave_request:read", "leave_request:cancel", "leave_balance:read",
     "leave_request:read_team", "leave_request:decide",
@@ -45,7 +47,8 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
   ],
   HR: [
     "user:read",
-    "timesheet:read_org",
+    "timesheet:read", "timesheet:read_org",
+    "holiday:read", "holiday:write",
     "kpi_progress:read_org", "kpi:read_org", "kpi_template:read",
     "attendance:read_org",
     "payroll_period:read",
@@ -66,7 +69,9 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
   ],
   FINANCE: [
     "user:read",
-    "timesheet:read_org",
+    "timesheet:read", "timesheet:read_org",
+    // BUG-BO: read-only — holidays drive the premium multipliers Finance pays.
+    "holiday:read",
     "kpi_progress:read_org", "kpi:read_org",
     "payroll:read", "payroll_period:read", "payroll_period:create", "payroll_period:update",
     "payroll:generate", "payroll:export", "payroll_rate:read", "payroll_rate:update",
