@@ -1,0 +1,13 @@
+-- Restores the column behind PayrollPeriod.name.
+--
+-- `name` was added to schema.prisma in 0acb150 (BUG-BJ custom period creation)
+-- without a matching migration, and it postdates the 0_init baseline — so the
+-- column has never existed in any deployed database. Every query returning a
+-- full PayrollPeriod row has failed since:
+--   The column `payroll_periods.name` does not exist in the current database.
+-- which is a 500 on GET /payroll/periods, i.e. the whole Payroll Processing
+-- screen.
+--
+-- Nullable to match the model: system-generated periods derive their label from
+-- the date range and only off-cycle custom periods carry an explicit name.
+ALTER TABLE "payroll_periods" ADD COLUMN "name" TEXT;
