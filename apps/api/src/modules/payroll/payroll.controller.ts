@@ -1,4 +1,5 @@
 import {
+  BadRequestException,
   Body,
   Controller,
   ForbiddenException,
@@ -17,7 +18,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { PayrollService } from './payroll.service';
-import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, RunActionDto, PayrollExportRequestDto, PayrollActionDto, PayrollRejectActionDto, GeneratePayrollDto, UpdatePayrollSettingsDto, StatutoryReportQuery, UpdateRateDto } from './dto';
+import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, RunActionDto, PayrollExportRequestDto, PayrollActionDto, PayrollRejectActionDto, GeneratePayrollDto, UpdatePayrollSettingsDto, StatutoryExportQuery, StatutoryReportQuery, UpdateRateDto } from './dto';
 import { PayrollSettingsService } from './payroll-settings.service';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
@@ -119,6 +120,32 @@ export class PayrollController {
   @RequirePermissions('payroll:read')
   getBirReport(@CurrentUser() u: AuthPrincipal, @Query() q: StatutoryReportQuery) {
     return this.svc.getBirTaxSummary(u, q);
+  }
+
+  /**
+   * BUG-AZ — downloadable contribution collection list in the layout the named
+   * agency's employer portal accepts (CSV by default, Excel on request).
+   *
+   * Gated on `payroll:export` rather than `payroll:read`: the file carries every
+   * member's government ID number, which the on-screen report does not hand out
+   * in bulk.
+   */
+  @Get('reports/:agency/export')
+  @RequirePermissions('payroll:export')
+  async downloadContributionReport(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('agency') agency: string,
+    @Query() q: StatutoryExportQuery,
+    @Res({ passthrough: true }) res: Response,
+  ) {
+    const normalized = agency.toUpperCase();
+    if (normalized !== 'SSS' && normalized !== 'PHILHEALTH' && normalized !== 'PAGIBIG') {
+      throw new BadRequestException('Unknown agency — expected sss, philhealth or pagibig');
+    }
+    const result = await this.svc.exportContributionFile(u, normalized, q);
+    res.setHeader('Content-Type', result.contentType);
+    res.setHeader('Content-Disposition', `attachment; filename="${result.filename}"`);
+    res.send(result.buffer);
   }
 
   /** Lock the period -- no further edits after this. */

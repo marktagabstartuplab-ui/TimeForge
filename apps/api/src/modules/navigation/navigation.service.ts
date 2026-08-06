@@ -35,6 +35,8 @@ const MENU_CATALOG: MenuItemDef[] = [
   { id: 'team',         label: 'My Team',      icon: 'users',        route: '/team',               section: 'MANAGEMENT',       permission: 'user:read' },
   { id: 'employees',    label: 'Employees',    icon: 'users',        route: '/admin/employees',    section: 'MANAGEMENT',       permission: 'user:read' },
   { id: 'departments',  label: 'Departments',  icon: 'building-2',   route: '/admin/departments',  section: 'MANAGEMENT',       permission: 'org:read_dashboard' },
+  { id: 'holiday-calendar', label: 'Holiday Calendar', icon: 'calendar-days', route: '/admin/holidays', section: 'MANAGEMENT', permission: 'holiday:read' },
+  { id: 'employee-relations', label: 'Employee Relations', icon: 'shield-alert', route: '/hr/employee-relations', section: 'MANAGEMENT', permission: 'discipline:read_org' },
   { id: 'approvals',    label: 'Approvals',    icon: 'check-square', route: '/admin/approvals',    section: 'MANAGEMENT',       permission: 'user:update',               badge: 'pendingApprovals' },
   // ── FINANCE & REPORTS ──
   { id: 'payroll',      label: 'Payroll',      icon: 'wallet',       route: '/payslips',           section: 'FINANCE_REPORTS',  permission: 'payroll:read_self',         badge: 'pendingPayroll' },

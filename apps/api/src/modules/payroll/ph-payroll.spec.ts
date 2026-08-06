@@ -263,3 +263,46 @@ describe('BUG-AW — Daily Rate Basis calculation', () => {
     expect(contributions.pagibig.employee).toBe(200);
   });
 });
+
+describe('BUG-BA — Philippine T&A Premiums (NSD, Holidays, Rest Days)', () => {
+  const MANILA = 'Asia/Manila';
+
+  it('(a) auto-tags 11 PM - 6 AM work as NSD', () => {
+    // 11 PM Manila (15:00 UTC) for 7 hours -> 11 PM to 6 AM (all 7h = 420 mins NSD)
+    const elevenPm = new Date('2026-03-02T15:00:00.000Z');
+    const nsdMins = nightShiftMinutes(elevenPm, 7 * 60, MANILA, 22, 6);
+    expect(nsdMins).toBe(7 * 60);
+  });
+
+  it('(b) applies 10% NSD premium multiplier on base hourly rate', () => {
+    const hourlyRate = 100;
+    const nsdHours = 7;
+    // 10% premium: 7h * ₱100 * (1.10 - 1) = ₱70
+    const nsdPay = nsdHours * hourlyRate * (settings.nightShiftPremium - 1);
+    expect(nsdPay).toBe(70);
+  });
+
+  it('(d) applies 100% premium for work on Regular Holiday', () => {
+    const hourlyRate = 100;
+    const holidayHours = 8;
+    // 100% premium (multiplier 2.00): increment = 8 * 100 * (2.00 - 1) = ₱800
+    const holidayPay = holidayHours * hourlyRate * (settings.regularHolidayWorkedRate - 1);
+    expect(holidayPay).toBe(800);
+  });
+
+  it('(e) applies 30% premium for work on Special Non-Working Holiday', () => {
+    const hourlyRate = 100;
+    const holidayHours = 8;
+    // 30% premium (multiplier 1.30): increment = 8 * 100 * (1.30 - 1) = ₱240
+    const holidayPay = holidayHours * hourlyRate * (settings.specialHolidayWorkedRate - 1);
+    expect(holidayPay).toBe(240);
+  });
+
+  it('(f) applies 30% premium for work on employee scheduled day off / Rest Day', () => {
+    const hourlyRate = 100;
+    const restDayHours = 8;
+    // 30% rest day premium: 8 * 100 * (1.30 - 1) = ₱240
+    const restDayPay = restDayHours * hourlyRate * (settings.restDayWorkedRate - 1);
+    expect(restDayPay).toBe(240);
+  });
+});

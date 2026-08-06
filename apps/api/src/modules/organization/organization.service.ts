@@ -158,6 +158,7 @@ export class OrganizationService {
           organizationId,
           name: dto.name,
           date: new Date(dto.date),
+          type: dto.type ?? 'REGULAR',
           recurring: dto.recurring ?? false,
           createdBy: actorId,
           updatedBy: actorId,

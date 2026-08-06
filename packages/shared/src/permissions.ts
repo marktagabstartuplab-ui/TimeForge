@@ -173,6 +173,17 @@ export const PERMISSIONS = {
   GRIEVANCE_READ_SELF: 'grievance:read_self',
   GRIEVANCE_READ_ORG: 'grievance:read_org',
   GRIEVANCE_UPDATE: 'grievance:update',
+  // discipline / NTE (BUG-BB)
+  DISCIPLINE_CREATE: 'discipline:create',
+  DISCIPLINE_READ_SELF: 'discipline:read_self',
+  DISCIPLINE_READ_ORG: 'discipline:read_org',
+  DISCIPLINE_RESPOND: 'discipline:respond',
+  DISCIPLINE_UPDATE: 'discipline:update',
+  // clearance (BUG-BB)
+  CLEARANCE_CREATE: 'clearance:create',
+  CLEARANCE_READ_SELF: 'clearance:read_self',
+  CLEARANCE_READ_ORG: 'clearance:read_org',
+  CLEARANCE_APPROVE: 'clearance:approve',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -222,6 +233,8 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT,
     P.SHIFT_CONFIG_READ, P.SHIFT_OVERRIDE_REQUEST,
     P.GRIEVANCE_CREATE, P.GRIEVANCE_READ_SELF,
+    P.DISCIPLINE_READ_SELF, P.DISCIPLINE_RESPOND,
+    P.CLEARANCE_READ_SELF,
   ],
   [Role.SUPERVISOR]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -245,6 +258,8 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.SHIFT_CONFIG_READ, P.SHIFT_OVERRIDE_REQUEST,
     P.SHIFT_OVERRIDE_APPROVE, P.SHIFT_VIOLATION_READ_TEAM,
     P.GRIEVANCE_CREATE, P.GRIEVANCE_READ_SELF,
+    P.DISCIPLINE_READ_SELF, P.DISCIPLINE_RESPOND,
+    P.CLEARANCE_READ_SELF, P.CLEARANCE_APPROVE,
   ],
   [Role.HR]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -277,6 +292,8 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     // to get the nav entry while still being scoped org-wide.
     P.SHIFT_VIOLATION_READ_TEAM,
     P.GRIEVANCE_CREATE, P.GRIEVANCE_READ_SELF, P.GRIEVANCE_READ_ORG, P.GRIEVANCE_UPDATE,
+    P.DISCIPLINE_CREATE, P.DISCIPLINE_READ_SELF, P.DISCIPLINE_READ_ORG, P.DISCIPLINE_UPDATE, P.DISCIPLINE_RESPOND,
+    P.CLEARANCE_CREATE, P.CLEARANCE_READ_SELF, P.CLEARANCE_READ_ORG, P.CLEARANCE_APPROVE,
   ],
   [Role.FINANCE]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -295,5 +312,6 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.ORG_READ, P.ORG_SETTINGS_READ, P.ORG_SETTINGS_UPDATE,
     P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT,
     P.GRIEVANCE_CREATE, P.GRIEVANCE_READ_SELF,
+    P.CLEARANCE_APPROVE,
   ],
 };

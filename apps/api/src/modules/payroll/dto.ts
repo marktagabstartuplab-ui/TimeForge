@@ -144,6 +144,18 @@ export interface StatutoryReportQuery {
   periodId?: string;
 }
 
+/** BUG-AZ — query for the downloadable agency collection list. */
+export class StatutoryExportQuery {
+  /** Payroll period to report on. Defaults to the most recently generated period. */
+  @IsUUID() @IsOptional() periodId?: string;
+
+  /** Department *name*, matching the value the JSON report returns per row. */
+  @IsString() @IsOptional() departmentId?: string;
+
+  /** Defaults to CSV — every agency portal accepts it, Excel is a convenience. */
+  @IsEnum(['csv', 'xlsx']) @IsOptional() format?: 'csv' | 'xlsx';
+}
+
 export class PayrollRejectActionDto {
   @IsUUID()
   periodId!: string;

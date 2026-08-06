@@ -21,11 +21,24 @@ import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
 import { OvertimeRateService } from '../../common/payroll/overtime-rate.service';
 import { NotificationsService } from '../notifications/notifications.service';
 import { CacheService } from '../../infra/cache.service';
-import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, StatutoryReportQuery } from './dto';
+import {
+  CreatePayrollPeriodDto,
+  ExportPayrollDto,
+  PayrollPeriodQuery,
+  StatutoryExportQuery,
+  StatutoryReportQuery,
+} from './dto';
 import { BirTaxService, round2 } from './bir-tax.service';
 import { DeductionService, periodsPerMonth } from './deduction.service';
 import { PayrollSettingsService, ResolvedPayrollSettings } from './payroll-settings.service';
 import { dateKeysBetween, dateOnlyKey, nightShiftMinutes } from './premium-hours';
+import { formatStatutoryId } from './statutory-ids';
+import {
+  AGENCY_ID_FIELD,
+  buildContributionSheet,
+  sheetToCsv,
+  type StatutoryExportRow,
+} from './statutory-export';
 
 export interface PayrollExportJobData {
   tenantId: string;
@@ -156,6 +169,7 @@ export class PayrollService {
     nightMinutes: number;
     holidayMinutesByDay: Map<string, number> | undefined;
     holidayByKey: Map<string, { type: string; name: string }>;
+    restDayMinutes?: number;
     periodStart: Date;
     periodEnd: Date;
     hasWorkedHours: boolean;
@@ -165,6 +179,10 @@ export class PayrollService {
 
     const nightHours = input.nightMinutes / 60;
     const nightDifferential = round2(nightHours * rate * (settings.nightShiftPremium - 1));
+
+    const restDayMins = input.restDayMinutes ?? 0;
+    const restDayHours = restDayMins / 60;
+    const restDayPay = round2(restDayHours * rate * (settings.restDayWorkedRate - 1));
 
     let holidayHours = 0;
     let holidayPay = 0;
@@ -200,6 +218,8 @@ export class PayrollService {
       nightDifferential,
       holidayHours: round2(holidayHours),
       holidayPay: round2(holidayPay),
+      restDayHours: round2(restDayHours),
+      restDayPay,
     };
   }
 
@@ -230,9 +250,9 @@ export class PayrollService {
     thirteenthMonth: boolean;
   }) {
     const { settings, brackets } = input;
-    const { holidayHours, holidayPay, nightDiffHours, nightDifferential } = input.premiums;
+    const { holidayHours, holidayPay, nightDiffHours, nightDifferential, restDayHours, restDayPay } = input.premiums;
 
-    const grossTotal = round2(input.basePay + holidayPay + nightDifferential);
+    const grossTotal = round2(input.basePay + holidayPay + nightDifferential + restDayPay);
 
     // -- Statutory contributions. A 13th-month payout is a benefit, not
     // compensation for hours, so SSS/PhilHealth/Pag-IBIG are not assessed on it.
@@ -272,8 +292,10 @@ export class PayrollService {
     return {
       holidayHours,
       nightDiffHours,
+      restDayHours,
       nightDifferential,
       holidayPay,
+      restDayPay,
       sssContribution,
       philhealthContribution,
       pagibigContribution,
@@ -332,6 +354,8 @@ export class PayrollService {
         holidayPay: true,
         nightDiffHours: true,
         nightDifferential: true,
+        restDayHours: true,
+        restDayPay: true,
         isThirteenthMonth: true,
         payrollReport: { select: { period: { select: { type: true, startDate: true } } } },
       },
@@ -366,6 +390,10 @@ export class PayrollService {
         holidayPay: round2(Number(li.holidayPay) * ratio),
         nightDiffHours: Number(li.nightDiffHours),
         nightDifferential: round2(Number(li.nightDifferential) * ratio),
+        // Rest-day premium rescales with the rate exactly like the other two —
+        // omitting it here would silently zero it out of the recomputed totals.
+        restDayHours: Number(li.restDayHours),
+        restDayPay: round2(Number(li.restDayPay) * ratio),
       };
 
       const period = li.payrollReport.period;
@@ -712,13 +740,52 @@ export class PayrollService {
     });
     const holidayByKey = new Map(holidays.map((h) => [dateOnlyKey(h.date), h]));
 
-    // Night-differential and holiday minutes are attributed from *all* approved
+    // BUG-BB: verify clearance status for exiting employees. Block final payroll generation if clearance incomplete.
+    const uncleared = await this.prisma.clearanceChecklist.findFirst({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        employeeId: { in: eligibleUsers.map((u) => u.id) },
+        status: { in: ['PENDING', 'IN_PROGRESS'] },
+        deletedAt: null,
+      },
+      include: { employee: { select: { firstName: true, lastName: true } } },
+    });
+    if (uncleared) {
+      throw new UnprocessableEntityException(
+        `Payroll generation blocked: Clearance checklist for ${uncleared.employee.firstName} ${uncleared.employee.lastName} is ${uncleared.status}. Clearance must be COMPLETED before final payroll generation.`,
+      );
+    }
+
+    // Fetch all published shifts for the period to determine employee rest days
+    const publishedShifts = await this.prisma.shift.findMany({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        status: 'PUBLISHED',
+        deletedAt: null,
+        shiftDate: { gte: period.startDate, lte: period.endDate },
+      },
+      select: { userId: true, shiftDate: true },
+    });
+    const userScheduledDates = new Map<string, Set<string>>();
+    for (const s of publishedShifts) {
+      let dates = userScheduledDates.get(s.userId);
+      if (!dates) {
+        dates = new Set<string>();
+        userScheduledDates.set(s.userId, dates);
+      }
+      dates.add(dateOnlyKey(s.shiftDate));
+    }
+
+    // Night-differential, holiday, and rest day minutes are attributed from *all* approved
     // entries — including those on supervisor-adjusted timesheets, which are
     // held out of the daily-overtime rollup above. The premiums are independent
     // of the regular/overtime split, so excluding them there does not exclude
     // them here.
     const userNightMinutes = new Map<string, number>();
     const userHolidayMinutes = new Map<string, Map<string, number>>();
+    const userRestDayMinutes = new Map<string, number>();
     for (const entry of approvedEntries) {
       if (!entry.durationMinutes) continue;
 
@@ -741,6 +808,15 @@ export class PayrollService {
           userHolidayMinutes.set(entry.userId, days);
         }
         days.set(dayKey, (days.get(dayKey) ?? 0) + entry.durationMinutes);
+      }
+
+      const scheduled = userScheduledDates.get(entry.userId);
+      const entryDate = new Date(entry.startTime);
+      const isRestDay = scheduled
+        ? !scheduled.has(dayKey)
+        : (entryDate.getUTCDay() === 0 || entryDate.getUTCDay() === 6);
+      if (isRestDay) {
+        userRestDayMinutes.set(entry.userId, (userRestDayMinutes.get(entry.userId) ?? 0) + entry.durationMinutes);
       }
     }
 
@@ -860,6 +936,7 @@ export class PayrollService {
           nightMinutes: userNightMinutes.get(user.id) ?? 0,
           holidayMinutesByDay: userHolidayMinutes.get(user.id),
           holidayByKey,
+          restDayMinutes: userRestDayMinutes.get(user.id) ?? 0,
           periodStart: period.startDate,
           periodEnd: period.endDate,
           hasWorkedHours: approvedHours.greaterThan(0),
@@ -1492,6 +1569,17 @@ export class PayrollService {
         pendingHours: true,
         rejectedHours: true,
         overtimeHours: true,
+        holidayHours: true,
+        nightDiffHours: true,
+        restDayHours: true,
+        regularPay: true,
+        overtimePay: true,
+        nightDifferential: true,
+        holidayPay: true,
+        restDayPay: true,
+        grossTotal: true,
+        totalDeductions: true,
+        netPay: true,
         hourlyRate: true,
         estimatedPay: true,
         createdAt: true,
@@ -2366,6 +2454,12 @@ export class PayrollService {
             lastName: true,
             email: true,
             department: { select: { name: true } },
+            // BUG-AZ — the agency portals key each line on the member's own
+            // number, so the remittance reports carry them alongside the amounts.
+            tin: true,
+            sssNumber: true,
+            philhealthNumber: true,
+            pagibigNumber: true,
           },
         },
       },
@@ -2408,6 +2502,10 @@ export class PayrollService {
         email: item.user.email,
         name: `${item.user.lastName}, ${item.user.firstName}`,
         department: item.user.department?.name ?? null,
+        // BUG-AZ — rendered in the agency's display mask so the reports screen
+        // can show a clerk exactly what the portal expects. Blank when HR has
+        // not captured that ID yet, which the screen flags as incomplete.
+        memberNumber: formatStatutoryId(AGENCY_ID_FIELD[agency], item.user[AGENCY_ID_FIELD[agency]]),
         monthlyGrossBasis: item.grossTotal.toFixed(2),
         employeeShare: share.employee.toFixed(2),
         employerShare: share.employer.toFixed(2),
@@ -2491,6 +2589,100 @@ export class PayrollService {
         taxWithheld: withheldTotal.toFixed(2),
       },
       rows,
+    };
+  }
+
+  /**
+   * BUG-AZ — the contribution collection list for one agency, as a file the
+   * clerk uploads to that agency's employer portal.
+   *
+   * Deliberately reads the amounts straight off the generated payroll line
+   * items rather than recomputing: the remitted figure must be the one the
+   * employee was actually deducted, or the remittance and the payslip disagree.
+   */
+  async exportContributionFile(
+    p: AuthPrincipal,
+    agency: 'SSS' | 'PHILHEALTH' | 'PAGIBIG',
+    query: StatutoryExportQuery,
+  ): Promise<{ buffer: Buffer; contentType: string; filename: string }> {
+    const period = await this.resolveReportPeriod(p, query.periodId);
+    const items = await this.reportLineItems(p, period.id);
+
+    const share = (item: (typeof items)[number]) => {
+      switch (agency) {
+        case 'SSS':
+          return { employee: item.sssContribution, employer: item.sssEmployerShare };
+        case 'PHILHEALTH':
+          return { employee: item.philhealthContribution, employer: item.philhealthEmployerShare };
+        case 'PAGIBIG':
+          return { employee: item.pagibigContribution, employer: item.pagibigEmployerShare };
+      }
+    };
+
+    const scoped = query.departmentId
+      ? items.filter((i) => i.user.department?.name === query.departmentId)
+      : items;
+
+    const rows: StatutoryExportRow[] = scoped.map((item) => {
+      const s = share(item);
+      return {
+        lastName: item.user.lastName,
+        firstName: item.user.firstName,
+        tin: item.user.tin,
+        sssNumber: item.user.sssNumber,
+        philhealthNumber: item.user.philhealthNumber,
+        pagibigNumber: item.user.pagibigNumber,
+        monthlyGrossBasis: item.grossTotal.toFixed(2),
+        employeeShare: s.employee.toFixed(2),
+        employerShare: s.employer.toFixed(2),
+        total: new Decimal(s.employee).add(s.employer).toFixed(2),
+      };
+    });
+
+    const sheet = buildContributionSheet(agency, rows, period.startDate.toISOString().slice(0, 10));
+
+    // Exporting a remittance list moves employee government IDs off the
+    // platform, so it goes in the audit log the same way a payslip export does (H1).
+    await this.prisma.auditLog
+      .create({
+        data: {
+          tenantId: p.tenantId,
+          actorId: p.userId,
+          action: AuditAction.ADMIN_ACTION,
+          entityType: 'statutory_report_export',
+          entityId: period.id,
+          metadata: {
+            agency,
+            format: query.format === 'xlsx' ? 'XLSX' : 'CSV',
+            headcount: rows.length,
+            departmentId: query.departmentId ?? null,
+          },
+        },
+      })
+      .catch(() => {});
+
+    if (query.format === 'xlsx') {
+      const ExcelJS = await import('exceljs');
+      const workbook = new ExcelJS.Workbook();
+      const ws = workbook.addWorksheet(agency);
+      ws.addRow(sheet.header).font = { bold: true };
+      for (const r of sheet.rows) ws.addRow(r);
+      ws.addRow(sheet.totalRow).font = { bold: true };
+      ws.columns.forEach((c) => {
+        c.width = 24;
+      });
+      const buf = await workbook.xlsx.writeBuffer();
+      return {
+        buffer: Buffer.from(buf),
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        filename: `${sheet.filenameStem}.xlsx`,
+      };
+    }
+
+    return {
+      buffer: sheetToCsv(sheet),
+      contentType: 'text/csv; charset=utf-8',
+      filename: `${sheet.filenameStem}.csv`,
     };
   }
 

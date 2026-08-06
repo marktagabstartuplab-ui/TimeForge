@@ -314,6 +314,16 @@ model User {
   dailyRate       Decimal?         @map("daily_rate") @db.Decimal(12, 2)
   daysPerWeek     Decimal?         @default(5) @map("days_per_week") @db.Decimal(4, 2)
   payrollEligible Boolean          @default(true) @map("payroll_eligible")
+
+  // BUG-AZ — Philippine statutory identifiers ("201 file"). Stored digits-only,
+  // without the separators the agency portals display, so the export formatter
+  // is the single place that decides each portal's punctuation. Nullable: an
+  // employee may be onboarded before HR has collected them.
+  tin              String? @map("tin")
+  sssNumber        String? @map("sss_number")
+  philhealthNumber String? @map("philhealth_number")
+  pagibigNumber    String? @map("pagibig_number")
+
   avatarKey       String?        @map("avatar_key")
   lastLoginAt     DateTime?      @map("last_login_at") @db.Timestamptz
   emailVerifiedAt DateTime?      @map("email_verified_at") @db.Timestamptz
@@ -374,6 +384,9 @@ model User {
   shiftOverridesGranted WorkSession[]         @relation("WorkSessionOverrideSupervisor")
   grievances            Grievance[]           @relation("GrievanceEmployee")
   calendarEvents        EmployeeCalendarEvent[]
+  disciplineRecords     DisciplineRecord[]    @relation("DisciplineEmployee")
+  disciplineIssued      DisciplineRecord[]    @relation("DisciplineIssuer")
+  clearanceChecklists   ClearanceChecklist[]  @relation("ClearanceEmployee")
 
   @@unique([tenantId, id])
   // Uniqueness on (tenantId, email) is enforced by a partial unique index
@@ -1394,6 +1407,7 @@ model PayrollSettings {
   regularHolidayWorkedRate    Decimal @default(2.00) @map("regular_holiday_worked_rate") @db.Decimal(5, 2)
   regularHolidayUnworkedRate  Decimal @default(1.00) @map("regular_holiday_unworked_rate") @db.Decimal(5, 2)
   specialHolidayWorkedRate    Decimal @default(1.30) @map("special_holiday_worked_rate") @db.Decimal(5, 2)
+  restDayWorkedRate           Decimal @default(1.30) @map("rest_day_worked_rate") @db.Decimal(5, 2)
 
   // 13th-month pay and other benefits are tax-exempt up to this annual amount.
   thirteenthMonthExemptionCap Decimal @default(90000) @map("thirteenth_month_exemption_cap") @db.Decimal(12, 2)
@@ -1543,11 +1557,13 @@ model PayrollLineItem {
 
   holidayHours   Decimal @default(0) @map("holiday_hours") @db.Decimal(8, 2)
   nightDiffHours Decimal @default(0) @map("night_diff_hours") @db.Decimal(8, 2)
+  restDayHours   Decimal @default(0) @map("rest_day_hours") @db.Decimal(8, 2)
 
   regularPay        Decimal @default(0) @map("regular_pay") @db.Decimal(14, 2)
   overtimePay       Decimal @default(0) @map("overtime_pay") @db.Decimal(14, 2)
   nightDifferential Decimal @default(0) @map("night_differential") @db.Decimal(14, 2)
   holidayPay        Decimal @default(0) @map("holiday_pay") @db.Decimal(14, 2)
+  restDayPay        Decimal @default(0) @map("rest_day_pay") @db.Decimal(14, 2)
 
   sssContribution        Decimal @default(0) @map("sss_contribution") @db.Decimal(12, 2)
   philhealthContribution Decimal @default(0) @map("philhealth_contribution") @db.Decimal(12, 2)
@@ -2095,6 +2111,92 @@ model EmployeeCalendarEvent {
   @@index([tenantId, userId, eventDate])
   @@index([tenantId, organizationId])
   @@map("employee_calendar_events")
+}
+
+// ─── Disciplinary Records / NTE (Notice to Explain) ─────────────────────────
+
+enum DisciplineStatus {
+  ISSUED
+  RESPONDED
+  RESOLVED
+  CLOSED
+}
+
+model DisciplineRecord {
+  id                   String           @id @default(uuid()) @db.Uuid
+  tenantId             String           @map("tenant_id") @db.Uuid
+  organizationId       String           @map("organization_id") @db.Uuid
+  employeeId           String           @map("employee_id") @db.Uuid
+  issuerId             String           @map("issuer_id") @db.Uuid
+  title                String
+  violationDescription String           @map("violation_description")
+  status               DisciplineStatus @default(ISSUED)
+  employeeResponse     String?          @map("employee_response")
+  respondedAt          DateTime?        @map("responded_at") @db.Timestamptz
+  issuedAt             DateTime         @default(now()) @map("issued_at") @db.Timestamptz
+  resolvedAt           DateTime?        @map("resolved_at") @db.Timestamptz
+  createdBy            String?          @map("created_by") @db.Uuid
+  updatedBy            String?          @map("updated_by") @db.Uuid
+  createdAt            DateTime         @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt            DateTime         @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt            DateTime?        @map("deleted_at") @db.Timestamptz
+
+  employee User @relation("DisciplineEmployee", fields: [employeeId], references: [id])
+  issuer   User @relation("DisciplineIssuer", fields: [issuerId], references: [id])
+
+  @@index([tenantId, organizationId, status])
+  @@index([tenantId, employeeId])
+  @@map("discipline_records")
+}
+
+// ─── Offboarding Clearance Tracker ──────────────────────────────────────────
+
+enum ClearanceStatus {
+  PENDING
+  IN_PROGRESS
+  COMPLETED
+}
+
+model ClearanceChecklist {
+  id             String          @id @default(uuid()) @db.Uuid
+  tenantId       String          @map("tenant_id") @db.Uuid
+  organizationId String          @map("organization_id") @db.Uuid
+  employeeId     String          @map("employee_id") @db.Uuid
+  status         ClearanceStatus @default(PENDING)
+  initiatedAt    DateTime        @default(now()) @map("initiated_at") @db.Timestamptz
+  completedAt    DateTime?       @map("completed_at") @db.Timestamptz
+  notes          String?
+  createdBy      String?         @map("created_by") @db.Uuid
+  updatedBy      String?         @map("updated_by") @db.Uuid
+  createdAt      DateTime        @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime        @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?       @map("deleted_at") @db.Timestamptz
+
+  employee User            @relation("ClearanceEmployee", fields: [employeeId], references: [id])
+  items    ClearanceItem[]
+
+  @@index([tenantId, organizationId, status])
+  @@index([tenantId, employeeId])
+  @@map("clearance_checklists")
+}
+
+model ClearanceItem {
+  id          String   @id @default(uuid()) @db.Uuid
+  tenantId    String   @map("tenant_id") @db.Uuid
+  checklistId String   @map("checklist_id") @db.Uuid
+  department  String   // e.g. "IT", "FINANCE", "HR", "MANAGEMENT"
+  title       String   // e.g. "Return Laptop & Accessories", "Settle Cash Advances"
+  isApproved  Boolean  @default(false) @map("is_approved")
+  approvedBy  String?  @map("approved_by") @db.Uuid
+  approvedAt  DateTime? @map("approved_at") @db.Timestamptz
+  notes       String?
+  createdAt   DateTime @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt   DateTime @updatedAt @map("updated_at") @db.Timestamptz
+
+  checklist ClearanceChecklist @relation(fields: [checklistId], references: [id], onDelete: Cascade)
+
+  @@index([tenantId, checklistId])
+  @@map("clearance_checklist_items")
 }
 
 

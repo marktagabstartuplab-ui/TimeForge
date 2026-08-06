@@ -349,6 +349,8 @@ describe('BUG-AY — payroll generation drives the timesheet payment lifecycle',
       user: { findMany: jest.fn().mockResolvedValue([{ id: 'user-1', hourlyRate: 100 }]) },
       timeEntry: { findMany: jest.fn().mockResolvedValue([]) },
       holiday: { findMany: jest.fn().mockResolvedValue([]) },
+      clearanceChecklist: { findFirst: jest.fn().mockResolvedValue(null) },
+      shift: { findMany: jest.fn().mockResolvedValue([]) },
       payrollLineItem: { groupBy: jest.fn().mockResolvedValue([]) },
       birTaxTable: { findFirst: jest.fn().mockResolvedValue(null) },
       idempotencyKey: {

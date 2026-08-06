@@ -61,6 +61,7 @@ import { RecurringIssuesModule } from './modules/recurring-issues/recurring-issu
 import { BugsModule } from './modules/bugs/bugs.module';
 import { ShiftLimitsModule } from './modules/shift-limits/shift-limits.module';
 import { GrievancesModule } from './modules/grievances/grievances.module';
+import { EmployeeRelationsModule } from './modules/employee-relations/employee-relations.module';
 
 @Module({
   imports: [
@@ -137,6 +138,7 @@ import { GrievancesModule } from './modules/grievances/grievances.module';
     BugsModule,
     ShiftLimitsModule,
     GrievancesModule,
+    EmployeeRelationsModule,
   ],
   controllers: [HealthController],
   providers: [

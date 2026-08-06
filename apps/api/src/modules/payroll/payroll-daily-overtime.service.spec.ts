@@ -93,6 +93,8 @@ describe('PayrollService.generateReport — daily overtime uses local days', () 
       timeEntry: { findMany: jest.fn().mockResolvedValue(shiftEntries) },
       // FEAT-3 reads: no holidays in the period, and no prior periods this tax year.
       holiday: { findMany: jest.fn().mockResolvedValue([]) },
+      clearanceChecklist: { findFirst: jest.fn().mockResolvedValue(null) },
+      shift: { findMany: jest.fn().mockResolvedValue([]) },
       payrollLineItem: { groupBy: jest.fn().mockResolvedValue([]) },
       birTaxTable: { findFirst: jest.fn().mockResolvedValue(null) },
       idempotencyKey: {

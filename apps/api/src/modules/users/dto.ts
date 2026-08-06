@@ -12,10 +12,39 @@ import {
   IsInt,
   Matches,
   ValidateNested,
+  registerDecorator,
+  type ValidationOptions,
 } from 'class-validator';
 import { Type } from 'class-transformer';
 import { CompensationType, EmploymentType, UserStatus } from '@prisma/client';
 import { STRONG_PASSWORD_REGEX, STRONG_PASSWORD_MESSAGE } from '../auth/dto';
+import {
+  isValidStatutoryId,
+  statutoryIdMessage,
+  type StatutoryIdField,
+} from '../payroll/statutory-ids';
+
+/**
+ * BUG-AZ — validates a Philippine statutory identifier against its agency digit
+ * mask. Separators are tolerated on input; `UsersService` normalizes to digits
+ * before storing.
+ */
+function IsStatutoryId(field: StatutoryIdField, options?: ValidationOptions) {
+  return function (object: object, propertyName: string) {
+    registerDecorator({
+      name: 'isStatutoryId',
+      target: object.constructor,
+      propertyName,
+      options: { message: statutoryIdMessage(field), ...options },
+      validator: {
+        validate: (value: unknown) =>
+          value === null || value === undefined || typeof value === 'string'
+            ? isValidStatutoryId(field, value as string | null | undefined)
+            : false,
+      },
+    });
+  };
+}
 
 export class CreateUserDto {
   @IsEmail()
@@ -65,6 +94,23 @@ export class CreateUserDto {
   @IsOptional()
   @Type(() => Number)
   daysPerWeek?: number;
+
+  // BUG-AZ — Philippine statutory identifiers, optional at onboarding.
+  @IsOptional()
+  @IsStatutoryId('tin')
+  tin?: string;
+
+  @IsOptional()
+  @IsStatutoryId('sssNumber')
+  sssNumber?: string;
+
+  @IsOptional()
+  @IsStatutoryId('philhealthNumber')
+  philhealthNumber?: string;
+
+  @IsOptional()
+  @IsStatutoryId('pagibigNumber')
+  pagibigNumber?: string;
 }
 
 export class BulkImportEmployeesDto {
@@ -145,6 +191,24 @@ export class UpdateUserDto {
   @Type(() => Number)
   daysPerWeek?: number;
 
+  // BUG-AZ — Philippine statutory identifiers. Empty string clears a value HR
+  // entered by mistake; anything else must match the agency digit mask.
+  @IsOptional()
+  @IsStatutoryId('tin')
+  tin?: string;
+
+  @IsOptional()
+  @IsStatutoryId('sssNumber')
+  sssNumber?: string;
+
+  @IsOptional()
+  @IsStatutoryId('philhealthNumber')
+  philhealthNumber?: string;
+
+  @IsOptional()
+  @IsStatutoryId('pagibigNumber')
+  pagibigNumber?: string;
+
   @IsOptional()
   @IsEnum(UserStatus)
   status?: UserStatus;
@@ -180,6 +244,23 @@ export class UpdateMeDto {
   @IsString()
   @MaxLength(30)
   phone?: string;
+
+  // BUG-AZ — Philippine statutory identifiers
+  @IsOptional()
+  @IsStatutoryId('tin')
+  tin?: string;
+
+  @IsOptional()
+  @IsStatutoryId('sssNumber')
+  sssNumber?: string;
+
+  @IsOptional()
+  @IsStatutoryId('philhealthNumber')
+  philhealthNumber?: string;
+
+  @IsOptional()
+  @IsStatutoryId('pagibigNumber')
+  pagibigNumber?: string;
 }
 
 export class ChangePasswordDto {
