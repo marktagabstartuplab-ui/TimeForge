@@ -66,6 +66,12 @@ describe('PayrollService.generateReport — daily overtime uses local days', () 
         }),
       },
       payrollPeriod: { update: jest.fn().mockResolvedValue({}) },
+      // BUG-AY: generateReport moves the included timesheets UNPAID → PROCESSING
+      // and reads back the payment-status breakdown for the report totals.
+      timesheet: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        groupBy: jest.fn().mockResolvedValue([]),
+      },
     };
 
     const prisma = {

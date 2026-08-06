@@ -8,6 +8,7 @@ import { StatusBadge } from "@/components/shared/StatusBadge";
 import { listProjects, listWorkCategories, listClients } from "@/features/time-tracking/api/catalog.service";
 import { listDepartments } from "@/features/schedules/api/departments-picker.service";
 import { updateTimeEntry, deleteTimeEntry, type TimeEntry } from "@/features/time-tracking/api/time-entries.service";
+import type { TimesheetPaymentStatus } from "../api/timesheets.service";
 import { formatClockTime, formatMinutesClock, minutesBetween, toIsoDate } from "@/lib/time";
 import { Edit2, Trash2, X, Loader2 } from "lucide-react";
 
@@ -19,6 +20,8 @@ interface EntryAuditTableProps {
   overtimeDays: Set<string>;
   periodDayCount: number;
   timesheetStatus?: string;
+  /** BUG-AY: payment lifecycle of the parent timesheet (UNPAID/PROCESSING/PAID). */
+  timesheetPaymentStatus?: TimesheetPaymentStatus;
   onRefresh?: () => void;
   /** When set (YYYY-MM-DD), the table only shows that day's entries, with a banner to clear it. */
   highlightDate?: string | null;
@@ -60,6 +63,7 @@ export function EntryAuditTable({
   overtimeDays,
   periodDayCount,
   timesheetStatus,
+  timesheetPaymentStatus,
   onRefresh,
   highlightDate,
   onClearHighlightDate,
@@ -237,6 +241,20 @@ export function EntryAuditTable({
         ) : (
           <StatusBadge label="Unassigned" tone="neutral" />
         );
+      },
+    },
+    {
+      // BUG-AY: financial lifecycle of the entry, inherited from its parent
+      // timesheet. Sits alongside the approval status so the two are never
+      // confused — an APPROVED entry can still be UNPAID.
+      key: "paymentStatus",
+      header: "Payment",
+      className: "text-right",
+      render: (e: TimeEntry) => {
+        if (!e.timesheetId) return <span className="text-brand-muted">—</span>;
+        const ps = timesheetPaymentStatus ?? "UNPAID";
+        const tone = ps === "PAID" ? "success" : ps === "PROCESSING" ? "warning" : "neutral";
+        return <StatusBadge label={ps} tone={tone} />;
       },
     },
     ...(canEdit

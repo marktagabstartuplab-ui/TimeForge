@@ -318,6 +318,7 @@ export function TimesheetsContent() {
         overtimeDays={summary.overtimeDays}
         periodDayCount={periodDayCount}
         timesheetStatus={timesheet?.status}
+        timesheetPaymentStatus={timesheet?.paymentStatus}
         highlightDate={highlightDate}
         onClearHighlightDate={() => setHighlightDate(null)}
         employeeDepartmentName={me?.department?.name ?? null}
