@@ -34,6 +34,7 @@ timeforge/
 | 4. Department on entries | Overridable `departmentId` FK per time entry, falls back to user's profile department | `TimeEntry` model, `organization.service.ts` aggregation |
 | 5a. Recurring blockers | Rule-based flag (3+/5 last entries) + red badge in scrum UI | `scrum.service.ts:attachRecurringBlockerFlag()`, `TeamScrumSubmissionsContent.tsx` |
 | 5b. KPI audit | Confirmed `KpiMetricType` (COUNT/HOURS/PERCENT/CURRENCY) covers all brief examples — no change | `packages/shared/` |
+| 6. Daily Rate Basis | Support `HOURLY` and `DAILY` rate basis, daily pay calculations (`days_worked × daily_rate`), Admin/Profile rate UI, PDF/Excel/CSV exports | `schema.prisma`, `payroll.service.ts`, `ProfessionalDetailsCard.tsx`, `PayrollProcessingContent.tsx` |
 
 ### Production hardening
 
