@@ -24,6 +24,8 @@ import {
   SlidersHorizontal,
   Bug,
   ClipboardList,
+  Inbox,
+  Circle,
   type LucideIcon,
 } from "lucide-react";
 import { Tooltip, TooltipTrigger, TooltipContent } from "@/components/ui/tooltip";
@@ -52,6 +54,10 @@ const ICON_MAP: Record<string, LucideIcon> = {
   "sliders": SlidersHorizontal,
   "bug": Bug,
   "clipboard-list": ClipboardList,
+  // The nav catalog's `hr-grievances` entry asks for this; without the entry the
+  // lookup returns undefined and HR Complaints Inbox renders label-only, out of
+  // line with every sibling item.
+  "inbox": Inbox,
 };
 
 interface SidebarNavItemProps {
@@ -65,7 +71,12 @@ export const SidebarNavItem = memo(function SidebarNavItem({ item, onNavigate }:
   const setLastMenu = useSidebarStore((s) => s.setLastMenu);
 
   const active = pathname === item.route || pathname.startsWith(`${item.route}/`);
-  const Icon = ICON_MAP[item.icon];
+  // Falls back rather than rendering nothing: the server owns the catalog, so an
+  // icon name can arrive that this map has never heard of. Rendering no glyph
+  // makes the row inconsistent when expanded and — because the label is hidden
+  // — completely blank when collapsed, which is how the missing "inbox" entry
+  // went unnoticed.
+  const Icon = ICON_MAP[item.icon] ?? Circle;
 
   const handleClick = () => {
     setLastMenu(item.id);
