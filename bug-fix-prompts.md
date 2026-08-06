@@ -1157,9 +1157,367 @@ works on different screen sizes/resolutions.
 
 ---
 
+---
+
+## BUG-AE — Incorrect Shift Limit Configuration: System allows shifts up to 13 hours
+
+**Where:** Daily Scrum module > Active Session timer and Shift Limit progress bar
+
+```
+Fix: the system's maximum shift limit is set to 13 hours instead of 12.
+The progress bar displays "SHIFT LIMIT --- 13H" and at 12h 12m elapsed,
+the warning states "Your 13 hours limit is reached in 48 minutes." This
+violates the intended 12-hour maximum.
+
+Expected: the maximum shift duration is capped at exactly 12 hours. The
+progress bar should reflect "SHIFT LIMIT --- 12H", and the system should
+enforce a hard stop (auto-clock-out) at exactly 12 hours.
+
+Scope: backend (shift configuration constants, session max calculation),
+frontend (progress bar math, warning message templates).
+
+Likely root cause: hardcoded `13` value in shift-limits.config.ts or
+progress bar denominator calculation in CurrentSessionCard.tsx.
+
+Do not touch: clock in/out endpoints, timesheet calculation, payroll
+integration, time entries schema.
+
+Verify: (a) progress bar at 8h shows ~67%, (b) at 11h shows ~92%, (c)
+at 12h auto-clock-out triggers, (d) all UI text says "12 hours" not
+"13 hours", (e) no shift > 12h can be created, (f) `npm run test` passes.
+```
+
+---
+
+## BUG-AF — "My Timesheet" Shows Zero Records Despite Existing Entries
+
+**Where:** Timesheets module > "My Timesheet" section (summary cards + list)
+
+```
+Fix: the timesheet summary cards display 0m Work Hours, 0m Break Hours,
+0 Days Logged and show "No sessions recorded in this range" even though
+the Timesheet Entry Audit below contains data and notifications show
+unread entries for this user.
+
+Expected: the summary cards and list should accurately pull and display
+the user's logged data for the active date filter. If entries exist in
+the range, they must be visible.
+
+Scope: frontend data binding (MyTimesheet.tsx, useTimesheetData hook) or
+backend query (time-tracking.service.ts getTimesheetSummary endpoint).
+Likely root causes: (1) frontend not reading fetched data from state,
+(2) backend date-range filter broken (e.g., "Last 7 Days" calculating
+wrong start/end), (3) mismatch between filter dates and entry dates.
+
+Before editing: check browser Network tab to see if API response contains
+data. If response is empty, issue is backend. If response has data but
+UI shows empty, issue is frontend binding.
+
+Do not touch: Timesheet Entry Audit (that component works), approval
+workflow, payroll integration.
+
+Verify: (a) create a time entry, (b) immediately (no refresh) check if
+summary updates, (c) filter by "Last 7 Days" — entries within last 7
+days must show, (d) filter by "Today" — only today's entries show, (e)
+summary total matches Entry Audit list below, (f) no console errors.
+```
+
+---
+
+## BUG-AG — "Team Status" Panel Visible on Employee Payroll Page (Privacy Issue)
+
+**Where:** Finance & Reports > Payroll (Payslips view) > Right-side panel
+
+```
+Fix: the "Team Status" widget (showing colleagues' real-time clock-in/
+out statuses) is rendered on a regular employee's personal Payroll/
+Payslips page. This information is irrelevant to payroll and violates
+privacy expectations — it's meant for supervisor/admin dashboards.
+
+Expected: the Team Status component should be removed entirely from the
+employee's Payroll page. The layout should adjust to utilize the freed
+space (e.g., expanding the Weekly Tracked Hours chart to full width).
+
+Scope: frontend PayrollLayout component or layout grid. Conditional
+rendering: Team Status should only appear for SUPERVISOR or ADMIN roles.
+
+Do not touch: Team Status component itself (reuse elsewhere), payroll
+data display, permissions logic.
+
+Verify: (a) login as Employee, navigate to Payroll — no Team Status
+visible, (b) Weekly Tracked Hours expands to fill right side, (c) login
+as Supervisor, navigate to Payroll — Team Status visible (if this page
+is supervisor-accessible), (d) mobile layout responsive, (e) no console
+errors.
+```
+
+---
+
+## BUG-AH — Lack of Distinct Theme Colors for Summary Metric Icons
+
+**Where:** Timesheets/Dashboard > Summary cards section (Total Work Hours, Break Hours, Days Logged)
+
+```
+Fix: all three summary metric cards use identical light-blue color scheme
+for their icons and backgrounds, reducing visual distinction and making
+it harder to differentiate metrics at a glance.
+
+Expected: each metric should use a distinct complementary color. Specifically:
+- Total Work Hours: blue (existing)
+- Break Hours: orange (currently blue — should change)
+- Days Logged: green (currently blue — should change)
+
+Scope: frontend CSS/Tailwind classes in SummaryCards component. Update
+icon background and stroke colors per metric.
+
+Do not touch: summary data/calculations, other dashboard sections.
+
+Verify: (a) Break Hours icon is visibly orange, (b) Days Logged is green,
+(c) Work Hours remains blue, (d) all backgrounds are light tints of their
+icon colors, (e) contrast ratio WCAG AA compliant (4.5:1), (f) mobile
+responsive, (g) no console errors.
+```
+
+---
+
+## BUG-AI — Notification Filter Navigation Uses Horizontal Scroll Instead of Dropdown
+
+**Where:** Notifications section > Filter navigation bar (beside Sort dropdown)
+
+```
+Fix: filter categories (All, Unread, Archived, Daily Scrum, Timesheets,
+Payroll, etc.) are laid out in a horizontal row with a horizontal
+scrollbar. Users must scroll sideways to see hidden categories, creating
+a clunky UX and hiding options from immediate view.
+
+Expected: replace the horizontal-scroll row with a standard dropdown/
+select menu labeled "Filter". This removes the need for horizontal
+scrolling, cleans up the UI, and allows users to see all categories
+at once.
+
+Scope: frontend FilterBar component. Replace horizontal flex layout +
+overflow-x-auto with a select/dropdown component.
+
+Do not touch: notification list logic, sorting functionality, permission
+filters.
+
+Verify: (a) no horizontal scrollbar appears, (b) dropdown shows all filter
+options visible at once (no truncation), (c) selecting a filter updates
+notifications correctly, (d) active filter state persists, (e) Sort
+dropdown still works alongside new Filter dropdown, (f) mobile responsive,
+(g) no console errors.
+```
+
+---
+
+## BUG-AJ — Auto-Generate Semi-Monthly Payroll Periods + Auto-Link Timesheets
+
+**Where:** HR/Admin Payroll module > Payroll Period dropdown selector and timesheet submission workflow
+
+```
+Fix: manual payroll period creation (via "+ New Period" button) has led
+to overlapping date ranges and inconsistent timesheet routing. The system
+relies on HR admins to manually pull timesheets into periods, creating
+human error and data chaos.
+
+Expected: (1) remove or disable the manual "+ New Period" button, (2)
+implement a cron job to automatically generate standardized semi-monthly
+periods (1st-15th, 16th-EOM) rolling forward each month, (3) on timesheet
+approval, automatically tag/route the timesheet to the correct system-
+generated period based on work date, (4) HR should not manually assign
+timesheets to periods.
+
+Scope: backend (payroll-period.service.ts, cron job generator, timesheet
+approval workflow), frontend (remove manual button, clean dropdown to
+show auto-generated periods only), database (add is_auto_generated flag,
+ensure period_id link on timesheets).
+
+Do not touch: timesheet approval logic, payroll calculation.
+
+Verify: (a) cron runs on 1st and 16th, generating two periods per month,
+(b) periods are 1st-15th and 16th-last day with no overlaps, (c) on
+timesheet approval, period_id auto-populates correctly, (d) manual period
+creation disabled, (e) existing timesheets migrated to correct periods,
+(f) no payroll is calculated twice for the same entry.
+```
+
+---
+
+## BUG-AK — Add Payment Status Labels to Timesheet Entries (Paid/Unpaid/Processing)
+
+**Where:** Timesheets module (Employee/Audit view) and Finance/Payroll modules
+
+```
+Fix: timesheet records lack a financial lifecycle indicator, risking
+duplicate payroll processing. Once a payout is delivered, the timesheet
+should be locked/marked as paid to prevent accidental re-processing.
+
+Expected: every timesheet entry displays a prominent payment status badge
+(Unpaid, Processing, or Paid). Once Finance marks a payroll batch as
+paid, associated timesheets auto-update to Paid status. Payroll
+generation engine automatically filters out Paid timesheets to prevent
+duplicates.
+
+Scope: database (add payment_status enum field to timesheets), frontend
+(add status badge column to audit tables), backend (payroll generation
+must exclude paid entries, mark entries as paid when batch is paid).
+
+Do not touch: timesheet approval workflow, payroll calculation logic.
+
+Verify: (a) new timesheets default to UNPAID, (b) payment status badge
+visible in audit table, (c) after payroll payout, timesheets marked PAID,
+(d) next payroll generation excludes paid timesheets, (e) duplicate
+processing impossible, (f) no console errors.
+```
+
+---
+
+## BUG-AL — Missing Feature: Dedicated Grievance/Complaint Submission Channel to HR
+
+**Where:** Sidebar navigation (new HR Services section) and Admin dashboard
+
+```
+Fix: employees lack a secure, formalized, private channel to submit
+workplace complaints or grievances to HR. Existing text fields (Blockers,
+Notes) are task-related and visible to supervisors, making them
+inappropriate for formal HR complaints.
+
+Expected: (1) new "Submit a Complaint" form accessible to all employees
+(Sidebar > HR Services or Support section), (2) form collects Subject,
+Category (Workplace Environment, Colleague Issue, Payroll Dispute, etc.),
+Description, optional Anonymous flag, (3) submissions routed to HR inbox
+only (bypassing supervisor hierarchy), (4) employee can track status
+(Submitted → Under Review → Resolved) without seeing internal HR notes,
+(5) HR can add internal notes (hidden from employee) and mark resolved.
+
+Scope: database (grievances table, activity log), backend (submission +
+retrieval endpoints, HR-only permission checks), frontend (employee
+submission form, status tracker, HR inbox + detail view).
+
+Do not touch: supervisor leave management, performance reviews.
+
+Verify: (a) employee can submit complaint anonymously, (b) complaint
+routed to HR inbox only, (c) HR can add notes invisible to employee, (d)
+employee sees status + resolution (when resolved), (e) RBAC: no cross-
+complaints visible, (f) audit trail complete.
+```
+
+---
+
+## BUG-AM — Implement DOLE-Mandated Leave Categories
+
+**Where:** HR/Admin Module > Leave Management/Time Off Settings and Employee Leave Request forms
+
+```
+Fix: system uses generic "PTO" tracking, lacking support for specific
+Philippine DOLE-mandated leave types with distinct accrual rules and
+eligibility requirements.
+
+Expected: system must support and configure:
+- Service Incentive Leave (SIL): 5 days/year, vested after 1 year, unused
+  balance converts to cash at year-end (mandatory)
+- Vacation Leave: company policy (typically 10 days/year)
+- Sick Leave: company policy (typically 10 days/year)
+- Maternity Leave: DOLE minimum 60 days
+- Paternity Leave: DOLE minimum 7 days
+- Bereavement Leave: 3-5 days per policy
+- Special Leave: marriage, medical, per policy
+
+Scope: database (expand leave_types with DOLE category enum, accrual
+rate, vesting period, carryover rules, cashability flag), frontend
+(leave request form shows correct types + balances), backend (accrual
+calculation enforces vesting, year-end SIL conversion).
+
+Do not touch: existing leave request approval workflow.
+
+Verify: (a) new employee: SIL balance = 0, (b) after 1 year: SIL balance
+= 5 days, (c) employee requests 3 days SIL, approved → balance 2 days,
+(d) year-end: 2 unused days convert to cash, (e) payroll includes cash
+conversion, (f) maternity/paternity minimums enforced.
+```
+
+---
+
+## BUG-AN — Missing Feature: Employees Can't Add Events to "My Schedule" Calendar
+
+**Where:** Workspace > My Schedule module (Employee View)
+
+```
+Fix: the "My Schedule" calendar displays assigned shifts but is read-only
+for employees. There's no way to add personal events, reminders, or leave
+requests directly from the calendar.
+
+Expected: (1) visible "[+ Add Event]" button or click-to-add on calendar
+dates, (2) modal/form allows employee to input event title, type (reminder/
+appointment/leave request), date, time, notes, (3) events persist and
+appear alongside shifts on the calendar, (4) employee can edit/delete
+own events.
+
+Scope: database (employee_calendar_events table), frontend (Add Event
+button + modal form, event rendering on calendar), backend (save/retrieve/
+delete endpoints).
+
+Do not touch: shift assignment display, supervisor view.
+
+Verify: (a) [+ Add Event] button visible, (b) click date or button opens
+form, (c) event saves and persists after page reload, (d) event appears
+on calendar alongside shifts, (e) employee can edit/delete own events,
+(f) mobile responsive.
+```
+
+---
+
+## BUG-AO — "Weekly Tracked Hours" Chart Locked to Current Week Only (No History Navigation)
+
+**Where:** Finance & Reports > Payroll (Payslips view) > "Weekly Tracked Hours" section
+
+```
+Fix: the "Weekly Tracked Hours" chart displays only the current week
+with no way to view historical weeks. Users cannot review past work
+patterns or performance.
+
+Expected: add date navigation controls (e.g., "< Previous Week | [Week
+of Aug 1-7] | Next Week >") or a date range picker that allows users to
+view historical weekly data. Chart updates when navigating to a different
+week.
+
+Scope: frontend (add navigation UI to chart header, manage selected week
+state, refetch data on date change), backend (ensure endpoint accepts
+week start date parameter and returns aggregated data for that week).
+
+Do not touch: chart rendering, payroll data.
+
+Verify: (a) Previous Week button navigates back, (b) Next Week navigates
+forward, (c) cannot navigate to future weeks, (d) chart data updates
+correctly for selected week, (e) date range displayed clearly, (f)
+mobile responsive.
+```
+
+---
+
 ## Suggested order
 
 Group by risk and independence — do standalone/low-risk items first, save anything touching KPI data model or RBAC role assignment for its own isolated session:
+
+**Phase 1-2 (existing):** BUG-A through BUG-AD (30 bugs, see original order below)
+
+**Phase 3 (new QA findings):**
+
+1. BUG-AE (Shift Limit 13h → 12h — HIGH, blocks feature, quick fix)
+2. BUG-AF (My Timesheet empty — CRITICAL, data visibility)
+3. BUG-AG (Team Status privacy — MEDIUM, quick frontend fix)
+4. BUG-AH (Icon colors — LOW, UX polish)
+5. BUG-AI (Filter dropdown — LOW, UX improvement)
+6. BUG-AJ (Auto payroll periods — HIGH, feature + backend job)
+7. BUG-AK (Payment status labels — HIGH, prevents duplicates)
+8. BUG-AL (Grievance channel — MEDIUM, new feature)
+9. BUG-AM (DOLE leave types — HIGH, compliance)
+10. BUG-AN (Calendar events — MEDIUM, feature)
+11. BUG-AO (Weekly hours history — LOW, analytics)
+
+---
+
+## Phase 1-2 Suggested order (original 30 bugs)
 
 1. BUG-T (Performance Report "search is not defined" — blocks page load, high priority)
 2. BUG-Z (Dashboard hours aggregation mismatch vs. Timesheet — critical for reporting accuracy)

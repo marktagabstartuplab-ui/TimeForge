@@ -1,6 +1,6 @@
 # TimeForge Bug Fix Prompts — Phase 2
 
-Source: `TimeForge (2).docx` — 12 high/medium-impact defects (BUG-AE–BUG-AP), prioritized by workflow impact.
+Source: `TimeForge (2).docx` — 17 defects (BUG-AE–BUG-AU), all issues from the new QA batch, prioritized by workflow impact.
 
 **How to use this:** Same format as Phase 1. Run one bug at a time in fresh sessions, follow the shared rules at the top, verify each fix before moving to the next. These bugs have dependencies within the Daily Scrum workflow — sequence them carefully.
 
@@ -369,19 +369,169 @@ target, etc.), (c) clicking a card doesn't trigger any edit action.
 
 ---
 
+## BUG-AQ — Missing admin configuration for dynamic overtime pay rates
+
+**Where:** Admin → Settings/Config (or Finance & Reports → Payroll Settings)
+
+```
+Fix: overtime pay calculation is hardcoded to 25% premium. No admin
+control to adjust this multiplier, breaking flexibility for different
+labor laws or company policies.
+
+Expected: an Admin settings section with a configurable "Overtime Rate"
+input (e.g., 25%, 30%, 50%). Payroll calculation fetches this dynamic
+value from the database instead of using a static 1.25x multiplier.
+
+Optional: allow override on individual employee profiles for special
+contracts.
+
+Scope: frontend — add config input field in Admin settings. Backend —
+store the value in the database and update payroll calculation logic to
+use it dynamically.
+
+Do not touch: the payroll calculation formula itself — just make the
+multiplier configurable.
+
+Verify: (a) Admin settings has an "Overtime Rate" input, (b) changing it
+affects future payroll calculations, (c) existing payroll isn't
+retroactively recalculated (or is, depending on requirement), (d) default
+is 25% if not set.
+```
+
+---
+
+## BUG-AR — Repeated shift duration uses restrictive dropdown instead of numerical input
+
+**Where:** Supervisor → Team Schedule → Add Shift → Repeat settings
+
+```
+Fix: "Duration" field is a dropdown with only hardcoded options (2, 3,
+4, 6, 8, 12 weeks). Supervisors can't set custom durations like 5 or 10
+weeks.
+
+Expected: replace the dropdown with a numerical input field (number
+spinner/input) where supervisors can type any duration value.
+
+Scope: frontend UI — replace the select component with a number input.
+
+Do not touch: the repeat shift generation logic — this is just the input
+control.
+
+Verify: (a) Duration field is now a number input, (b) supervisor can
+type any positive integer (5, 10, 13, etc.), (c) shifts generate
+correctly for custom durations.
+```
+
+---
+
+## BUG-AS — Unstyled plain text used for automated system emails
+
+**Where:** Transactional emails (account approval, notifications, etc.)
+
+```
+Fix: system emails are sent as plain text, lack branding, expose raw
+URLs, get flagged as spam. Unprofessional appearance damages trust.
+
+Expected: all transactional emails use HTML templates with:
+  - TimeForge logo in header
+  - Proper typography, spacing, visual hierarchy
+  - Styled CTA buttons (e.g., "Log In" button, not bare URL)
+  - Standard footer with support info
+  - Consistent branding
+
+Scope: backend/email service — create HTML/CSS email templates and
+update email dispatch logic to send HTML payloads instead of plain text.
+
+Do not touch: the email sending schedule or triggers — just the format.
+
+Verify: (a) send a test email, (b) it arrives with HTML formatting and
+logo, (c) CTA button is clickable/styled, (d) doesn't go to spam folder
+(depends on email provider's spam filtering, but HTML+branding helps),
+(e) all transactional emails use the template.
+```
+
+---
+
+## BUG-AT — Rename "Reports" menu to "Administrative Reports"
+
+**Where:** Admin → Sidebar → Finance & Reports → Reports
+
+```
+Fix: the menu label "Reports" is ambiguous. System has multiple
+reporting modules (Attendance Reports, Productivity Report, Performance
+Report, Finance reports). Generic label confuses navigation.
+
+Expected: rename the sidebar menu from "Reports" to "Administrative
+Reports" to clarify its purpose and distinguish it from other reporting
+modules.
+
+Scope: frontend UI text only — rename the label in the navigation
+component.
+
+Do not touch: the Reports page functionality or routes.
+
+Verify: (a) sidebar now shows "Administrative Reports" instead of
+"Reports", (b) clicking it still goes to the same page, (c) no broken
+links.
+```
+
+---
+
+## BUG-AU — Remove "Work Category" field from registration Step 2
+
+**Where:** Authentication → Complete Registration (Step 2 of 2)
+
+```
+Fix: the registration form displays a "Work Category" dropdown with a
+note "Set later by your admin." This field serves no purpose during
+registration (user can't select it) and adds UI clutter.
+
+Expected: completely remove the "Work Category" field from the
+registration form. It should be assigned by an administrator after
+account approval or during user management, not during registration.
+
+Scope: frontend UI — remove the field component from the registration
+form.
+
+Do not touch: the Work Category logic elsewhere (profile, admin
+management, etc.) — this is just cleaning up registration.
+
+Verify: (a) "Work Category" field no longer appears on registration Step
+2, (b) registration still completes successfully, (c) admins can still
+assign Work Category after account creation.
+```
+
+---
+
 ## Suggested order
 
-Do these in isolation. Daily Scrum bugs (AE, AF, AG, AH, AI, AJ, AK) are clustered; do them as a group before moving to the standalone bugs (AL, AM, AN, AO, AP).
+Phase 2 has 17 bugs grouped by impact. Do Daily Scrum cluster (AE–AK) as a group, then standalone fixes (AL–AU) in order.
 
+**HIGH IMPACT — Do First (Daily Scrum Workflow):**
 1. **BUG-AE** (Daily Scrum lock enforcement — foundation)
 2. **BUG-AH** (Supervisor unlock workflow — pairs with AE)
 3. **BUG-AI** (Confirmation before lock — safeguards AE)
 4. **BUG-AF** (Quick Select + EOD carry-over — workflow critical)
 5. **BUG-AG** (Form clearing after save — data integrity)
+
+**MEDIUM-HIGH IMPACT (Daily Scrum Features):**
 6. **BUG-AJ** (Autofill Plan → Details — UX friction)
 7. **BUG-AK** (AI uses commitment data — feature completeness)
 8. **BUG-AL** (Quick Select preview modal — workflow interruption)
+
+**MEDIUM IMPACT (AI & Features):**
 9. **BUG-AM** (AI text length constraint — validation)
 10. **BUG-AN** (Add AI button to Deliverables — parity)
+
+**MEDIUM-LOW IMPACT (UI Cleanup):**
 11. **BUG-AO** (Remove redundant Actual Completed — cleanup)
 12. **BUG-AP** (Remove action buttons from Today's — cleanup)
+
+**LOW IMPACT (Admin & Config):**
+13. **BUG-AQ** (Dynamic overtime rate config — flexibility)
+14. **BUG-AR** (Repeat shift duration input — flexibility)
+
+**COSMETIC/BRANDING:**
+15. **BUG-AS** (HTML email templates — professionalism)
+16. **BUG-AT** (Rename Reports menu — clarity)
+17. **BUG-AU** (Remove Work Category from registration — cleanup)
