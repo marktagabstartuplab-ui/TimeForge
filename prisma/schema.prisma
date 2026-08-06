@@ -200,6 +200,7 @@ enum PayrollProcessingStatus {
   SENT_TO_BANK
 }
 
+
 // ─── Tenancy & Core Organization ────────────────────────────────────────────
 
 model Tenant {
@@ -250,6 +251,7 @@ model Organization {
   shiftConfigurations   ShiftConfiguration[]
   shiftLimitViolations  ShiftLimitViolation[]
   payrollSettings       PayrollSettings?
+  calendarEvents        EmployeeCalendarEvent[]
 
   @@unique([tenantId, id])
   // Uniqueness on (tenantId, slug) is enforced by a partial unique index
@@ -363,6 +365,7 @@ model User {
   shiftViolationsActed  ShiftLimitViolation[] @relation("ShiftViolationSupervisor")
   shiftOverridesGranted WorkSession[]         @relation("WorkSessionOverrideSupervisor")
   grievances            Grievance[]           @relation("GrievanceEmployee")
+  calendarEvents        EmployeeCalendarEvent[]
 
   @@unique([tenantId, id])
   // Uniqueness on (tenantId, email) is enforced by a partial unique index
@@ -2043,4 +2046,43 @@ model Grievance {
   @@index([tenantId, employeeId])
   @@map("grievances")
 }
+
+// ─── Employee Personal Calendar Events (BUG-AN) ──────────────────────────────
+
+enum EmployeeCalendarEventType {
+  REMINDER
+  APPOINTMENT
+  LEAVE_REQUEST
+}
+
+/// Personal event added by an employee to their "My Schedule" calendar view.
+/// Distinct from supervisor-assigned shifts (Shift model). Read/write scoped
+/// to the owning employee — no supervisor or HR visibility.
+model EmployeeCalendarEvent {
+  id             String                    @id @default(uuid()) @db.Uuid
+  tenantId       String                    @map("tenant_id") @db.Uuid
+  organizationId String                    @map("organization_id") @db.Uuid
+  userId         String                    @map("user_id") @db.Uuid
+  title          String
+  eventType      EmployeeCalendarEventType @default(REMINDER) @map("event_type")
+  /// Calendar date the event belongs to (YYYY-MM-DD stored as date string).
+  eventDate      String                    @map("event_date")
+  startTime      DateTime?                 @map("start_time") @db.Timestamptz
+  endTime        DateTime?                 @map("end_time") @db.Timestamptz
+  notes          String?
+  createdBy      String?                   @map("created_by") @db.Uuid
+  updatedBy      String?                   @map("updated_by") @db.Uuid
+  createdAt      DateTime                  @default(now()) @map("created_at") @db.Timestamptz
+  updatedAt      DateTime                  @updatedAt @map("updated_at") @db.Timestamptz
+  deletedAt      DateTime?                 @map("deleted_at") @db.Timestamptz
+  version        Int                       @default(0)
+
+  user         User         @relation(fields: [userId], references: [id])
+  organization Organization @relation(fields: [organizationId], references: [id])
+
+  @@index([tenantId, userId, eventDate])
+  @@index([tenantId, organizationId])
+  @@map("employee_calendar_events")
+}
+
 
