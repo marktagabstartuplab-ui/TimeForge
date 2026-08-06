@@ -23,6 +23,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "leave_request:create", "leave_request:read", "leave_request:cancel", "leave_balance:read",
     "schedule:read",
     "bug:create", "bug:read", "bug:comment",
+    "discipline:read_self", "discipline:respond", "clearance:read_self",
   ],
   SUPERVISOR: [
     "user:read",
@@ -40,6 +41,7 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "leave_request:create", "leave_request:read", "leave_request:cancel", "leave_balance:read",
     "leave_request:read_team", "leave_request:decide",
     "bug:create", "bug:read", "bug:comment", "bug:read_team",
+    "discipline:read_self", "discipline:respond", "clearance:read_self", "clearance:approve",
   ],
   HR: [
     "user:read",
@@ -57,6 +59,10 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "leave_request:read_org", "leave_request:decide", "leave_balance:read_org",
     "schedule:read",
     "bug:create", "bug:read", "bug:comment",
+    // BUG-BB / BUG-BC: HR owns discipline, clearance and benefit assignment.
+    "discipline:create", "discipline:read_org", "discipline:read_self", "discipline:respond",
+    "clearance:create", "clearance:read_org", "clearance:read_self", "clearance:approve",
+    "compensation:read", "compensation:manage",
   ],
   FINANCE: [
     "user:read",
@@ -70,6 +76,10 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
     "project:read", "client:read", "work_category:read", "department:read", "team:read",
     "org:read",
     "bug:create", "bug:read", "bug:comment",
+    // BUG-BB / BUG-BC: Finance signs off its own clearance line and reads
+    // benefit assignments, but does not assign them.
+    "clearance:approve", "clearance:read_self", "discipline:read_self", "discipline:respond",
+    "compensation:read",
   ],
 };
 

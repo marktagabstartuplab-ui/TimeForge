@@ -60,6 +60,7 @@ export const TENANT_MODELS = new Set([
   'ClearanceChecklist',
   'ClearanceItem',
   'DisciplineRecord',
+  'DeMinimisBenefit',
 ]);
 
 const READ_ACTIONS = ['findMany', 'findFirst', 'count', 'aggregate', 'groupBy'];

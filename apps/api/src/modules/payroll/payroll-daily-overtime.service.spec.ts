@@ -11,6 +11,7 @@ import { AuthPrincipal } from '../../common/decorators';
 import { BirTaxService } from './bir-tax.service';
 import { DeductionService } from './deduction.service';
 import { DEFAULT_PAYROLL_SETTINGS, PayrollSettingsService } from './payroll-settings.service';
+import { CompensationBenefitsService } from './compensation-benefits.service';
 
 /**
  * A Manila work day starts before UTC midnight, so grouping time entries by UTC
@@ -93,7 +94,7 @@ describe('PayrollService.generateReport — daily overtime uses local days', () 
       timeEntry: { findMany: jest.fn().mockResolvedValue(shiftEntries) },
       // FEAT-3 reads: no holidays in the period, and no prior periods this tax year.
       holiday: { findMany: jest.fn().mockResolvedValue([]) },
-      clearanceChecklist: { findFirst: jest.fn().mockResolvedValue(null) },
+      clearanceChecklist: { findMany: jest.fn().mockResolvedValue([]) },
       shift: { findMany: jest.fn().mockResolvedValue([]) },
       payrollLineItem: { groupBy: jest.fn().mockResolvedValue([]) },
       birTaxTable: { findFirst: jest.fn().mockResolvedValue(null) },
@@ -124,6 +125,12 @@ describe('PayrollService.generateReport — daily overtime uses local days', () 
         {
           provide: PayrollSettingsService,
           useValue: { forPrincipal: jest.fn().mockResolvedValue({ ...DEFAULT_PAYROLL_SETTINGS }) },
+        },
+        // BUG-BC: payroll now reads de minimis totals per period. Stubbed empty
+        // so these cases keep asserting the statutory figures in isolation.
+        {
+          provide: CompensationBenefitsService,
+          useValue: { deMinimisTotalsForPeriod: jest.fn().mockResolvedValue(new Map()) },
         },
         { provide: getQueueToken('payroll-export'), useValue: { add: jest.fn() } },
       ],

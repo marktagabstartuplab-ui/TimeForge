@@ -31,6 +31,7 @@ import {
 import { BirTaxService, round2 } from './bir-tax.service';
 import { DeductionService, periodsPerMonth } from './deduction.service';
 import { PayrollSettingsService, ResolvedPayrollSettings } from './payroll-settings.service';
+import { CompensationBenefitsService } from './compensation-benefits.service';
 import { dateKeysBetween, dateOnlyKey, nightShiftMinutes } from './premium-hours';
 import { formatStatutoryId } from './statutory-ids';
 import {
@@ -66,6 +67,7 @@ export class PayrollService {
     private readonly payrollSettings: PayrollSettingsService,
     private readonly deductions: DeductionService,
     private readonly birTax: BirTaxService,
+    private readonly compensationBenefits: CompensationBenefitsService,
     @InjectQueue('payroll-export') private readonly exportQueue: Queue<PayrollExportJobData>,
   ) {}
 
@@ -357,6 +359,7 @@ export class PayrollService {
         restDayHours: true,
         restDayPay: true,
         isThirteenthMonth: true,
+        deMinimisTotal: true,
         payrollReport: { select: { period: { select: { type: true, startDate: true } } } },
       },
     });
@@ -442,6 +445,11 @@ export class PayrollService {
           regularPay,
           overtimePay,
           ...statutory,
+          // BUG-BC: a rate change does not change a de minimis allowance, so the
+          // snapshotted amount is carried forward and re-added on top of the
+          // freshly computed net. Without this, repricing would silently strip
+          // the allowance out of an open period's net pay.
+          netPay: round2(statutory.netPay + Number(li.deMinimisTotal)),
           updatedBy: actorId,
         },
       });
@@ -740,8 +748,11 @@ export class PayrollService {
     });
     const holidayByKey = new Map(holidays.map((h) => [dateOnlyKey(h.date), h]));
 
-    // BUG-BB: verify clearance status for exiting employees. Block final payroll generation if clearance incomplete.
-    const uncleared = await this.prisma.clearanceChecklist.findFirst({
+    // BUG-BB: an exiting employee's final pay is held until every department has
+    // signed off their clearance. The hold is *per employee* — an earlier version
+    // aborted the whole run on the first incomplete checklist, which meant one
+    // person mid-offboarding stopped the entire organisation from being paid.
+    const unclearedChecklists = await this.prisma.clearanceChecklist.findMany({
       where: {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
@@ -751,11 +762,33 @@ export class PayrollService {
       },
       include: { employee: { select: { firstName: true, lastName: true } } },
     });
-    if (uncleared) {
-      throw new UnprocessableEntityException(
-        `Payroll generation blocked: Clearance checklist for ${uncleared.employee.firstName} ${uncleared.employee.lastName} is ${uncleared.status}. Clearance must be COMPLETED before final payroll generation.`,
-      );
-    }
+    const blockedUserIds = new Set(unclearedChecklists.map((c) => c.employeeId));
+    const blockedByClearance = unclearedChecklists.map((c) => ({
+      userId: c.employeeId,
+      name: `${c.employee.firstName} ${c.employee.lastName}`,
+      clearanceStatus: c.status,
+    }));
+
+    // Everyone the run actually pays. Held employees get no line item, and — see
+    // the timesheet transition below — their timesheets are also left UNPAID, so
+    // a later run picks them up once clearance completes. Excluding them from the
+    // line items *without* excluding their timesheets would strand those sheets in
+    // PROCESSING with nothing to pay them out.
+    const payableUsers = eligibleUsers.filter((u) => !blockedUserIds.has(u.id));
+    const payableTimesheetIds = timesheets
+      .filter((ts) => !blockedUserIds.has(ts.userId))
+      .map((ts) => ts.id);
+
+    // BUG-BC: non-taxable de minimis allowances payable this period, prorated
+    // from the stored monthly amounts. Read before the transaction so it never
+    // extends the write window, and applied *after* tax so no contribution or
+    // withholding base changes.
+    const deMinimisByUser = await this.compensationBenefits.deMinimisTotalsForPeriod(
+      p.tenantId,
+      p.organizationId,
+      payableUsers.map((u) => u.id),
+      periodsInMonth,
+    );
 
     // Fetch all published shifts for the period to determine employee rest days
     const publishedShifts = await this.prisma.shift.findMany({
@@ -882,8 +915,9 @@ export class PayrollService {
       let totalNet = new Decimal(0);
       let totalWithheld = new Decimal(0);
       let totalEmployerCost = new Decimal(0);
+      let totalDeMinimis = new Decimal(0);
 
-      for (const user of eligibleUsers) {
+      for (const user of payableUsers) {
         const compType = user.compensationType ?? 'HOURLY';
         const hRate = user.hourlyRate ? Number(user.hourlyRate) : 0;
         const dRate = user.dailyRate ? Number(user.dailyRate) : hRate * 8;
@@ -953,6 +987,12 @@ export class PayrollService {
           thirteenthMonth,
         });
 
+        // BUG-BC: de minimis is paid on top of net pay. It is spread *after*
+        // `statutory` so gross, taxable income and every contribution base
+        // stay exactly as computeStatutoryFigures left them — only net moves.
+        const deMinimisTotal = deMinimisByUser.get(user.id) ?? 0;
+        const netPayWithDeMinimis = round2(statutory.netPay + deMinimisTotal);
+
         await tx.payrollLineItem.create({
           data: {
             tenantId: p.tenantId,
@@ -972,13 +1012,16 @@ export class PayrollService {
             regularPay,
             overtimePay,
             ...statutory,
+            deMinimisTotal,
+            netPay: netPayWithDeMinimis,
             createdBy: p.userId,
             updatedBy: p.userId,
           },
         });
 
         totalGross = totalGross.add(statutory.grossTotal);
-        totalNet = totalNet.add(statutory.netPay);
+        totalNet = totalNet.add(netPayWithDeMinimis);
+        totalDeMinimis = totalDeMinimis.add(deMinimisTotal);
         totalWithheld = totalWithheld.add(statutory.incomeTaxWithheld);
         totalEmployerCost = totalEmployerCost
           .add(statutory.sssEmployerShare)
@@ -989,10 +1032,14 @@ export class PayrollService {
       // BUG-AY: the timesheets folded into this run enter the financial pipeline —
       // UNPAID → PROCESSING. Already-PAID sheets were filtered out of `timesheets`
       // above, so they can never be walked backwards to PROCESSING here.
-      if (timesheets.length > 0) {
+      // BUG-BB: only the timesheets this run actually paid advance. A clearance-held
+      // employee's sheets stay UNPAID so the next run — once clearance completes —
+      // still picks them up, rather than leaving them in PROCESSING against a
+      // report that has no line item for them.
+      if (payableTimesheetIds.length > 0) {
         await tx.timesheet.updateMany({
           where: {
-            id: { in: timesheets.map((ts) => ts.id) },
+            id: { in: payableTimesheetIds },
             paymentStatus: 'UNPAID',
           },
           data: { paymentStatus: 'PROCESSING', updatedBy: p.userId },
@@ -1024,7 +1071,11 @@ export class PayrollService {
         where: { id: newReport.id },
         data: {
           totals: {
-            headcount: eligibleUsers.length,
+            headcount: payableUsers.length,
+            // BUG-BB: who this run deliberately did not pay, and why. Surfaced on
+            // the report so Finance sees the hold instead of silently short-paying
+            // the period and having to reconcile a missing person later.
+            blockedByClearance,
             paymentStatusBreakdown,
             totalEstimatedPay: totalEstimatedPay.toFixed(2),
             // FEAT-3 additions. `totalEstimatedPay` is left untouched above
@@ -1033,6 +1084,9 @@ export class PayrollService {
             totalNetPay: totalNet.toFixed(2),
             totalTaxWithheld: totalWithheld.toFixed(2),
             totalEmployerContributions: totalEmployerCost.toFixed(2),
+            // BUG-BC: reported separately from gross precisely because it is
+            // non-taxable — it is in totalNetPay but in no tax base.
+            totalDeMinimis: totalDeMinimis.toFixed(2),
             isThirteenthMonth: thirteenthMonth,
             birTaxTableYear: settings.birTaxTableYear,
           },
@@ -1478,6 +1532,10 @@ export class PayrollService {
     if (item.isThirteenthMonth) {
       drawTableRow('13th Month Pay', 'Statutory benefit', `₱${Number(item.grossTotal).toFixed(2)}`);
     }
+    // BUG-BC: shown as its own line, below the earnings that make up gross and
+    // deliberately outside the Gross Earnings subtotal — a de minimis benefit
+    // within its BIR ceiling is not part of taxable compensation.
+    const deMinimisTotal = Number(item.deMinimisTotal);
 
     // Pre-FEAT-3 line items carry gross_total backfilled from estimated_pay; the
     // derived gross stays the fallback for anything that predates even that.
@@ -1524,9 +1582,21 @@ export class PayrollService {
     doc.text('Total Deductions', 40, totalDedY, { width: colW[0] });
     doc.text(`₱${totalDeductions.toFixed(2)}`, 40 + colW[0] + colW[1], totalDedY, { width: colW[2] });
 
+    if (deMinimisTotal !== 0) {
+      doc.moveDown(1.5);
+      doc.fontSize(12).font(PDF_FONT_BOLD).text('Non-Taxable Benefits (De Minimis)', 40);
+      doc.moveDown(0.5);
+      doc.fontSize(10).font(PDF_FONT);
+      const dmLineY = doc.y;
+      doc.moveTo(40, dmLineY).lineTo(doc.page.width - 40, dmLineY).stroke();
+      doc.moveDown(0.4);
+      drawTableRow('De Minimis Benefits', 'Within BIR ceiling — non-taxable', `₱${deMinimisTotal.toFixed(2)}`);
+      doc.fontSize(11).font(PDF_FONT_BOLD);
+    }
+
     doc.moveDown(1);
     const netY = doc.y;
-    doc.fontSize(13);
+    doc.fontSize(13).font(PDF_FONT_BOLD);
     doc.text('NET PAY', 40, netY, { width: colW[0] });
     doc.text(`₱${Number(item.netPay).toFixed(2)}`, 40 + colW[0] + colW[1], netY, { width: colW[2] });
 
@@ -1580,6 +1650,9 @@ export class PayrollService {
         grossTotal: true,
         totalDeductions: true,
         netPay: true,
+        // BUG-BC: surfaced as its own field so the payslip screen can render it
+        // as a separate non-taxable line rather than folding it into gross.
+        deMinimisTotal: true,
         hourlyRate: true,
         estimatedPay: true,
         createdAt: true,

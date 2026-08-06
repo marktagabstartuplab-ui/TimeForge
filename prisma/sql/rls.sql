@@ -50,7 +50,11 @@ DECLARE
     -- Bug Tracking
     'bugs', 'bug_attachments', 'bug_comments', 'bug_activity_log',
     -- Shift limits (FEAT-2)
-    'shift_configurations', 'shift_limit_violations'
+    'shift_configurations', 'shift_limit_violations',
+    -- Employee relations: grievances, NTE, offboarding clearance (BUG-AL/BUG-BB)
+    'grievances', 'discipline_records', 'clearance_checklists', 'clearance_checklist_items',
+    -- Compensation & benefits (BUG-BC)
+    'de_minimis_benefits'
   ];
 BEGIN
   FOREACH t IN ARRAY tenant_tables LOOP

@@ -184,6 +184,11 @@ export const PERMISSIONS = {
   CLEARANCE_READ_SELF: 'clearance:read_self',
   CLEARANCE_READ_ORG: 'clearance:read_org',
   CLEARANCE_APPROVE: 'clearance:approve',
+  // compensation & benefits — 13th-month tracker, de minimis (BUG-BC)
+  /** View the YTD basic-salary / 13th-month tracker and de minimis assignments. */
+  COMPENSATION_READ: 'compensation:read',
+  /** Assign, amend or revoke an employee's de minimis benefits. HR/Admin. */
+  COMPENSATION_MANAGE: 'compensation:manage',
 } as const;
 
 export type PermissionKey = (typeof PERMISSIONS)[keyof typeof PERMISSIONS];
@@ -294,6 +299,7 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.GRIEVANCE_CREATE, P.GRIEVANCE_READ_SELF, P.GRIEVANCE_READ_ORG, P.GRIEVANCE_UPDATE,
     P.DISCIPLINE_CREATE, P.DISCIPLINE_READ_SELF, P.DISCIPLINE_READ_ORG, P.DISCIPLINE_UPDATE, P.DISCIPLINE_RESPOND,
     P.CLEARANCE_CREATE, P.CLEARANCE_READ_SELF, P.CLEARANCE_READ_ORG, P.CLEARANCE_APPROVE,
+    P.COMPENSATION_READ, P.COMPENSATION_MANAGE,
   ],
   [Role.FINANCE]: [
     P.USER_READ_SELF, P.USER_READ,
@@ -313,5 +319,9 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT,
     P.GRIEVANCE_CREATE, P.GRIEVANCE_READ_SELF,
     P.CLEARANCE_APPROVE,
+    // Finance runs the payroll that consumes de minimis, so it reads the
+    // assignments and the 13th-month tracker — but assigning a benefit is HR's
+    // call, so COMPENSATION_MANAGE is deliberately withheld.
+    P.COMPENSATION_READ,
   ],
 };
