@@ -21,6 +21,15 @@ export class CreateTimesheetDto {
   @IsString()
   periodEnd!: string; // ISO date string, e.g. "2025-06-30"
 
+  /**
+   * BUG-BL: the payroll period this timesheet is routed to, chosen by the
+   * employee. Omitted keeps the pre-BUG-BL behaviour — the period is resolved
+   * from the work dates on supervisor approval (the frontline path).
+   */
+  @IsOptional()
+  @IsUUID()
+  payrollPeriodId?: string;
+
   @IsOptional()
   @IsString()
   @MaxLength(5000)
@@ -43,6 +52,16 @@ export class SubmitTimesheetDto {
   @IsString()
   @MaxLength(5000)
   summary?: string;
+
+  /**
+   * BUG-BL: the payroll period the employee selected in the submission form.
+   * Only honoured while the timesheet is still a DRAFT — a REJECTED/
+   * REVISION_REQUESTED resubmit keeps the period it was originally routed to
+   * (BUG-BM (3)).
+   */
+  @IsOptional()
+  @IsUUID()
+  payrollPeriodId?: string;
 
   @IsInt()
   @Type(() => Number)
@@ -70,6 +89,22 @@ export interface TimesheetQuery {
   to?: string;   // filter by periodStart <= to
   sortBy?: string; // 'periodStart' | 'totalMinutes' | 'status' | 'submittedAt' — defaults to periodStart
   sortDir?: string; // 'asc' | 'desc' — defaults to desc
+  /** BUG-BM: "true" narrows the HR list to late submissions only. */
+  lateOnly?: string;
+}
+
+/** BUG-BL: one selectable payroll period in the employee submission dropdown. */
+export interface SelectablePayrollPeriod {
+  id: string;
+  type: string;
+  status: string;
+  startDate: string;
+  endDate: string;
+  cutoffDate: string | null;
+  name: string | null;
+  /** True once the cutoff has passed — submitting against it is still allowed,
+   *  but it will be flagged late (BUG-BM). */
+  pastCutoff: boolean;
 }
 
 export interface TimesheetStatsQuery {

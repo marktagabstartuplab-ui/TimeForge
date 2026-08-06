@@ -53,6 +53,22 @@ export class TimesheetsController {
     return this.svc.findPending(u, query);
   }
 
+  /**
+   * BUG-BL: the payroll periods the submission form's "Payroll Period" dropdown
+   * offers — every OPEN / partially-processed (GENERATED) period, including
+   * custom off-cycle ones. Locked and exported periods are omitted.
+   *
+   * Registered before `:id` so "selectable-periods" isn't parsed as an id, and
+   * scoped to `timesheet:read` rather than `payroll_period:read` — employees do
+   * not hold payroll permissions.
+   */
+  @Get('selectable-periods')
+  @RequirePermissions('timesheet:read')
+  @ApiOperation({ summary: 'Payroll periods an employee may submit a timesheet against.' })
+  selectablePeriods(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.selectablePayrollPeriods(u);
+  }
+
   // -- History (My Timesheet History) --
   //
   // Registered before `:id` so "history" isn't parsed as a timesheet id.

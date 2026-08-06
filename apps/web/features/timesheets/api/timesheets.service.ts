@@ -22,6 +22,23 @@ export interface Timesheet {
   totalMinutes: number;
   summary: string | null;
   version: number;
+  /** BUG-BL: the payroll period this timesheet is routed to, when one is linked. */
+  payrollPeriodId?: string | null;
+  /** BUG-BM: submitted after the linked period's cutoff. */
+  isLateSubmission?: boolean;
+}
+
+/** BUG-BL: one option in the submission form's "Payroll Period" dropdown. */
+export interface SelectablePayrollPeriod {
+  id: string;
+  type: "FIRST_HALF" | "SECOND_HALF" | "CUSTOM";
+  status: "OPEN" | "GENERATED";
+  startDate: string;
+  endDate: string;
+  cutoffDate: string | null;
+  name: string | null;
+  /** Cutoff already passed — still selectable, but submitting flags it late. */
+  pastCutoff: boolean;
 }
 
 export interface TimesheetApproval {
@@ -70,7 +87,16 @@ export async function getTimesheetDetail(id: string): Promise<TimesheetDetail> {
   return data;
 }
 
-export async function createTimesheet(payload: { periodStart: string; periodEnd: string; summary?: string }): Promise<Timesheet> {
+/**
+ * BUG-BL: payroll periods still open to submission (Open + partially processed,
+ * including custom off-cycle periods). Locked periods are omitted server-side.
+ */
+export async function listSelectablePayrollPeriods(): Promise<SelectablePayrollPeriod[]> {
+  const { data } = await apiClient.get<SelectablePayrollPeriod[]>("/timesheets/selectable-periods");
+  return data;
+}
+
+export async function createTimesheet(payload: { periodStart: string; periodEnd: string; payrollPeriodId?: string; summary?: string }): Promise<Timesheet> {
   const { data } = await apiClient.post<Timesheet>("/timesheets", payload);
   return data;
 }
@@ -85,7 +111,7 @@ export async function attachEntries(id: string, entryIds: string[]): Promise<Tim
   return data;
 }
 
-export async function submitTimesheet(id: string, payload: { summary?: string; version: number }): Promise<Timesheet> {
+export async function submitTimesheet(id: string, payload: { summary?: string; payrollPeriodId?: string; version: number }): Promise<Timesheet> {
   const { data } = await apiClient.post<Timesheet>(`/timesheets/${id}/submit`, payload);
   return data;
 }

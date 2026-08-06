@@ -16,6 +16,10 @@ export interface HRTimesheetRow {
   totalHours: number;
   status: TimesheetStatus;
   summary: string | null;
+  /** BUG-BM: submitted after the linked period's cutoff. */
+  isLateSubmission: boolean;
+  /** BUG-BM: the period this sheet stays pinned to, even when submitted late. */
+  payrollPeriodId: string | null;
   submittedAt: string | null;
   decidedAt: string | null;
   createdAt: string;
@@ -40,6 +44,8 @@ export interface HRTimesheetQuery {
   search?: string;
   departmentId?: string;
   status?: string;
+  /** BUG-BM: "true" narrows the list to late submissions only. */
+  lateOnly?: string;
   from?: string;
   to?: string;
   sortBy?: string;

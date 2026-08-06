@@ -17,6 +17,7 @@ import {
   attachEntries,
   createTimesheet,
   getTimesheetDetail,
+  listSelectablePayrollPeriods,
   listTimesheets,
   submitTimesheet,
   updateTimesheet,
@@ -92,6 +93,33 @@ export function TimesheetsContent() {
 
   const timesheet: Timesheet | null = timesheetsQuery.data?.data[0] ?? null;
 
+  // ── BUG-BL: selectable payroll periods ────────────────────────────────────
+  const periodsQuery = useQuery({
+    queryKey: ["timesheets", "selectable-periods"],
+    queryFn: listSelectablePayrollPeriods,
+  });
+  const selectablePeriods = periodsQuery.data ?? [];
+  const [pickedPeriodId, setPickedPeriodId] = useState("");
+
+  // The dropdown's default, derived on each render rather than written into state
+  // by an effect: the period this timesheet is already linked to wins, then the
+  // one covering today, then the newest. An explicit pick always overrides it.
+  const today = toOrgIsoDate(now);
+  const defaultPeriod =
+    (timesheet?.payrollPeriodId
+      ? selectablePeriods.find((p) => p.id === timesheet.payrollPeriodId)
+      : undefined) ??
+    selectablePeriods.find(
+      (p) => p.startDate.slice(0, 10) <= today && today <= p.endDate.slice(0, 10),
+    ) ??
+    selectablePeriods[0];
+  const defaultPeriodId = defaultPeriod?.id ?? "";
+
+  const selectedPeriodId =
+    pickedPeriodId && selectablePeriods.some((p) => p.id === pickedPeriodId)
+      ? pickedPeriodId
+      : defaultPeriodId;
+
   // Only fetched when rejected — that's the one state where the employee needs
   // to see the supervisor's remark. Approval history isn't in the list response.
   const timesheetDetailQuery = useQuery({
@@ -143,6 +171,8 @@ export function TimesheetsContent() {
     return createTimesheet({
       periodStart: toOrgIsoDate(period.start),
       periodEnd: toOrgIsoDate(period.end),
+      // BUG-BL: route the sheet to the period the employee picked.
+      payrollPeriodId: selectedPeriodId || undefined,
     });
   };
 
@@ -184,6 +214,9 @@ export function TimesheetsContent() {
       sheet = await attachLooseEntries(sheet);
       return submitTimesheet(sheet.id, {
         summary: notes.trim() || undefined,
+        // BUG-BL: the selected period, not the calendar period, determines the
+        // payroll run this submission is linked to.
+        payrollPeriodId: selectedPeriodId || undefined,
         version: sheet.version,
       });
     },
@@ -360,11 +393,10 @@ export function TimesheetsContent() {
       <SubmitApprovalCard
         timesheet={timesheetDetailQuery.data ?? timesheet}
         supervisorName={me?.supervisor ? `${me.supervisor.firstName} ${me.supervisor.lastName}` : null}
-        periodEndLabel={period.end.toLocaleDateString("en-US", {
-          month: "short",
-          day: "numeric",
-          year: "numeric",
-        })}
+        periods={selectablePeriods}
+        periodsLoading={periodsQuery.isLoading}
+        selectedPeriodId={selectedPeriodId}
+        onSelectPeriod={setPickedPeriodId}
         submitting={submit.isPending}
         savingDraft={saveDraft.isPending}
         error={actionError}

@@ -122,9 +122,13 @@ export class ApprovalsService {
       throw new ConflictException('Cannot modify a timesheet that has already been PAID.');
     }
 
-    // BUG-AJ: On APPROVE, attempt to auto-link matching auto-generated payroll period
+    // BUG-AJ: On APPROVE, attempt to auto-link matching auto-generated payroll period.
+    // BUG-BM (3): only when the sheet has no period yet. A sheet the employee
+    // explicitly routed (BUG-BL), or a late submission already sitting on its
+    // original historical period, must never be re-pointed by this lookup — that
+    // is exactly how late work ended up in the current active period.
     let matchingPeriodId: string | null = sheet.payrollPeriodId;
-    if (dto.action === 'APPROVE') {
+    if (dto.action === 'APPROVE' && !sheet.payrollPeriodId) {
       const autoPeriod = await this.prisma.payrollPeriod.findFirst({
         where: {
           tenantId: p.tenantId,

@@ -3,9 +3,19 @@
 import { useState } from "react";
 import { CalendarClock, Loader2, Send, UsersRound } from "lucide-react";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { StatusBadge, timesheetStatusTone } from "@/components/shared/StatusBadge";
-import type { Timesheet, TimesheetDetail } from "../api/timesheets.service";
+import type { SelectablePayrollPeriod, Timesheet, TimesheetDetail } from "../api/timesheets.service";
 import { useCan } from "@/features/auth/rbac";
+
+/** "Aug 1 – Aug 15, 2026", or the custom period's own name when it has one. */
+function periodLabel(period: SelectablePayrollPeriod): string {
+  if (period.name) return period.name;
+  const fmt = (iso: string) =>
+    new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const year = new Date(period.endDate).getUTCFullYear();
+  return `${fmt(period.startDate)} – ${fmt(period.endDate)}, ${year}`;
+}
 
 interface SubmitApprovalCardProps {
   timesheet: TimesheetDetail | Timesheet | null;
@@ -14,7 +24,12 @@ interface SubmitApprovalCardProps {
    *  default answer to "who approves this" and was already available via
    *  GET /users/me. */
   supervisorName?: string | null;
-  periodEndLabel: string;
+  /** BUG-BL: Open / partially-processed payroll periods the employee may submit
+   *  against. Locked periods never reach here — the API omits them. */
+  periods: SelectablePayrollPeriod[];
+  periodsLoading?: boolean;
+  selectedPeriodId: string;
+  onSelectPeriod: (periodId: string) => void;
   submitting: boolean;
   savingDraft: boolean;
   error: string | null;
@@ -40,13 +55,17 @@ function buildSummary(workSummary: string, accomplishments: string, blockers: st
  * Accomplishments, and Blockers here. All three are merged into the single
  * `summary` field that the API accepts — no backend changes required.
  *
- * Submission deadlines aren't modelled in the API, so that slot shows the
- * period end date instead.
+ * BUG-BL: the period is chosen here rather than fixed to the current calendar
+ * period, so a late submission can be routed to the past period it was actually
+ * worked in, or to a custom off-cycle period.
  */
 export function SubmitApprovalCard({
   timesheet,
   supervisorName,
-  periodEndLabel,
+  periods,
+  periodsLoading,
+  selectedPeriodId,
+  onSelectPeriod,
   submitting,
   savingDraft,
   error,
@@ -66,6 +85,10 @@ export function SubmitApprovalCard({
   const locked = status !== "DRAFT" && status !== "REVISION_REQUESTED" && status !== "REJECTED";
 
   const combinedNotes = buildSummary(workSummary, accomplishments, blockers);
+  const selected = periods.find((period) => period.id === selectedPeriodId) ?? null;
+  // BUG-BL: the selected period is what the submission is routed to, so it is
+  // required — but only once the options have actually loaded.
+  const missingPeriod = !periodsLoading && periods.length > 0 && !selected;
 
   return (
     <div className="rounded-[16px] border border-[#c3c6d2]/50 bg-[#f6f3f4] p-[25px] shadow-[0px_1px_1px_rgba(0,0,0,0.05)]">
@@ -102,13 +125,48 @@ export function SubmitApprovalCard({
                 </p>
               </div>
             </div>
-            <div className="flex items-center gap-3">
-              <span className="flex h-9 w-9 items-center justify-center rounded-full bg-brand-cyan/20 text-brand">
+            <div className="flex items-start gap-3">
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-brand-cyan/20 text-brand">
                 <CalendarClock className="h-4 w-4" aria-hidden="true" />
               </span>
-              <div>
-                <p className="text-xs text-brand-muted">Period Ends</p>
-                <p className="text-sm font-semibold text-brand-ink">{periodEndLabel}</p>
+              <div className="min-w-0 flex-1">
+                <label htmlFor="ts-payroll-period" className="text-xs text-brand-muted">
+                  Payroll Period
+                </label>
+                <Select
+                  value={selectedPeriodId || undefined}
+                  onValueChange={(v) => onSelectPeriod(v ?? "")}
+                  disabled={locked || periodsLoading || periods.length === 0}
+                >
+                  <SelectTrigger id="ts-payroll-period" className="mt-1 bg-white">
+                    <SelectValue
+                      placeholder={
+                        periodsLoading
+                          ? "Loading periods…"
+                          : periods.length === 0
+                            ? "No open payroll periods"
+                            : "Select a payroll period"
+                      }
+                    >
+                      {selected ? periodLabel(selected) : undefined}
+                    </SelectValue>
+                  </SelectTrigger>
+                  <SelectContent>
+                    {periods.map((period) => (
+                      <SelectItem key={period.id} value={period.id}>
+                        {periodLabel(period)}
+                        {period.status === "GENERATED" ? " · partially processed" : ""}
+                        {period.pastCutoff ? " · past cutoff" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+                {selected?.pastCutoff ? (
+                  <p className="mt-1 text-xs text-amber-700">
+                    This period&apos;s cutoff has passed — your submission will be accepted and
+                    flagged as a late submission.
+                  </p>
+                ) : null}
               </div>
             </div>
           </div>
@@ -194,7 +252,8 @@ export function SubmitApprovalCard({
               <button
                 type="button"
                 onClick={() => onSubmit(combinedNotes)}
-                disabled={submitting || locked}
+                disabled={submitting || locked || missingPeriod}
+                title={missingPeriod ? "Select a payroll period first" : undefined}
                 className="flex h-11 flex-1 items-center justify-center gap-2 rounded-[10px] bg-brand px-6 text-sm font-bold text-white transition-colors hover:bg-[#1467d6] disabled:opacity-60"
               >
                 {submitting ? (
