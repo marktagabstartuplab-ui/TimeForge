@@ -22,6 +22,8 @@ export interface ScrumEntry {
   status: ScrumTaskStatus;
   /** True once progress reaches 100% — the day is locked and read-only. */
   isLocked: boolean;
+  /** Set when the employee saved their daily plan — the plan is read-only from then on (BUG-BP). */
+  planLockedAt: string | null;
   submittedAt: string | null;
   createdAt: string;
   updatedAt: string;

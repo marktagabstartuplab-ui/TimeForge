@@ -61,7 +61,7 @@ export function FinanceAppShell({ children }: { children: React.ReactNode }) {
     <div className="flex h-screen overflow-hidden bg-white">
       <FinanceSidebar />
       <div className="flex min-w-0 flex-1 flex-col overflow-hidden">
-        <AppTopBar />
+        <AppTopBar homeHref="/finance/dashboard" />
         <main className="flex-1 overflow-auto bg-white p-4 sm:p-6">
           <PermissionGuard requiredPermission={getRequiredPermission(pathname)}>{children}</PermissionGuard>
         </main>

@@ -92,6 +92,27 @@ const CARRY_OVER_LOOKBACK_DAYS = 7;
 const LOCKED_MESSAGE =
   "Today's scrum plan is locked. Ask your supervisor to unlock the day to change it.";
 
+/**
+ * BUG-BP: refusal for a plan that was saved but whose day hasn't closed yet.
+ * Separate message from LOCKED_MESSAGE so the employee can tell "I submitted my
+ * plan" apart from "the day is finished".
+ */
+const PLAN_LOCKED_MESSAGE =
+  'Your daily plan is locked because you saved it. Ask your supervisor to approve an edit to change it.';
+
+/**
+ * The blocker fields the day's normal flow writes after the plan is locked —
+ * resolving or reopening a blocker is progress reporting, not re-planning, so it
+ * passes the plan lock the same way EOD task results do.
+ */
+const BLOCKER_STATUS_FIELDS: ReadonlySet<string> = new Set(['status', 'version']);
+
+function isBlockerStatusOnly(dto: UpdateScrumBlockerDto): boolean {
+  const values = dto as unknown as Record<string, unknown>;
+  const touched = Object.keys(dto).filter((key) => values[key] !== undefined);
+  return touched.length > 0 && touched.every((key) => BLOCKER_STATUS_FIELDS.has(key));
+}
+
 @Injectable()
 export class ScrumService {
   constructor(
@@ -277,11 +298,21 @@ export class ScrumService {
     if (entry.isLocked && !isEodEntryReportOnly(dto)) {
       throw new ForbiddenException(LOCKED_MESSAGE);
     }
+    // BUG-BP: a saved plan is read-only for its own fields too — re-editing
+    // yesterday/notes after submission needs the supervisor's approval.
+    if (!isEodEntryReportOnly(dto)) await this.assertPlanEditable(id);
     if (entry.version !== dto.version) throw new ConflictException('Version mismatch');
+
+    // BUG-BP: saving the plan is the submission — from here the commitments,
+    // blockers and the yesterday/notes text are read-only. EOD writes (today /
+    // blockers only) must not trip it, and re-saving never moves the timestamp.
+    const planLockedAt =
+      entry.planLockedAt ?? (isEodEntryReportOnly(dto) ? null : new Date());
 
     return this.prisma.scrumEntry.update({
       where: { id },
       data: {
+        planLockedAt,
         yesterday: dto.yesterday ?? entry.yesterday,
         today: dto.today ?? entry.today,
         blockers: dto.blockers !== undefined ? (dto.blockers ?? null) : entry.blockers,
@@ -632,6 +663,9 @@ export class ScrumService {
         where: { id },
         data: {
           isLocked: false,
+          // BUG-BP: a reopened day is fully editable again, plan included —
+          // otherwise the unlock would leave the commitments frozen.
+          planLockedAt: null,
           status: 'IN_PROGRESS',
           progress: 0,
           updatedBy: p.userId,
@@ -766,6 +800,7 @@ export class ScrumService {
   async createTask(p: AuthPrincipal, entryId: string, dto: CreateScrumTaskDto): Promise<ScrumTask> {
     const entry = await this.ownEntry(p, entryId);
     if (entry.isLocked) throw new ForbiddenException(LOCKED_MESSAGE);
+    await this.assertPlanEditable(entry.id); // BUG-BP
     await this.validateProjectRef(p, dto.projectId);
     const kpiFields = await this.resolveKpiTemplateFields(p, dto.kpiTemplateId);
 
@@ -809,6 +844,7 @@ export class ScrumService {
     if (!isEodReportOnly(dto)) {
       this.assertTaskNotCompleted(task);
       await this.assertEntryUnlocked(task.scrumEntryId);
+      await this.assertPlanEditable(task.scrumEntryId); // BUG-BP
     }
     await this.validateProjectRef(p, dto.projectId);
     const kpiFields = dto.kpiTemplateId !== undefined ? await this.resolveKpiTemplateFields(p, dto.kpiTemplateId) : null;
@@ -873,6 +909,7 @@ export class ScrumService {
     if (task.version !== version) throw new ConflictException('Version mismatch');
     this.assertTaskNotCompleted(task);
     await this.assertEntryUnlocked(task.scrumEntryId);
+    await this.assertPlanEditable(task.scrumEntryId); // BUG-BP
     await this.prisma.scrumTask.update({
       where: { id },
       data: { deletedAt: new Date(), updatedBy: p.userId, version: { increment: 1 } },
@@ -893,6 +930,7 @@ export class ScrumService {
   async createBlocker(p: AuthPrincipal, entryId: string, dto: CreateScrumBlockerDto): Promise<ScrumBlocker> {
     const entry = await this.ownEntry(p, entryId);
     if (entry.isLocked) throw new ForbiddenException(LOCKED_MESSAGE);
+    await this.assertPlanEditable(entry.id); // BUG-BP
 
     const blocker = await this.prisma.scrumBlocker.create({
       data: {
@@ -920,6 +958,9 @@ export class ScrumService {
     const blocker = await this.ownBlocker(p, id);
     if (blocker.version !== dto.version) throw new ConflictException('Version mismatch');
     await this.assertEntryUnlocked(blocker.scrumEntryId);
+    // BUG-BP: resolving/reopening stays open after the plan locks; rewording or
+    // re-grading a blocker is re-planning and does not.
+    if (!isBlockerStatusOnly(dto)) await this.assertPlanEditable(blocker.scrumEntryId);
 
     return this.prisma.scrumBlocker.update({
       where: { id },
@@ -956,6 +997,7 @@ export class ScrumService {
     const blocker = await this.ownBlocker(p, id);
     if (blocker.version !== version) throw new ConflictException('Version mismatch');
     await this.assertEntryUnlocked(blocker.scrumEntryId);
+    await this.assertPlanEditable(blocker.scrumEntryId); // BUG-BP
     await this.prisma.scrumBlocker.delete({ where: { id } });
   }
 
@@ -1606,6 +1648,22 @@ export class ScrumService {
   private async assertEntryUnlocked(scrumEntryId: string): Promise<void> {
     const entry = await this.prisma.scrumEntry.findFirst({ where: { id: scrumEntryId } });
     if (entry?.isLocked) throw new ForbiddenException(LOCKED_MESSAGE);
+  }
+
+  /**
+   * BUG-BP: guards every mutation that re-shapes a saved plan — adding, editing
+   * or deleting a commitment or a blocker. The escape hatch is the supervisor's
+   * approval, exactly as for a locked day: an APPROVED edit request on this
+   * entry re-opens the plan (`unlockEntry` also clears `planLockedAt` outright
+   * when it reopens a fully locked day).
+   */
+  private async assertPlanEditable(scrumEntryId: string): Promise<void> {
+    const entry = await this.prisma.scrumEntry.findFirst({ where: { id: scrumEntryId } });
+    if (!entry?.planLockedAt) return;
+    const approved = await this.prisma.scrumEditRequest.findFirst({
+      where: { scrumEntryId, status: 'APPROVED', deletedAt: null },
+    });
+    if (!approved) throw new ForbiddenException(PLAN_LOCKED_MESSAGE);
   }
 
   private async validateProjectRef(p: AuthPrincipal, projectId?: string): Promise<void> {

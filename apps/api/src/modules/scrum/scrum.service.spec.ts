@@ -249,6 +249,116 @@ describe('ScrumService — completed commitment lock-down', () => {
     });
   });
 
+  // BUG-BP — saving the daily plan locks the plan itself. Distinct from BUG-AE's
+  // whole-day lock: the day stays open (the EOD review still files results), but
+  // commitments, blockers and the plan's own text fields are frozen.
+  describe('BUG-BP — saved plan is locked', () => {
+    const planLockedEntry = {
+      id: 'entry-1',
+      userId: 'user-1',
+      tenantId: 'tenant-1',
+      organizationId: 'org-1',
+      isLocked: false,
+      planLockedAt: new Date('2026-08-07T01:00:00Z'),
+      version: 4,
+      yesterday: 'Shipped the report',
+      today: 'Call 50 leads',
+      blockers: null,
+      notes: null,
+      progress: 0,
+      status: 'NOT_STARTED',
+    };
+    const openEntry = { ...planLockedEntry, planLockedAt: null };
+
+    beforeEach(() => {
+      prisma.scrumEditRequest.findFirst.mockResolvedValue(null);
+    });
+
+    it('stamps planLockedAt on the first plan save', async () => {
+      prisma.scrumEntry.findFirst.mockResolvedValue(openEntry);
+      prisma.scrumEntry.update.mockResolvedValue({ ...openEntry, version: 5 });
+
+      await service.update(principal, 'entry-1', { yesterday: 'Rewritten', version: 4 } as any);
+
+      const [{ data }] = prisma.scrumEntry.update.mock.calls.at(-1)!;
+      expect(data.planLockedAt).toBeInstanceOf(Date);
+    });
+
+    it('rejects editing the plan again after it locks, even on a current version', async () => {
+      prisma.scrumEntry.findFirst.mockResolvedValue(planLockedEntry);
+
+      await expect(
+        service.update(principal, 'entry-1', { yesterday: 'Rewritten', version: 4 } as any),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.scrumEntry.update).not.toHaveBeenCalled();
+    });
+
+    it('rejects adding a commitment to a locked plan', async () => {
+      prisma.scrumEntry.findFirst.mockResolvedValue(planLockedEntry);
+
+      await expect(
+        service.createTask(principal, 'entry-1', {
+          title: 'Snuck in later',
+          expectedOutput: 'out',
+          measurement: 'm',
+        } as any),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('rejects adding a blocker to a locked plan', async () => {
+      prisma.scrumEntry.findFirst.mockResolvedValue(planLockedEntry);
+
+      await expect(
+        service.createBlocker(principal, 'entry-1', { title: 'Mid-day blocker' } as any),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+    });
+
+    it('rejects rewriting a commitment on a locked plan', async () => {
+      prisma.scrumTask.findFirst.mockResolvedValue({ ...baseTask, taskStatus: 'IN_PROGRESS', completedAt: null });
+      prisma.scrumEntry.findFirst.mockResolvedValue(planLockedEntry);
+
+      await expect(
+        service.updateTask(principal, 'task-1', { title: 'Rewritten', version: 3 } as any),
+      ).rejects.toBeInstanceOf(ForbiddenException);
+      expect(prisma.scrumTask.update).not.toHaveBeenCalled();
+    });
+
+    // The whole point of the split lock: results still land after submission.
+    it('still allows the EOD result-only update on a locked plan', async () => {
+      prisma.scrumTask.findFirst.mockResolvedValue({ ...baseTask, taskStatus: 'IN_PROGRESS', completedAt: null });
+      prisma.scrumTask.update.mockResolvedValue({ ...baseTask, actualCompleted: '55' });
+      prisma.scrumTask.findMany.mockResolvedValue([{ taskStatus: 'IN_PROGRESS' }]);
+      prisma.scrumEntry.findFirst.mockResolvedValue(planLockedEntry);
+      prisma.scrumEntry.update.mockResolvedValue({});
+
+      await service.updateTask(principal, 'task-1', { actualCompleted: '55', version: 3 } as any);
+
+      expect(prisma.scrumTask.update).toHaveBeenCalled();
+    });
+
+    it('still allows the EOD entry fields on a locked plan', async () => {
+      prisma.scrumEntry.findFirst.mockResolvedValue(planLockedEntry);
+      prisma.scrumEntry.update.mockResolvedValue({ ...planLockedEntry, version: 5 });
+
+      await service.update(principal, 'entry-1', {
+        today: 'Call 50 leads\n\nEOD Review — all done',
+        version: 4,
+      } as any);
+
+      expect(prisma.scrumEntry.update).toHaveBeenCalled();
+    });
+
+    it('reopens the plan once the supervisor approves an edit request', async () => {
+      prisma.scrumEntry.findFirst.mockResolvedValue(planLockedEntry);
+      prisma.scrumEditRequest.findFirst.mockResolvedValue({ id: 'req-1', status: 'APPROVED' });
+      prisma.scrumEntry.update.mockResolvedValue({ ...planLockedEntry, version: 5 });
+
+      await service.update(principal, 'entry-1', { yesterday: 'Corrected', version: 4 } as any);
+
+      expect(prisma.scrumEntry.update).toHaveBeenCalled();
+    });
+  });
+
   it('unlockEntry reopens the day\'s completed commitments', async () => {
     const supervisor = { ...principal, permissions: ['scrum:read_org'] } as unknown as AuthPrincipal;
     prisma.scrumEntry.findFirst.mockResolvedValue({

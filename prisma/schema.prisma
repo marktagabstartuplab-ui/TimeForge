@@ -802,6 +802,8 @@ model ScrumEntry {
   status         ScrumTaskStatus @default(NOT_STARTED)
   /// True once progress reaches 100% — mirrors status === COMPLETED but persisted explicitly per spec.
   isLocked       Boolean         @default(false) @map("is_locked")
+  /// When the employee saved their daily plan. Set = the plan itself (commitments, blockers, yesterday/notes) is read-only; distinct from isLocked, which closes the whole day once every commitment completes. The EOD review still writes results against a plan-locked entry.
+  planLockedAt   DateTime?       @map("plan_locked_at") @db.Timestamptz
   submittedAt    DateTime?       @map("submitted_at") @db.Timestamptz
   projectId      String?         @map("project_id") @db.Uuid
   clientId       String?         @map("client_id") @db.Uuid

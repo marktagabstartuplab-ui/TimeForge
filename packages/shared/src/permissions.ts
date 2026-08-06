@@ -316,6 +316,10 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.DASHBOARD_READ_SELF, P.DASHBOARD_READ_ORG, P.DASHBOARD_READ_TEAM,
     P.ATTENDANCE_READ_ORG,
     P.ORG_READ, P.ORG_SETTINGS_READ, P.ORG_SETTINGS_UPDATE,
+    // BUG-BO: holidays drive the premium multipliers Finance pays out, so they
+    // read the calendar for payroll planning. Read-only on purpose — declaring a
+    // holiday stays with HR/Admin (HOLIDAY_WRITE).
+    P.HOLIDAY_READ,
     P.BUG_CREATE, P.BUG_READ, P.BUG_COMMENT,
     P.GRIEVANCE_CREATE, P.GRIEVANCE_READ_SELF,
     P.CLEARANCE_APPROVE,
