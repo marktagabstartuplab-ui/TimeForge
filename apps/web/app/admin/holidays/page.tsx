@@ -1,3 +1,4 @@
+import { AppShell } from "@/features/app-shell/components/AppShell";
 import { HolidayCalendarContent } from "@/features/org-management/components/HolidayCalendarContent";
 
 export const metadata = {
@@ -5,5 +6,9 @@ export const metadata = {
 };
 
 export default function HolidayCalendarPage() {
-  return <HolidayCalendarContent />;
+  return (
+    <AppShell>
+      <HolidayCalendarContent />
+    </AppShell>
+  );
 }

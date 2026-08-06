@@ -16,6 +16,10 @@ const FINANCE_NAV_ITEMS: SidebarMenuItem[] = [
   { id: "finance-statutory", label: "Statutory Reports", icon: "shield-check", route: "/finance/statutory-reports", section: "FINANCE", badgeCount: 0, permission: "payroll:read", visible: true },
   { id: "finance-payroll-settings", label: "Payroll Settings", icon: "sliders", route: "/finance/payroll-settings", section: "FINANCE", badgeCount: 0, permission: "payroll_rate:read", visible: true },
   { id: "finance-ai", label: "AI Insights", icon: "sparkles", route: "/finance/ai-insights", section: "FINANCE", badgeCount: 0, permission: "dashboard:read_org", visible: true },
+  // BUG-BO: the Holiday Calendar is in the server menu catalog, which this
+  // hardcoded shell never reads — Finance needs it read-only for payroll
+  // premium planning, so it is listed here explicitly.
+  { id: "finance-holidays", label: "Holiday Calendar", icon: "calendar-days", route: "/admin/holidays", section: "FINANCE", badgeCount: 0, permission: "holiday:read", visible: true },
 ];
 
 // Finance runs in its own shell with hardcoded nav, so items added to the server
