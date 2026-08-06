@@ -647,8 +647,6 @@ function InlineEntryAdjustModal({
     setServerError(null);
   }, [open, entry]);
 
-  if (!entry) return null;
-
   const approvedMins = Math.round((Number(approvedHoursStr) || 0) * 60);
   const rejectedMins = Math.max(0, submittedMins - approvedMins);
   const submittedHours = (submittedMins / 60).toFixed(2);
@@ -658,8 +656,12 @@ function InlineEntryAdjustModal({
   const canSave = approvedMins >= 0 && (rejectedMins === 0 || reason.trim().length > 0);
 
   const submit = useMutation({
-    mutationFn: () =>
-      adjustTimesheet(detail.id, {
+    mutationFn: () => {
+      // `entry` is always set when this fires — the dialog that triggers it is
+      // only rendered past the guard below. Checked rather than asserted so the
+      // hook itself stays unconditional.
+      if (!entry) throw new Error("No entry selected");
+      return adjustTimesheet(detail.id, {
         expectedVersion: detail.version,
         reason: reason.trim() || `Adjusted hours for task: ${entry.task || "Work entry"}`,
         entries: [
@@ -671,7 +673,8 @@ function InlineEntryAdjustModal({
             rejectionReason: reason.trim() || undefined,
           },
         ],
-      }),
+      });
+    },
     onSuccess: () => {
       onToast({ message: "Entry hours adjusted and rejected time updated.", tone: "success" });
       queryClient.invalidateQueries({ queryKey: ["timesheet-oversight"] });
@@ -681,6 +684,11 @@ function InlineEntryAdjustModal({
     onError: (err) =>
       setServerError(err instanceof ApiError ? err.message : "Could not save entry adjustment."),
   });
+
+  // Must come after every hook above: when `entry` flipped null -> non-null this
+  // guard changed the hook count between renders, which React rejects outright
+  // ("Rendered more hooks than during the previous render").
+  if (!entry) return null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>

@@ -74,7 +74,7 @@ export function TimesheetWorkDetails({ timesheetId }: { timesheetId: string }) {
                 </p>
                 {hasRejection && (
                   <span className="rounded-full bg-red-100 px-2 py-0.5 text-[10px] font-bold text-red-700">
-                    {formatDuration(entry.rejectedMinutes)} Rejected
+                    {formatDuration(entry.rejectedMinutes ?? null)} Rejected
                   </span>
                 )}
               </div>
@@ -88,7 +88,7 @@ export function TimesheetWorkDetails({ timesheetId }: { timesheetId: string }) {
             {hasRejection && (
               <div className="mt-2.5 rounded-[8px] bg-red-50/60 border border-red-200/80 p-2.5 text-xs text-red-900">
                 <p className="font-semibold">
-                  Hours Split: {formatDuration(entry.durationMinutes)} Approved · {formatDuration(entry.rejectedMinutes)} Rejected (Submitted: {formatDuration(submittedMins)})
+                  Hours Split: {formatDuration(entry.durationMinutes)} Approved · {formatDuration(entry.rejectedMinutes ?? null)} Rejected (Submitted: {formatDuration(submittedMins)})
                 </p>
                 {entry.rejectionReason && (
                   <p className="mt-1 text-red-800">
