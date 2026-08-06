@@ -114,7 +114,7 @@ export function TeamKpiDashboardContent() {
       {/* Main KPI overview row (Chart left, Stats cards right) */}
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Progress chart */}
-        <div className="lg:col-span-2 rounded-[16px] border border-[#c3c6d2]/50 bg-white p-6 shadow-sm">
+        <div className="lg:col-span-2 rounded-[16px] border border-[#c3c6d2]/50 bg-white p-6 shadow-sm max-w-full overflow-hidden">
           <div className="flex justify-between items-center mb-6">
             <h2 className="text-base font-bold text-brand-navy">Individual KPI Progress</h2>
           </div>
@@ -130,43 +130,54 @@ export function TeamKpiDashboardContent() {
             </div>
           ) : (
             <>
-              <div className="relative h-64 border-b border-l border-[#c3c6d2]/40">
-                {[0, 25, 50, 75, 100].map((mark) => (
-                  <div
-                    key={mark}
-                    className="absolute left-0 right-0 flex items-center gap-2"
-                    style={{ bottom: `${mark}%` }}
-                  >
-                    <span className="w-8 -translate-x-full pr-2 text-right text-[10px] text-brand-muted">{mark}%</span>
-                    <div className="h-px w-full bg-[#c3c6d2]/30" />
-                  </div>
-                ))}
-                <div className="absolute inset-0 flex items-end justify-around px-6 pb-0.5">
-                  {chartData.map((pt, idx) => {
-                    const reached = pt.score >= TARGET_REACHED_THRESHOLD;
-                    return (
-                      <div key={idx} className="flex h-full flex-col items-center justify-end gap-1.5">
-                        <div
-                          className="relative flex flex-col items-center"
-                          style={{ marginBottom: `${Math.max(0, Math.min(100, pt.score))}%` }}
-                        >
-                          <span
-                            className={`h-3.5 w-3.5 rounded-full border-2 border-white shadow ${reached ? "bg-brand" : "bg-red-500"}`}
-                            title={`${pt.name}: ${pt.score}%`}
-                          />
-                        </div>
+              <div className="w-full max-w-full overflow-x-auto pb-4 scrollbar-thin">
+                <div style={{ minWidth: chartData.length > 8 ? `${chartData.length * 64}px` : "100%" }}>
+                  <div className="relative h-64 border-b border-l border-[#c3c6d2]/40">
+                    {[0, 25, 50, 75, 100].map((mark) => (
+                      <div
+                        key={mark}
+                        className="absolute left-0 right-0 flex items-center gap-2"
+                        style={{ bottom: `${mark}%` }}
+                      >
+                        <span className="w-8 -translate-x-full pr-2 text-right text-[10px] text-brand-muted">{mark}%</span>
+                        <div className="h-px w-full bg-[#c3c6d2]/30" />
                       </div>
-                    );
-                  })}
-                </div>
-              </div>
-              <div className="mt-3 flex items-center justify-around px-6">
-                {chartData.map((pt, idx) => (
-                  <div key={idx} className="flex flex-col items-center gap-0.5 w-16">
-                    <span className="text-[10px] font-bold text-brand-navy text-center truncate w-full">{pt.name}</span>
-                    <span className="text-[10px] text-brand-muted font-medium">{pt.score}%</span>
+                    ))}
+                    <div className="absolute inset-0 flex items-end justify-around px-6 pb-0.5">
+                      {chartData.map((pt, idx) => {
+                        const reached = pt.score >= TARGET_REACHED_THRESHOLD;
+                        return (
+                          <div key={idx} className="flex h-full flex-col items-center justify-end gap-1.5">
+                            <div
+                              className="relative flex flex-col items-center"
+                              style={{ marginBottom: `${Math.max(0, Math.min(100, pt.score))}%` }}
+                            >
+                              <span
+                                className={`h-3.5 w-3.5 rounded-full border-2 border-white shadow ${reached ? "bg-brand" : "bg-red-500"}`}
+                                title={`${pt.name}: ${pt.score}%`}
+                              />
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
                   </div>
-                ))}
+                  <div className="mt-4 flex items-center justify-around px-6">
+                    {chartData.map((pt, idx) => (
+                      <div key={idx} className="flex flex-col items-center gap-0.5 w-16">
+                        <span
+                          className={`text-[10px] font-bold text-brand-navy text-center truncate w-full transition-transform ${
+                            chartData.length > 8 ? "-rotate-45 origin-top-left translate-y-1" : ""
+                          }`}
+                          title={pt.name}
+                        >
+                          {pt.name}
+                        </span>
+                        <span className="text-[10px] text-brand-muted font-medium">{pt.score}%</span>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
               <div className="mt-4 flex items-center justify-center gap-6 border-t border-[#c3c6d2]/30 pt-3">
                 <div className="flex items-center gap-1.5 text-xs font-semibold text-brand-muted">

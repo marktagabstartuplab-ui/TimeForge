@@ -18,6 +18,7 @@ import { AiFormattedText } from "@/components/shared/AiFormattedText";
 import { useCan } from "@/features/auth/rbac";
 import type { ToastState } from "@/components/shared/Toast";
 import { AdjustHoursModal } from "./AdjustHoursModal";
+import { ErrorBoundary } from "@/components/shared/ErrorBoundary";
 
 interface ReviewDetailPanelProps {
   detail: TimesheetDetail | null;
@@ -295,166 +296,169 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
           <BookOpen className="h-4 w-4" />
           Logged Tasks & Outputs (Click to Expand Details)
         </h3>
-        <div className="max-h-80 overflow-y-auto border border-[#c3c6d2]/40 rounded-[12px] divide-y divide-[#c3c6d2]/25">
-          {detail.entries.length === 0 ? (
-            <div className="p-4 text-center text-xs text-brand-muted">No time entries recorded for this period.</div>
-          ) : (
-            detail.entries.map((entry) => {
-              const isExpanded = expandedEntries[entry.id];
-              const hasRejection = entry.rejectedMinutes != null && entry.rejectedMinutes > 0;
-              const submittedMins = entry.submittedMinutes ?? ((entry.durationMinutes ?? 0) + (entry.rejectedMinutes ?? 0));
-              return (
-                <div key={entry.id} className="flex flex-col hover:bg-slate-50/30 transition-colors">
-                  {/* Clickable Header */}
-                  <div className="w-full text-left p-3 flex items-start gap-3 justify-between hover:bg-slate-50/80 transition-colors">
-                    <button
-                      type="button"
-                      onClick={() => toggleExpand(entry.id)}
-                      className="min-w-0 flex-1 text-left"
-                    >
-                      <div className="flex items-center gap-2 flex-wrap">
-                        {isExpanded ? (
-                          <ChevronUp className="h-4 w-4 text-brand-muted shrink-0" />
-                        ) : (
-                          <ChevronDown className="h-4 w-4 text-brand-muted shrink-0" />
-                        )}
-                        <p className="font-semibold text-sm text-brand-ink truncate">
-                          {entry.task || "General Work Output"}
-                        </p>
-                        {entry.project?.name && (
-                          <span className="text-[10px] bg-[#1467d6]/10 text-brand px-1.5 py-0.5 rounded font-medium max-w-[120px] truncate">
-                            {entry.project.name}
-                          </span>
-                        )}
-                        {hasRejection && (
-                          <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full shrink-0">
-                            {formatHours(entry.rejectedMinutes!)}h Rejected
-                          </span>
-                        )}
-                      </div>
-                      {entry.deliverables && !isExpanded ? (
-                        <p className="text-xs text-brand-muted truncate pl-5 mt-0.5">
-                          <span className="font-semibold">Deliverables:</span> {entry.deliverables}
-                        </p>
-                      ) : null}
-                      <p className="text-[10px] text-brand-muted pl-5 mt-0.5">
-                        {new Date(entry.startTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })} @ {formatTime(entry.startTime)}
-                      </p>
-                    </button>
-                    <div className="flex items-center gap-2 shrink-0 pt-0.5">
-                      <div className="text-xs font-bold text-brand bg-slate-100 px-2 py-0.5 rounded">
-                        {formatHours(entry.durationMinutes ?? 0)}h Approved
-                      </div>
-                      {canAdjust && underReview && (
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setSelectedEntryForAdjust(entry);
-                          }}
-                          title="Adjust regular/overtime hours and record rejected time for this entry"
-                          className="p-1 text-brand-muted hover:text-brand hover:bg-brand/10 rounded transition-colors"
-                        >
-                          <PencilLine className="h-4 w-4 text-amber-600 hover:text-amber-700" />
-                        </button>
-                      )}
-                    </div>
-                  </div>
-
-                  {/* Expanded Details Panel */}
-                  {isExpanded && (
-                    <div className="px-8 pb-4 pt-3 flex flex-col gap-3 border-t border-[#c3c6d2]/10 bg-slate-50/20 text-xs text-brand-ink">
-                      {hasRejection && (
-                        <div className="rounded-lg border border-red-200/80 bg-red-50/60 p-2.5 text-xs text-red-900">
-                          <span className="font-semibold block mb-0.5">Hour Adjustment & Rejection Split:</span>
-                          <p>{formatHours(entry.durationMinutes ?? 0)}h Approved · {formatHours(entry.rejectedMinutes!)}h Rejected (Submitted: {formatHours(submittedMins)}h)</p>
-                          {entry.rejectionReason && (
-                            <p className="mt-1 text-red-800">
-                              <span className="font-semibold text-red-900">Reason: </span>
-                              {entry.rejectionReason}
-                            </p>
+        <ErrorBoundary>
+          <div className="max-h-80 overflow-y-auto border border-[#c3c6d2]/40 rounded-[12px] divide-y divide-[#c3c6d2]/25">
+            {detail.entries.length === 0 ? (
+              <div className="p-4 text-center text-xs text-brand-muted">No time entries recorded for this period.</div>
+            ) : (
+              detail.entries.map((entry) => {
+                const isExpanded = expandedEntries[entry.id];
+                const hasRejection = entry.rejectedMinutes != null && entry.rejectedMinutes > 0;
+                const submittedMins = entry.submittedMinutes ?? ((entry.durationMinutes ?? 0) + (entry.rejectedMinutes ?? 0));
+                return (
+                  <div key={entry.id} className="flex flex-col hover:bg-slate-50/30 transition-colors">
+                    {/* Clickable Header */}
+                    <div className="w-full text-left p-3 flex items-start gap-3 justify-between hover:bg-slate-50/80 transition-colors">
+                      <button
+                        type="button"
+                        onClick={() => toggleExpand(entry.id)}
+                        className="min-w-0 flex-1 text-left"
+                      >
+                        <div className="flex items-center gap-2 flex-wrap">
+                          {isExpanded ? (
+                            <ChevronUp className="h-4 w-4 text-brand-muted shrink-0" />
+                          ) : (
+                            <ChevronDown className="h-4 w-4 text-brand-muted shrink-0" />
+                          )}
+                          <p className="font-semibold text-sm text-brand-ink truncate">
+                            {entry.task || "General Work Output"}
+                          </p>
+                          {entry.project?.name && (
+                            <span className="text-[10px] bg-[#1467d6]/10 text-brand px-1.5 py-0.5 rounded font-medium max-w-[120px] truncate">
+                              {entry.project.name}
+                            </span>
+                          )}
+                          {hasRejection && (
+                            <span className="text-[10px] font-bold bg-red-100 text-red-700 px-2 py-0.5 rounded-full shrink-0">
+                              {formatHours(entry.rejectedMinutes!)}h Rejected
+                            </span>
                           )}
                         </div>
-                      )}
-                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-b border-[#c3c6d2]/15 pb-2.5 mb-1.5">
-                        <div>
-                          <span className="font-semibold text-brand-muted block mb-0.5">Project:</span>
-                          <span className="font-medium text-brand-navy">{entry.project?.name || "No Project"}</span>
+                        {entry.deliverables && !isExpanded ? (
+                          <p className="text-xs text-brand-muted truncate pl-5 mt-0.5">
+                            <span className="font-semibold">Deliverables:</span> {entry.deliverables}
+                          </p>
+                        ) : null}
+                        <p className="text-[10px] text-brand-muted pl-5 mt-0.5">
+                          {new Date(entry.startTime).toLocaleDateString("en-US", { month: "short", day: "numeric" })} @ {formatTime(entry.startTime)}
+                        </p>
+                      </button>
+                      <div className="flex items-center gap-2 shrink-0 pt-0.5">
+                        <div className="text-xs font-bold text-brand bg-slate-100 px-2 py-0.5 rounded">
+                          {formatHours(entry.durationMinutes ?? 0)}h Approved
                         </div>
-                        <div>
-                          <span className="font-semibold text-brand-muted block mb-0.5">Client:</span>
-                          <span className="font-medium text-brand-navy">{entry.client?.name || "—"}</span>
-                        </div>
-                        <div>
-                          <span className="font-semibold text-brand-muted block mb-0.5">Department:</span>
-                          <span className="font-medium text-brand-navy">{entry.department?.name || "—"}</span>
-                        </div>
+                        {canAdjust && underReview && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setSelectedEntryForAdjust(entry);
+                            }}
+                            title="Adjust regular/overtime hours and record rejected time for this entry"
+                            className="p-1 text-brand-muted hover:text-brand hover:bg-brand/10 rounded transition-colors"
+                          >
+                            <PencilLine className="h-4 w-4 text-amber-600 hover:text-amber-700" />
+                          </button>
+                        )}
                       </div>
-                      {entry.task && (
-                        <div>
-                          <span className="font-semibold text-brand-muted block mb-0.5">Task Title:</span>
-                          <p className="text-sm font-medium text-brand-navy">{entry.task}</p>
-                        </div>
-                      )}
-                      {entry.description && (
-                        <div>
-                          <span className="font-semibold text-brand-muted block mb-0.5">Work Description:</span>
-                          <p className="bg-white p-2.5 rounded-lg border border-[#c3c6d2]/20 whitespace-pre-wrap">{entry.description}</p>
-                        </div>
-                      )}
-                      {entry.deliverables && (
-                        <div>
-                          <span className="font-semibold text-brand-muted block mb-0.5">Deliverables:</span>
-                          <p className="bg-white p-2.5 rounded-lg border border-[#c3c6d2]/20 whitespace-pre-wrap">{entry.deliverables}</p>
-                        </div>
-                      )}
-                      {entry.referenceLinks && entry.referenceLinks.length > 0 && (
-                        <div>
-                          <span className="font-semibold text-brand-muted block mb-1">Reference Links:</span>
-                          <ul className="flex flex-col gap-1">
-                            {entry.referenceLinks.map((link) => (
-                              <li key={link} className="flex items-center gap-1.5">
-                                <Link2 className="h-3.5 w-3.5 text-brand shrink-0" />
-                                <a href={link} target="_blank" rel="noreferrer" className="text-brand hover:underline truncate">
-                                  {link}
-                                </a>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
-                      {entry.attachments && entry.attachments.length > 0 && (
-                        <div>
-                          <span className="font-semibold text-brand-muted block mb-1">Attachments:</span>
-                          <ul className="flex flex-col gap-1.5">
-                            {entry.attachments.map((att) => (
-                              <li key={att.key} className="flex items-center gap-2 bg-white border border-[#c3c6d2]/20 px-2.5 py-1.5 rounded-lg">
-                                <Paperclip className="h-3.5 w-3.5 text-brand shrink-0" />
-                                <span className="truncate flex-1 font-medium">{att.filename}</span>
-                                <span className="text-[10px] text-brand-muted shrink-0">
-                                  {att.size > 1024 * 1024
-                                    ? `${(att.size / (1024 * 1024)).toFixed(1)} MB`
-                                    : `${Math.round(att.size / 1024)} KB`}
-                                </span>
-                                <button
-                                  type="button"
-                                  onClick={() => handleDownloadAttachment(entry.id, att.key)}
-                                  className="text-brand hover:text-[#1467d6] font-semibold flex items-center gap-1 ml-2"
-                                >
-                                  <Download className="h-3.5 w-3.5" />
-                                </button>
-                              </li>
-                            ))}
-                          </ul>
-                        </div>
-                      )}
                     </div>
-                  )}
-                </div>
-              );
-            })
-          )}
-        </div>
+
+                    {/* Expanded Details Panel */}
+                    {isExpanded && (
+                      <div className="px-8 pb-4 pt-3 flex flex-col gap-3 border-t border-[#c3c6d2]/10 bg-slate-50/20 text-xs text-brand-ink">
+                        {hasRejection && (
+                          <div className="rounded-lg border border-red-200/80 bg-red-50/60 p-2.5 text-xs text-red-900">
+                            <span className="font-semibold block mb-0.5">Hour Adjustment & Rejection Split:</span>
+                            <p>{formatHours(entry.durationMinutes ?? 0)}h Approved · {formatHours(entry.rejectedMinutes!)}h Rejected (Submitted: {formatHours(submittedMins)}h)</p>
+                            {entry.rejectionReason && (
+                              <p className="mt-1 text-red-800">
+                                <span className="font-semibold text-red-900">Reason: </span>
+                                {entry.rejectionReason}
+                              </p>
+                            )}
+                          </div>
+                        )}
+                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 border-b border-[#c3c6d2]/15 pb-2.5 mb-1.5">
+                          <div>
+                            <span className="font-semibold text-brand-muted block mb-0.5">Project:</span>
+                            <span className="font-medium text-brand-navy">{entry.project?.name || "No Project"}</span>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-brand-muted block mb-0.5">Client:</span>
+                            <span className="font-medium text-brand-navy">{entry.client?.name || "—"}</span>
+                          </div>
+                          <div>
+                            <span className="font-semibold text-brand-muted block mb-0.5">Department:</span>
+                            <span className="font-medium text-brand-navy">{entry.department?.name || "—"}</span>
+                          </div>
+                        </div>
+                        {entry.task && (
+                          <div>
+                            <span className="font-semibold text-brand-muted block mb-0.5">Task Title:</span>
+                            <p className="text-sm font-medium text-brand-navy">{entry.task}</p>
+                          </div>
+                        )}
+                        {entry.description && (
+                          <div>
+                            <span className="font-semibold text-brand-muted block mb-0.5">Work Description:</span>
+                            <p className="bg-white p-2.5 rounded-lg border border-[#c3c6d2]/20 whitespace-pre-wrap">{entry.description}</p>
+                          </div>
+                        )}
+                        {entry.deliverables && (
+                          <div>
+                            <span className="font-semibold text-brand-muted block mb-0.5">Deliverables:</span>
+                            <p className="bg-white p-2.5 rounded-lg border border-[#c3c6d2]/20 whitespace-pre-wrap">{entry.deliverables}</p>
+                          </div>
+                        )}
+                        {entry.referenceLinks && entry.referenceLinks.length > 0 && (
+                          <div>
+                            <span className="font-semibold text-brand-muted block mb-1">Reference Links:</span>
+                            <ul className="flex flex-col gap-1">
+                              {entry.referenceLinks.map((link) => (
+                                <li key={link} className="flex items-center gap-1.5">
+                                  <Link2 className="h-3.5 w-3.5 text-brand shrink-0" />
+                                  <a href={link} target="_blank" rel="noreferrer" className="text-brand hover:underline truncate">
+                                    {link}
+                                  </a>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                        {entry.attachments && entry.attachments.length > 0 && (
+                          <div>
+                            <span className="font-semibold text-brand-muted block mb-1">Attachments:</span>
+                            <ul className="flex flex-col gap-1.5">
+                              {entry.attachments.map((att) => (
+                                <li key={att.key} className="flex items-center gap-2 bg-white border border-[#c3c6d2]/20 px-2.5 py-1.5 rounded-lg">
+                                  <Paperclip className="h-3.5 w-3.5 text-brand shrink-0" />
+                                  <span className="truncate flex-1 font-medium">{att.filename}</span>
+                                  <span className="text-[10px] text-brand-muted shrink-0">
+                                    {att.size > 1024 * 1024
+                                      ? `${(att.size / (1024 * 1024)).toFixed(1)} MB`
+                                      : `${Math.round(att.size / 1024)} KB`}
+                                  </span>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDownloadAttachment(entry.id, att.key)}
+                                    className="text-brand hover:text-[#1467d6] font-semibold flex items-center gap-1 ml-2"
+                                  >
+                                    <Download className="h-3.5 w-3.5" />
+                                  </button>
+                                </li>
+                              ))}
+                            </ul>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+        </ErrorBoundary>
+      </div>
       </div>
 
       {/* Accomplishments/Summary notes if employee submitted any */}
@@ -688,92 +692,92 @@ function InlineEntryAdjustModal({
   // Must come after every hook above: when `entry` flipped null -> non-null this
   // guard changed the hook count between renders, which React rejects outright
   // ("Rendered more hooks than during the previous render").
-  if (!entry) return null;
-
   return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="w-[min(540px,calc(100vw-2rem))]">
-        <div className="flex items-start justify-between px-6 pt-6">
-          <div>
-            <DialogTitle className="text-lg font-bold text-brand-navy">
-              Adjust Entry Hours & Rejected Time
-            </DialogTitle>
-            <DialogDescription className="text-xs text-brand-muted mt-1">
-              Adjust approved hours for &ldquo;{entry.task || entry.description || "General Work"}&rdquo;
-            </DialogDescription>
-          </div>
-          <DialogCloseButton />
-        </div>
-
-        <div className="flex flex-col gap-4 px-6 py-4">
-          {serverError ? <FormBanner message={serverError} /> : null}
-
-          <div className="grid grid-cols-3 gap-3 rounded-lg border border-[#c3c6d2]/40 bg-slate-50 p-3 text-center">
+    <Dialog open={open && Boolean(entry)} onOpenChange={onOpenChange}>
+      {entry ? (
+        <DialogContent className="w-[min(540px,calc(100vw-2rem))]">
+          <div className="flex items-start justify-between px-6 pt-6">
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Submitted</p>
-              <p className="text-base font-black text-brand-ink">{submittedHours}h</p>
+              <DialogTitle className="text-lg font-bold text-brand-navy">
+                Adjust Entry Hours & Rejected Time
+              </DialogTitle>
+              <DialogDescription className="text-xs text-brand-muted mt-1">
+                Adjust approved hours for &ldquo;{entry.task || entry.description || "General Work"}&rdquo;
+              </DialogDescription>
             </div>
+            <DialogCloseButton />
+          </div>
+
+          <div className="flex flex-col gap-4 px-6 py-4">
+            {serverError ? <FormBanner message={serverError} /> : null}
+
+            <div className="grid grid-cols-3 gap-3 rounded-lg border border-[#c3c6d2]/40 bg-slate-50 p-3 text-center">
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-brand-muted">Submitted</p>
+                <p className="text-base font-black text-brand-ink">{submittedHours}h</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Approved</p>
+                <p className="text-base font-black text-emerald-700">{approvedHours}h</p>
+              </div>
+              <div>
+                <p className="text-[10px] font-bold uppercase tracking-wider text-red-600">Rejected</p>
+                <p className="text-base font-black text-red-600">{rejectedHours}h</p>
+              </div>
+            </div>
+
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-emerald-700">Approved</p>
-              <p className="text-base font-black text-emerald-700">{approvedHours}h</p>
+              <Label htmlFor="entry-approved-hours" className="text-xs font-semibold text-brand-ink mb-1.5 block">
+                Approved Hours
+              </Label>
+              <Input
+                id="entry-approved-hours"
+                type="number"
+                min="0"
+                max={(submittedMins / 60).toFixed(2)}
+                step="0.25"
+                value={approvedHoursStr}
+                onChange={(e) => setApprovedHoursStr(e.target.value)}
+                className="w-full bg-white text-sm"
+              />
+              {rejectedMins > 0 && (
+                <p className="mt-1 text-[11px] font-medium text-amber-700">
+                  Reducing from {submittedHours}h to {approvedHours}h will record {rejectedHours}h as Rejected Hours.
+                </p>
+              )}
             </div>
+
             <div>
-              <p className="text-[10px] font-bold uppercase tracking-wider text-red-600">Rejected</p>
-              <p className="text-base font-black text-red-600">{rejectedHours}h</p>
+              <Label htmlFor="entry-rejection-reason" className="text-xs font-semibold text-brand-ink mb-1.5 block">
+                Reason / Note {rejectedMins > 0 ? <span className="text-red-600">*</span> : "(Optional)"}
+              </Label>
+              <Textarea
+                id="entry-rejection-reason"
+                rows={3}
+                value={reason}
+                onChange={(e) => setReason(e.target.value)}
+                placeholder="Explain why hours were deducted or adjusted (e.g. Unapproved overtime, unlogged break, scope change)..."
+                className="bg-white text-sm"
+              />
+            </div>
+
+            <div className="flex justify-end gap-2.5 pt-2">
+              <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                Cancel
+              </Button>
+              <Button
+                type="button"
+                onClick={() => submit.mutate()}
+                disabled={!canSave || submit.isPending}
+                className="bg-brand text-white hover:bg-[#1467d6]"
+              >
+                {submit.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
+                Save Entry Adjustment
+              </Button>
             </div>
           </div>
-
-          <div>
-            <Label htmlFor="entry-approved-hours" className="text-xs font-semibold text-brand-ink mb-1.5 block">
-              Approved Hours
-            </Label>
-            <Input
-              id="entry-approved-hours"
-              type="number"
-              min="0"
-              max={(submittedMins / 60).toFixed(2)}
-              step="0.25"
-              value={approvedHoursStr}
-              onChange={(e) => setApprovedHoursStr(e.target.value)}
-              className="w-full bg-white text-sm"
-            />
-            {rejectedMins > 0 && (
-              <p className="mt-1 text-[11px] font-medium text-amber-700">
-                Reducing from {submittedHours}h to {approvedHours}h will record {rejectedHours}h as Rejected Hours.
-              </p>
-            )}
-          </div>
-
-          <div>
-            <Label htmlFor="entry-rejection-reason" className="text-xs font-semibold text-brand-ink mb-1.5 block">
-              Reason / Note {rejectedMins > 0 ? <span className="text-red-600">*</span> : "(Optional)"}
-            </Label>
-            <Textarea
-              id="entry-rejection-reason"
-              rows={3}
-              value={reason}
-              onChange={(e) => setReason(e.target.value)}
-              placeholder="Explain why hours were deducted or adjusted (e.g. Unapproved overtime, unlogged break, scope change)..."
-              className="bg-white text-sm"
-            />
-          </div>
-
-          <div className="flex justify-end gap-2.5 pt-2">
-            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
-              Cancel
-            </Button>
-            <Button
-              type="button"
-              onClick={() => submit.mutate()}
-              disabled={!canSave || submit.isPending}
-              className="bg-brand text-white hover:bg-[#1467d6]"
-            >
-              {submit.isPending ? <Loader2 className="h-4 w-4 animate-spin mr-1.5" /> : null}
-              Save Entry Adjustment
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
+        </DialogContent>
+      ) : null}
     </Dialog>
   );
 }
