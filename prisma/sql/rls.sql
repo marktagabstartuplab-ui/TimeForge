@@ -55,7 +55,11 @@ DECLARE
     -- Employee relations: grievances, NTE, offboarding clearance (BUG-AL/BUG-BB)
     'grievances', 'discipline_records', 'clearance_checklists', 'clearance_checklist_items',
     -- Compensation & benefits (BUG-BC)
-    'de_minimis_benefits'
+    'de_minimis_benefits',
+    -- Recurring issues, org payroll config, and private employee calendars.
+    -- EmployeeCalendarEvent is deliberately not visible to supervisors or HR at
+    -- the application layer, so it needs the database backstop too.
+    'recurring_issues', 'payroll_settings', 'employee_calendar_events'
   ];
 BEGIN
   FOREACH t IN ARRAY tenant_tables LOOP
