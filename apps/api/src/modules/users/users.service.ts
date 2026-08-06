@@ -114,7 +114,7 @@ export class UsersService {
     const isAllowedRole = caller.roles.some((r) => r === 'FINANCE' || r === 'ADMIN' || r === 'HR' || r === 'SUPERVISOR');
     if (!isAllowedRole && caller.userId !== safe.id) {
       // Hidden only from other employees/interns
-      const { hourlyRate: _rate, ...rest } = safe;
+      const { hourlyRate: _rate, dailyRate: _dailyRate, ...rest } = safe;
       return rest;
     }
     return safe;

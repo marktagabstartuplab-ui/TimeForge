@@ -7,7 +7,7 @@ import {
   UnprocessableEntityException,
 } from '@nestjs/common';
 import { Decimal } from '@prisma/client/runtime/library';
-import { AuditAction, PayrollPeriodStatus, Prisma, EmploymentType } from '@prisma/client';
+import { AuditAction, PayrollPeriodStatus, Prisma, EmploymentType, CompensationType } from '@prisma/client';
 import { InjectQueue } from '@nestjs/bullmq';
 import { Queue } from 'bullmq';
 import { randomUUID } from 'node:crypto';
@@ -104,27 +104,40 @@ export class PayrollService {
    */
   private resolvePayslipEarnings(
     item: {
+      compensationType?: CompensationType | null;
       hourlyRate: Decimal | number | null;
+      dailyRate?: Decimal | number | null;
+      daysWorked?: Decimal | number | null;
       approvedHours: Decimal | number;
       overtimeHours: Decimal | number;
       estimatedPay: Decimal | number | null;
     },
     userHourlyRate: Decimal | number | null,
     overtimeMultiplier: number,
+    userDailyRate?: Decimal | number | null,
+    userCompType?: CompensationType | null,
   ) {
     const approved = Number(item.approvedHours);
     const overtime = Number(item.overtimeHours);
     const regular = Math.max(0, approved - overtime);
 
+    const compType = item.compensationType ?? userCompType ?? 'HOURLY';
     const snapshottedRate = Number(item.hourlyRate ?? 0);
     const currentRate = Number(userHourlyRate ?? 0);
     const rate = snapshottedRate > 0 ? snapshottedRate : currentRate;
 
-    const regPay = regular * rate;
+    const snapshottedDailyRate = Number(item.dailyRate ?? 0);
+    const currentDailyRate = Number(userDailyRate ?? 0);
+    const dailyRate = snapshottedDailyRate > 0 ? snapshottedDailyRate : (currentDailyRate > 0 ? currentDailyRate : rate * 8);
+
+    const daysWorked = Number(item.daysWorked ?? (approved / 8));
+    const regularDays = regular / 8;
+
+    const regPay = compType === 'DAILY' ? regularDays * dailyRate : regular * rate;
     const otPay = overtime * rate * overtimeMultiplier;
     const gross = regPay + otPay;
 
-    return { rate, regular, overtime, regPay, otPay, gross };
+    return { compType, rate, dailyRate, daysWorked, regularDays, regular, overtime, regPay, otPay, gross };
   }
 
   /**
@@ -292,7 +305,12 @@ export class PayrollService {
   private async recalculateOpenLineItemsForUser(
     p: AuthPrincipal,
     userId: string,
-    rate: number,
+    compInfo: {
+      compensationType: CompensationType;
+      hourlyRate: number;
+      dailyRate: number;
+      daysPerWeek: number;
+    },
     actorId: string,
     overtimeMultiplier: number,
   ) {
@@ -309,6 +327,7 @@ export class PayrollService {
         approvedHours: true,
         overtimeHours: true,
         hourlyRate: true,
+        dailyRate: true,
         holidayHours: true,
         holidayPay: true,
         nightDiffHours: true,
@@ -326,14 +345,22 @@ export class PayrollService {
       const approved = Number(li.approvedHours);
       const overtime = Number(li.overtimeHours);
       const regular = Math.max(0, approved - overtime);
-      const regularPay = regular * rate;
-      const overtimePay = overtime * rate * overtimeMultiplier;
+
+      let regularPay = 0;
+      const daysWorked = approved / 8;
+
+      if (compInfo.compensationType === 'DAILY') {
+        const regularDays = regular / 8;
+        regularPay = regularDays * compInfo.dailyRate;
+      } else {
+        regularPay = regular * compInfo.hourlyRate;
+      }
+
+      const overtimePay = overtime * compInfo.hourlyRate * overtimeMultiplier;
       const estimatedPay = regularPay + overtimePay;
 
-      // Rescale the stored premiums onto the new rate. A line item generated
-      // before FEAT-3 (or with no rate on it) has no premiums to rescale.
       const oldRate = Number(li.hourlyRate);
-      const ratio = oldRate > 0 ? rate / oldRate : 0;
+      const ratio = oldRate > 0 ? compInfo.hourlyRate / oldRate : 0;
       const premiums = {
         holidayHours: Number(li.holidayHours),
         holidayPay: round2(Number(li.holidayPay) * ratio),
@@ -378,7 +405,11 @@ export class PayrollService {
       await this.prisma.payrollLineItem.update({
         where: { id: li.id },
         data: {
-          hourlyRate: rate,
+          compensationType: compInfo.compensationType,
+          hourlyRate: compInfo.hourlyRate,
+          dailyRate: compInfo.dailyRate,
+          daysPerWeek: compInfo.daysPerWeek,
+          daysWorked,
           estimatedPay,
           regularPay,
           overtimePay,
@@ -614,7 +645,13 @@ export class PayrollService {
         employmentType: { not: 'INTERN' },
         deletedAt: null,
       },
-      select: { id: true, hourlyRate: true },
+      select: {
+        id: true,
+        hourlyRate: true,
+        compensationType: true,
+        dailyRate: true,
+        daysPerWeek: true,
+      },
     });
 
     // Fetch all approved time entries to compute daily overtime (>8h/day)
@@ -771,7 +808,12 @@ export class PayrollService {
       let totalEmployerCost = new Decimal(0);
 
       for (const user of eligibleUsers) {
-        const rate = user.hourlyRate ?? new Decimal(0);
+        const compType = user.compensationType ?? 'HOURLY';
+        const hRate = user.hourlyRate ? Number(user.hourlyRate) : 0;
+        const dRate = user.dailyRate ? Number(user.dailyRate) : hRate * 8;
+        const dpw = user.daysPerWeek ? Number(user.daysPerWeek) : 5;
+        const effectiveHourlyRate = compType === 'DAILY' ? dRate / 8 : hRate;
+
         const approvedMins = userMinutes.get(user.id) ?? 0;
         const pendingMins = pendingMinutes.get(user.id) ?? 0;
         const rejectedMins = rejectedMinutes.get(user.id) ?? 0;
@@ -798,15 +840,23 @@ export class PayrollService {
         const pendingHours = new Decimal(pendingMins).div(60);
         const rejectedHours = new Decimal(rejectedMins).div(60);
 
-        // Estimated pay: regular x rate + overtime x rate x the org's OT multiplier
-        const regularPay = regularHours.mul(rate);
-        const overtimePay = overtimeHours.mul(rate).mul(overtimeMultiplier);
+        const daysWorked = approvedHours.div(8);
+        const regularDays = regularHours.div(8);
+
+        let regularPay: Decimal;
+        if (compType === 'DAILY') {
+          regularPay = regularDays.mul(dRate);
+        } else {
+          regularPay = regularHours.mul(hRate);
+        }
+
+        const overtimePay = overtimeHours.mul(effectiveHourlyRate).mul(overtimeMultiplier);
         const estimatedPay = regularPay.add(overtimePay);
 
         totalEstimatedPay = totalEstimatedPay.add(estimatedPay);
 
         const premiums = this.computePremiums({
-          rate: Number(rate),
+          rate: effectiveHourlyRate,
           nightMinutes: userNightMinutes.get(user.id) ?? 0,
           holidayMinutesByDay: userHolidayMinutes.get(user.id),
           holidayByKey,
@@ -836,7 +886,11 @@ export class PayrollService {
             pendingHours,
             rejectedHours,
             overtimeHours,
-            hourlyRate: rate,
+            compensationType: compType,
+            hourlyRate: effectiveHourlyRate,
+            dailyRate: dRate,
+            daysPerWeek: dpw,
+            daysWorked,
             estimatedPay,
             regularPay,
             overtimePay,
@@ -1244,7 +1298,7 @@ export class PayrollService {
     const item = await this.prisma.payrollLineItem.findFirst({
       where: { id, tenantId: p.tenantId },
       include: {
-        user: { select: { firstName: true, lastName: true, email: true, jobTitle: true, hourlyRate: true, department: { select: { name: true } } } },
+        user: { select: { firstName: true, lastName: true, email: true, jobTitle: true, hourlyRate: true, dailyRate: true, compensationType: true, department: { select: { name: true } } } },
         payrollReport: {
           include: {
             period: true,
@@ -1310,10 +1364,12 @@ export class PayrollService {
     doc.moveDown(0.4);
 
     const overtimeMultiplier = await this.overtimeRates.forPrincipal(p);
-    const { rate, regular, overtime, regPay, otPay, gross } = this.resolvePayslipEarnings(
+    const { compType, rate, dailyRate, regularDays, regular, overtime, regPay, otPay, gross } = this.resolvePayslipEarnings(
       item,
       item.user.hourlyRate,
       overtimeMultiplier,
+      item.user.dailyRate,
+      item.user.compensationType,
     );
 
     const drawTableRow = (desc: string, rateVal: string, amount: string) => {
@@ -1324,7 +1380,11 @@ export class PayrollService {
       doc.moveDown(0.5);
     };
 
-    drawTableRow('Regular Hours', `${regular.toFixed(2)} hrs @ ₱${rate.toFixed(2)}/hr`, `₱${regPay.toFixed(2)}`);
+    if (compType === 'DAILY') {
+      drawTableRow('Regular Work (Daily)', `${regularDays.toFixed(2)} days @ ₱${dailyRate.toFixed(2)}/day`, `₱${regPay.toFixed(2)}`);
+    } else {
+      drawTableRow('Regular Hours', `${regular.toFixed(2)} hrs @ ₱${rate.toFixed(2)}/hr`, `₱${regPay.toFixed(2)}`);
+    }
     drawTableRow('Overtime Hours', `${overtime.toFixed(2)} hrs @ ₱${(rate * overtimeMultiplier).toFixed(2)}/hr`, `₱${otPay.toFixed(2)}`);
 
     // FEAT-3: premiums and statutory deductions. Figures are read from the
@@ -1457,7 +1517,7 @@ export class PayrollService {
     }
     const user = await this.prisma.user.findFirst({
       where: { id: userId, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
-      select: { id: true, firstName: true, lastName: true, hourlyRate: true },
+      select: { id: true, firstName: true, lastName: true, compensationType: true, hourlyRate: true, dailyRate: true, daysPerWeek: true, version: true },
     });
     if (!user) throw new NotFoundException('User not found');
     return user;
@@ -1466,24 +1526,77 @@ export class PayrollService {
   async updateRate(
     p: AuthPrincipal,
     userId: string,
-    rate: number,
-    version: number,
+    rateOrOpts: number | {
+      compensationType?: CompensationType;
+      rate?: number;
+      hourlyRate?: number;
+      dailyRate?: number;
+      daysPerWeek?: number;
+      version?: number;
+    },
+    versionParam?: number,
   ) {
     if (!this.can(p, PERMISSIONS.PAYROLL_RATE_UPDATE)) {
-      throw new ForbiddenException('Only Finance/Admin can update hourly rates (BR-PAY-06)');
+      throw new ForbiddenException('Only Finance/Admin can update rates (BR-PAY-06)');
     }
-    if (rate < 0) throw new UnprocessableEntityException('Hourly rate must be >= 0');
+    const opts = typeof rateOrOpts === 'number'
+      ? { rate: rateOrOpts, version: versionParam }
+      : rateOrOpts;
 
     const user = await this.prisma.user.findFirst({
       where: { id: userId, tenantId: p.tenantId, organizationId: p.organizationId, deletedAt: null },
     });
     if (!user) throw new NotFoundException('User not found');
-    if (user.version !== version) throw new ConflictException('Version mismatch');
+
+    const expectedVersion = opts.version ?? versionParam;
+    if (expectedVersion !== undefined && expectedVersion !== null && user.version !== expectedVersion) {
+      throw new ConflictException('Version mismatch');
+    }
+
+    const compensationType = opts.compensationType ?? user.compensationType ?? 'HOURLY';
+    const daysPerWeek = opts.daysPerWeek ?? (user.daysPerWeek ? Number(user.daysPerWeek) : 5);
+
+    let hourlyRate = user.hourlyRate ? Number(user.hourlyRate) : 0;
+    let dailyRate = user.dailyRate ? Number(user.dailyRate) : 0;
+
+    if (compensationType === 'DAILY') {
+      if (opts.dailyRate !== undefined && opts.dailyRate !== null) {
+        dailyRate = opts.dailyRate;
+      } else if (opts.rate !== undefined && opts.rate !== null) {
+        dailyRate = opts.rate;
+      }
+      if (dailyRate < 0) throw new UnprocessableEntityException('Daily rate must be >= 0');
+      hourlyRate = dailyRate / 8;
+    } else {
+      if (opts.hourlyRate !== undefined && opts.hourlyRate !== null) {
+        hourlyRate = opts.hourlyRate;
+      } else if (opts.rate !== undefined && opts.rate !== null) {
+        hourlyRate = opts.rate;
+      }
+      if (hourlyRate < 0) throw new UnprocessableEntityException('Hourly rate must be >= 0');
+      dailyRate = hourlyRate * 8;
+    }
 
     const updated = await this.prisma.user.update({
       where: { id: userId },
-      data: { hourlyRate: rate, updatedBy: p.userId, version: { increment: 1 } },
-      select: { id: true, firstName: true, lastName: true, hourlyRate: true, version: true },
+      data: {
+        compensationType,
+        hourlyRate,
+        dailyRate,
+        daysPerWeek,
+        updatedBy: p.userId,
+        version: { increment: 1 },
+      },
+      select: {
+        id: true,
+        firstName: true,
+        lastName: true,
+        compensationType: true,
+        hourlyRate: true,
+        dailyRate: true,
+        daysPerWeek: true,
+        version: true,
+      },
     });
 
     await this.prisma.auditLog.create({
@@ -1493,7 +1606,14 @@ export class PayrollService {
         action: AuditAction.ADMIN_ACTION,
         entityType: 'user',
         entityId: userId,
-        metadata: { action: 'updateRate', previousRate: user.hourlyRate, newRate: rate },
+        metadata: {
+          action: 'updateRate',
+          compensationType,
+          previousHourlyRate: user.hourlyRate,
+          newHourlyRate: hourlyRate,
+          previousDailyRate: user.dailyRate,
+          newDailyRate: dailyRate,
+        },
       },
     }).catch(() => {});
 
@@ -1501,7 +1621,7 @@ export class PayrollService {
     await this.recalculateOpenLineItemsForUser(
       p,
       userId,
-      rate,
+      { compensationType, hourlyRate, dailyRate, daysPerWeek },
       p.userId,
       overtimeMultiplier,
     ).catch((err: Error) =>

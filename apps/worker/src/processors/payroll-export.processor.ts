@@ -14,7 +14,10 @@ type LineItemRow = {
   pendingHours: unknown;
   rejectedHours: unknown;
   overtimeHours: unknown;
+  compensationType?: string | null;
   hourlyRate: unknown;
+  dailyRate?: unknown;
+  daysWorked?: unknown;
   estimatedPay: unknown;
   user: { firstName: string; lastName: string; email: string };
 };
@@ -89,14 +92,14 @@ export class PayrollExportProcessor extends WorkerHost {
     const result: { pdfKey?: string; xlsxKey?: string } = {};
 
     if (format === 'PDF' || format === 'BOTH') {
-      const buffer = await buildPeriodPdf(report.period.startDate, report.period.endDate, report.lineItems);
+      const buffer = await buildPeriodPdf(report.period.startDate, report.period.endDate, report.lineItems as LineItemRow[]);
       const key = `exports/payroll-${periodId}-${jobId}.pdf`;
       await this.storage.put(key, buffer, { contentType: 'application/pdf' });
       result.pdfKey = key;
     }
 
     if (format === 'XLSX' || format === 'BOTH') {
-      const buffer = await buildPeriodExcel(report.lineItems);
+      const buffer = await buildPeriodExcel(report.lineItems as LineItemRow[]);
       const key = `exports/payroll-${periodId}-${jobId}.xlsx`;
       await this.storage.put(key, buffer, { contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet' });
       result.xlsxKey = key;
@@ -179,8 +182,11 @@ async function buildPeriodPdf(startDate: Date, endDate: Date, lineItems: LineIte
     doc.moveDown();
     doc.fontSize(10);
     for (const item of lineItems) {
+      const isDaily = item.compensationType === 'DAILY';
+      const rateInfo = isDaily ? `₱${item.dailyRate ?? 0}/day` : `₱${item.hourlyRate ?? 0}/hr`;
+      const basisInfo = isDaily ? `Daily (${Number(item.daysWorked ?? 0).toFixed(2)} days)` : `Hourly (${formatHoursHm(item.approvedHours)} hrs)`;
       doc.text(
-        `${item.user.firstName} ${item.user.lastName} (${item.user.email}) — Approved: ${formatHoursHm(item.approvedHours)} (HH:MM), OT: ${formatHoursHm(item.overtimeHours)} (HH:MM), Rate: ₱${item.hourlyRate}/hr, Est. Pay: ₱${item.estimatedPay}`,
+        `${item.user.firstName} ${item.user.lastName} (${item.user.email}) — Basis: ${basisInfo}, Rate: ${rateInfo}, Est. Pay: ₱${item.estimatedPay}`,
       );
     }
     doc.end();
@@ -193,19 +199,24 @@ async function buildPeriodExcel(lineItems: LineItemRow[]): Promise<Buffer> {
   sheet.columns = [
     { header: 'Employee', key: 'name', width: 28 },
     { header: 'Email', key: 'email', width: 30 },
+    { header: 'Basis', key: 'basis', width: 12 },
     { header: 'Approved Hours (HH:MM)', key: 'approved', width: 22 },
+    { header: 'Days Worked', key: 'daysWorked', width: 14 },
     { header: 'Overtime Hours (HH:MM)', key: 'overtime', width: 22 },
-    { header: 'Hourly Rate', key: 'rate', width: 14, style: { numFmt: '"₱"#,##0.00' } },
+    { header: 'Rate Info', key: 'rateStr', width: 18 },
     { header: 'Estimated Pay', key: 'pay', width: 16, style: { numFmt: '"₱"#,##0.00' } },
   ];
   sheet.getRow(1).font = { bold: true };
   for (const item of lineItems) {
+    const isDaily = item.compensationType === 'DAILY';
     sheet.addRow({
       name: `${item.user.firstName} ${item.user.lastName}`,
       email: item.user.email,
+      basis: isDaily ? 'Daily' : 'Hourly',
       approved: formatHoursHm(item.approvedHours),
+      daysWorked: isDaily ? Number(item.daysWorked ?? 0).toFixed(2) : '—',
       overtime: formatHoursHm(item.overtimeHours),
-      rate: item.hourlyRate,
+      rateStr: isDaily ? `₱${Number(item.dailyRate ?? 0).toFixed(2)}/day` : `₱${Number(item.hourlyRate ?? 0).toFixed(2)}/hr`,
       pay: item.estimatedPay,
     });
   }

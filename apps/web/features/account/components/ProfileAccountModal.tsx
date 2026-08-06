@@ -51,7 +51,10 @@ export function ProfileAccountModal() {
   const [editDepartmentId, setEditDepartmentId] = useState<string>("");
   const [editEmploymentType, setEditEmploymentType] = useState<string>("");
   const [editSupervisorId, setEditSupervisorId] = useState<string>("");
+  const [editCompensationType, setEditCompensationType] = useState<string>("HOURLY");
   const [editHourlyRate, setEditHourlyRate] = useState<string>("");
+  const [editDailyRate, setEditDailyRate] = useState<string>("");
+  const [editDaysPerWeek, setEditDaysPerWeek] = useState<string>("5");
   const [editRoleKey, setEditRoleKey] = useState<string>("");
 
   const meQuery = useQuery({
@@ -96,7 +99,10 @@ export function ProfileAccountModal() {
         setEditDepartmentId(meQuery.data.departmentId ?? "");
         setEditEmploymentType(meQuery.data.employmentType ?? "EMPLOYEE");
         setEditSupervisorId(meQuery.data.supervisor?.id ?? "");
+        setEditCompensationType(meQuery.data.compensationType ?? "HOURLY");
         setEditHourlyRate(meQuery.data.hourlyRate != null ? String(meQuery.data.hourlyRate) : "");
+        setEditDailyRate(meQuery.data.dailyRate != null ? String(meQuery.data.dailyRate) : "");
+        setEditDaysPerWeek(meQuery.data.daysPerWeek != null ? String(meQuery.data.daysPerWeek) : "5");
         setEditRoleKey(meQuery.data.roles[0]?.role.key ?? "EMPLOYEE");
       }
     }
@@ -107,14 +113,26 @@ export function ProfileAccountModal() {
       const payload = { ...values, phone: values.phone || undefined };
       if (isViewingOther) {
         let currentVersion = (meQuery.data as EmployeeRow).version;
-        const originalRate = meQuery.data?.hourlyRate != null ? String(meQuery.data.hourlyRate) : "";
-        const rateChanged = isAdminOrFinance && editHourlyRate !== originalRate;
+        const originalCompType = meQuery.data?.compensationType ?? "HOURLY";
+        const originalHourlyRate = meQuery.data?.hourlyRate != null ? String(meQuery.data.hourlyRate) : "";
+        const originalDailyRate = meQuery.data?.dailyRate != null ? String(meQuery.data.dailyRate) : "";
+        const originalDaysPerWeek = meQuery.data?.daysPerWeek != null ? String(meQuery.data.daysPerWeek) : "5";
 
-        // If hourly rate changed and viewer has permission, update the rate first
+        const rateChanged = isAdminOrFinance && (
+          editCompensationType !== originalCompType ||
+          editHourlyRate !== originalHourlyRate ||
+          editDailyRate !== originalDailyRate ||
+          editDaysPerWeek !== originalDaysPerWeek
+        );
+
+        // If compensation rate/type changed and viewer has permission, update the rate
         if (rateChanged) {
-          const rateVal = parseFloat(editHourlyRate) || 0;
-          const rateRes = await apiClient.patch(`/payroll/rates/${targetUserId}`, null, {
-            params: { rate: rateVal, version: currentVersion },
+          const rateRes = await apiClient.patch(`/payroll/rates/${targetUserId}`, {
+            compensationType: editCompensationType,
+            hourlyRate: parseFloat(editHourlyRate) || 0,
+            dailyRate: parseFloat(editDailyRate) || 0,
+            daysPerWeek: parseFloat(editDaysPerWeek) || 5,
+            version: currentVersion,
           });
           // The rate update increments the user's version, so we must use the new version for updateEmployee
           currentVersion = rateRes.data.version;
@@ -156,7 +174,10 @@ export function ProfileAccountModal() {
         setEditDepartmentId(updated.departmentId ?? "");
         setEditEmploymentType(updated.employmentType ?? "EMPLOYEE");
         setEditSupervisorId(updated.supervisor?.id ?? "");
+        setEditCompensationType(updated.compensationType ?? "HOURLY");
         setEditHourlyRate(updated.hourlyRate != null ? String(updated.hourlyRate) : "");
+        setEditDailyRate(updated.dailyRate != null ? String(updated.dailyRate) : "");
+        setEditDaysPerWeek(updated.daysPerWeek != null ? String(updated.daysPerWeek) : "5");
         setEditRoleKey(updated.roles[0]?.role.key ?? "EMPLOYEE");
       }
       setToast({ message: isViewingOther ? "Employee updated." : "Profile updated.", tone: "success" });
@@ -183,7 +204,10 @@ export function ProfileAccountModal() {
         setEditDepartmentId(meQuery.data.departmentId ?? "");
         setEditEmploymentType(meQuery.data.employmentType ?? "EMPLOYEE");
         setEditSupervisorId(meQuery.data.supervisor?.id ?? "");
+        setEditCompensationType(meQuery.data.compensationType ?? "HOURLY");
         setEditHourlyRate(meQuery.data.hourlyRate != null ? String(meQuery.data.hourlyRate) : "");
+        setEditDailyRate(meQuery.data.dailyRate != null ? String(meQuery.data.dailyRate) : "");
+        setEditDaysPerWeek(meQuery.data.daysPerWeek != null ? String(meQuery.data.daysPerWeek) : "5");
         setEditRoleKey(meQuery.data.roles[0]?.role.key ?? "EMPLOYEE");
       }
     }
@@ -195,7 +219,10 @@ export function ProfileAccountModal() {
     ? editDepartmentId !== (meQuery.data.departmentId ?? "")
       || editEmploymentType !== (meQuery.data.employmentType ?? "EMPLOYEE")
       || editSupervisorId !== (meQuery.data.supervisor?.id ?? "")
+      || editCompensationType !== (meQuery.data.compensationType ?? "HOURLY")
       || editHourlyRate !== (meQuery.data.hourlyRate != null ? String(meQuery.data.hourlyRate) : "")
+      || editDailyRate !== (meQuery.data.dailyRate != null ? String(meQuery.data.dailyRate) : "")
+      || editDaysPerWeek !== (meQuery.data.daysPerWeek != null ? String(meQuery.data.daysPerWeek) : "5")
       || editRoleKey !== (meQuery.data.roles[0]?.role.key ?? "EMPLOYEE")
     : false;
 
@@ -238,13 +265,19 @@ export function ProfileAccountModal() {
                     selectedDepartmentId={editDepartmentId}
                     selectedEmploymentType={editEmploymentType}
                     selectedSupervisorId={editSupervisorId}
+                    selectedCompensationType={editCompensationType}
                     selectedHourlyRate={editHourlyRate}
+                    selectedDailyRate={editDailyRate}
+                    selectedDaysPerWeek={editDaysPerWeek}
                     selectedRoleKey={editRoleKey}
                     canEditRate={isAdminOrFinance}
                     onDepartmentChange={setEditDepartmentId}
                     onEmploymentTypeChange={setEditEmploymentType}
                     onSupervisorChange={setEditSupervisorId}
+                    onCompensationTypeChange={setEditCompensationType}
                     onHourlyRateChange={setEditHourlyRate}
+                    onDailyRateChange={setEditDailyRate}
+                    onDaysPerWeekChange={setEditDaysPerWeek}
                     onRoleChange={setEditRoleKey}
                   />
                 </div>

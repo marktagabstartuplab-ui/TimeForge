@@ -55,13 +55,19 @@ interface ProfessionalDetailsCardProps {
   selectedDepartmentId?: string;
   selectedEmploymentType?: string;
   selectedSupervisorId?: string;
+  selectedCompensationType?: string;
   selectedHourlyRate?: string;
+  selectedDailyRate?: string;
+  selectedDaysPerWeek?: string;
   selectedRoleKey?: string;
   canEditRate?: boolean;
   onDepartmentChange?: (value: string) => void;
   onEmploymentTypeChange?: (value: string) => void;
   onSupervisorChange?: (value: string) => void;
+  onCompensationTypeChange?: (value: string) => void;
   onHourlyRateChange?: (value: string) => void;
+  onDailyRateChange?: (value: string) => void;
+  onDaysPerWeekChange?: (value: string) => void;
   onRoleChange?: (value: string) => void;
 }
 
@@ -73,15 +79,23 @@ export function ProfessionalDetailsCard({
   selectedDepartmentId,
   selectedEmploymentType,
   selectedSupervisorId,
+  selectedCompensationType,
   selectedHourlyRate,
+  selectedDailyRate,
+  selectedDaysPerWeek,
   selectedRoleKey,
   canEditRate = false,
   onDepartmentChange,
   onEmploymentTypeChange,
   onSupervisorChange,
+  onCompensationTypeChange,
   onHourlyRateChange,
+  onDailyRateChange,
+  onDaysPerWeekChange,
   onRoleChange,
 }: ProfessionalDetailsCardProps) {
+  const currentCompType = selectedCompensationType ?? me.compensationType ?? "HOURLY";
+
   return (
     <SectionCard title="Professional Details">
       <div className="flex flex-col gap-4">
@@ -96,8 +110,6 @@ export function ProfessionalDetailsCard({
             <Select
               value={selectedDepartmentId ?? me.departmentId ?? "NONE"}
               onValueChange={(v) => onDepartmentChange(v === "NONE" || v === null ? "" : v)}
-              // base-ui Select renders the raw value (a UUID) in the trigger
-              // unless given an items map — same fix as the directory filters.
               items={[
                 { value: "NONE", label: "No department" },
                 ...departments.map((d) => ({ value: d.id, label: d.name })),
@@ -128,8 +140,6 @@ export function ProfessionalDetailsCard({
 
         <div>
           <Label className="mb-1.5">Role</Label>
-          {/* Admin-only promote/demote. Read-only otherwise (incl. your own
-              profile) — roles[0] is the highest-privilege role, sorted server-side. */}
           {isEditing && onRoleChange ? (
             <Select
               value={selectedRoleKey ?? me.roles[0]?.role.key ?? "EMPLOYEE"}
@@ -204,28 +214,93 @@ export function ProfessionalDetailsCard({
           )}
         </div>
 
-        <div>
-          <Label htmlFor="hourlyRate" className="mb-1.5">Hourly Rate (PHP)</Label>
-          {/* Independent of isEditing: Finance can edit only the rate even
-              though it can't touch department/employment/supervisor (Admin-only). */}
-          {onHourlyRateChange && canEditRate ? (
+        {/* Rate Configuration / Compensation Basis */}
+        {canEditRate && onCompensationTypeChange ? (
+          <div className="flex flex-col gap-3 rounded-lg border border-[#c3c6d2]/40 bg-gray-50/50 p-3.5 dark:bg-gray-800/30">
+            <div>
+              <Label className="mb-1.5 font-medium">Compensation Basis</Label>
+              <Select
+                value={currentCompType}
+                onValueChange={(v) => {
+                  // Base UI emits null when the selection is cleared; compensation
+                  // basis is required, so ignore that rather than forwarding "".
+                  if (v) onCompensationTypeChange(v);
+                }}
+                items={[
+                  { value: "HOURLY", label: "Hourly Rate" },
+                  { value: "DAILY", label: "Daily Rate" },
+                ]}
+              >
+                <SelectTrigger className="w-full bg-white dark:bg-gray-900"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="HOURLY">Hourly Rate</SelectItem>
+                  <SelectItem value="DAILY">Daily Rate</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+
+            {currentCompType === "DAILY" ? (
+              <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
+                <div>
+                  <Label htmlFor="dailyRate" className="mb-1.5">Daily Rate (PHP)</Label>
+                  <Input
+                    id="dailyRate"
+                    type="number"
+                    min="0"
+                    step="0.01"
+                    className="bg-white dark:bg-gray-900"
+                    value={selectedDailyRate ?? ""}
+                    onChange={(e) => onDailyRateChange && onDailyRateChange(e.target.value)}
+                    placeholder="e.g. 2000.00"
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="daysPerWeek" className="mb-1.5">Days / Week</Label>
+                  <Input
+                    id="daysPerWeek"
+                    type="number"
+                    min="1"
+                    max="7"
+                    step="0.5"
+                    className="bg-white dark:bg-gray-900"
+                    value={selectedDaysPerWeek ?? "5"}
+                    onChange={(e) => onDaysPerWeekChange && onDaysPerWeekChange(e.target.value)}
+                    placeholder="5"
+                  />
+                </div>
+              </div>
+            ) : (
+              <div>
+                <Label htmlFor="hourlyRate" className="mb-1.5">Hourly Rate (PHP)</Label>
+                <Input
+                  id="hourlyRate"
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  className="bg-white dark:bg-gray-900"
+                  value={selectedHourlyRate ?? ""}
+                  onChange={(e) => onHourlyRateChange && onHourlyRateChange(e.target.value)}
+                  placeholder="e.g. 250.00"
+                />
+              </div>
+            )}
+          </div>
+        ) : (
+          <div>
+            <Label htmlFor="rateConfiguration" className="mb-1.5">Compensation Basis</Label>
             <Input
-              id="hourlyRate"
-              type="number"
-              min="0"
-              step="0.01"
-              value={selectedHourlyRate ?? ""}
-              onChange={(e) => onHourlyRateChange(e.target.value)}
-              placeholder="e.g. 1500.00"
-            />
-          ) : (
-            <Input
-              id="hourlyRate"
-              value={me.hourlyRate != null ? `₱${Number(me.hourlyRate).toFixed(2)}/hr` : "—"}
+              id="rateConfiguration"
+              value={
+                (me.compensationType === "DAILY" || me.dailyRate != null)
+                  ? `Daily Basis: ₱${Number(me.dailyRate ?? (Number(me.hourlyRate ?? 0) * 8)).toFixed(2)}/day (${me.daysPerWeek ?? 5} days/wk)`
+                  : me.hourlyRate != null
+                  ? `Hourly Basis: ₱${Number(me.hourlyRate).toFixed(2)}/hr`
+                  : "—"
+              }
               disabled
             />
-          )}
-        </div>
+          </div>
+        )}
       </div>
     </SectionCard>
   );

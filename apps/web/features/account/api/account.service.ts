@@ -10,7 +10,10 @@ export interface Me {
   phone: string | null;
   status: string;
   employmentType: string;
+  compensationType?: "HOURLY" | "DAILY" | null;
   hourlyRate?: string | number | null;
+  dailyRate?: string | number | null;
+  daysPerWeek?: string | number | null;
   departmentId: string | null;
   department: { id: string; name: string } | null;
   organization: { id: string; name: string };
