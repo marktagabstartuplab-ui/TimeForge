@@ -158,17 +158,33 @@ export class CreateScrumTaskDto {
   @MaxLength(2000)
   description?: string;
 
+  /**
+   * BUG-BH: optional because an ad-hoc task added mid-shift was never planned,
+   * so it has no pre-declared expected output or measurement. Omitted stores an
+   * empty string — the column is non-nullable and unchanged.
+   */
+  @IsOptional()
   @IsString()
   @MaxLength(1000)
-  expectedOutput!: string;
+  expectedOutput?: string;
 
+  @IsOptional()
   @IsString()
   @MaxLength(1000)
-  measurement!: string;
+  measurement?: string;
 
   @IsOptional()
   @IsUUID()
   projectId?: string;
+
+  /**
+   * BUG-BH: an ad-hoc task discovered during the EOD review is often already
+   * finished by the time it is recorded, so it can be created COMPLETED rather
+   * than created PENDING and immediately patched.
+   */
+  @IsOptional()
+  @IsEnum(ScrumTaskItemStatus)
+  taskStatus?: ScrumTaskItemStatus;
 
   @IsOptional()
   @IsEnum(ScrumTaskPriority)

@@ -61,9 +61,12 @@ export interface ScrumTask {
 export interface CreateScrumTaskPayload {
   title: string;
   description?: string;
-  expectedOutput: string;
-  measurement: string;
+  /** BUG-BH: optional — an ad-hoc task added mid-shift was never planned. */
+  expectedOutput?: string;
+  measurement?: string;
   projectId?: string;
+  /** BUG-BH: lets an already-finished ad-hoc task be created COMPLETED. */
+  taskStatus?: ScrumTaskItemStatus;
   priority?: ScrumTaskPriority;
   kpi?: string;
   plannedTarget?: string;

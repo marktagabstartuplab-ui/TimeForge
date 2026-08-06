@@ -459,7 +459,6 @@ export function ReviewDetailPanel({ detail, loading, onSuccess, onToast }: Revie
           </div>
         </ErrorBoundary>
       </div>
-      </div>
 
       {/* Accomplishments/Summary notes if employee submitted any */}
       {detail.summary && (

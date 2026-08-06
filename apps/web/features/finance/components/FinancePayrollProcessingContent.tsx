@@ -174,10 +174,17 @@ export function FinancePayrollProcessingContent() {
   const [statusFilter, setStatusFilter] = useState<"ALL" | string>("ALL");
   const [showCreatePeriod, setShowCreatePeriod] = useState(false);
   const [rejectDialog, setRejectDialog] = useState<{ open: boolean; reason: string }>({ open: false, reason: "" });
-  const [newPeriod, setNewPeriod] = useState<{ type: "CUSTOM"; startDate: string; endDate: string }>({
+  // BUG-BK: per-employee selection for individual/batch payroll processing. The
+  // table and "Process Selected" button below were added without this state, so
+  // the file only compiled while its JSX was unparseable.
+  const [selectedUserIds, setSelectedUserIds] = useState<string[]>([]);
+  const [newPeriod, setNewPeriod] = useState<{ type: "CUSTOM"; startDate: string; endDate: string; name: string }>({
     type: "CUSTOM",
     startDate: "",
     endDate: "",
+    // BUG-BJ: custom period display name — the input was wired to newPeriod.name
+    // without the field existing on the state.
+    name: "",
   });
 
   const { data: periodsPage, isLoading: isPeriodsLoading } = useQuery({
@@ -539,7 +546,7 @@ export function FinancePayrollProcessingContent() {
                     <RefreshCw className="mr-1 h-3.5 w-3.5" /> Process Selected ({selectedUserIds.length})
                   </Button>
                 ) : null}
-                <Button variant="outline" size="sm" onClick={() => generateMutation.mutate()} disabled={!canRecalculate || generateMutation.isPending} className="h-9 text-xs">
+                <Button variant="outline" size="sm" onClick={() => generateMutation.mutate(undefined)} disabled={!canRecalculate || generateMutation.isPending} className="h-9 text-xs">
                   <RefreshCw className={`h-3.5 w-3.5 ${generateMutation.isPending ? "animate-spin" : ""}`} /> Recalculate All
                 </Button>
               </div>
@@ -801,7 +808,6 @@ export function FinancePayrollProcessingContent() {
                 <div className="flex h-10 items-center rounded-[10px] border border-[#c3c6d2] bg-[#f6f3f4] px-3 text-sm text-brand-ink">
                   Custom (off-cycle)
                 </div>
-              </div>
                 <p className="mt-1 text-xs text-brand-muted">
                   Semi-monthly periods (1st–15th, 16th–end of month) are generated automatically.
                 </p>
