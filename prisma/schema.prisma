@@ -1476,6 +1476,7 @@ model PayrollPeriod {
   status           PayrollPeriodStatus     @default(OPEN)
   startDate        DateTime                @map("start_date") @db.Date
   endDate          DateTime                @map("end_date") @db.Date
+  name             String?                 @map("name")
   lockedAt         DateTime?               @map("locked_at") @db.Timestamptz
   exportedAt       DateTime?               @map("exported_at") @db.Timestamptz
   processingStatus PayrollProcessingStatus @default(DRAFT) @map("processing_status")

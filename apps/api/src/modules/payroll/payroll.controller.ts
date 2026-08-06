@@ -12,6 +12,7 @@ import {
   ParseUUIDPipe,
   Patch,
   Post,
+  Put,
   Query,
   Res,
   UnprocessableEntityException,
@@ -58,10 +59,21 @@ export class PayrollController {
     return this.svc.createPeriod(u, dto);
   }
 
+  /** BUG-BJ — Custom period creation endpoint alias */
+  @Post('periods/custom')
+  @RequirePermissions('payroll_period:create')
+  createCustomPeriod(
+    @CurrentUser() u: AuthPrincipal,
+    @Body() dto: CreatePayrollPeriodDto,
+  ) {
+    return this.svc.createPeriod(u, { ...dto, type: 'CUSTOM' });
+  }
+
   /**
    * Compute payroll line items from Supervisor-approved (APPROVED/PAYROLL_READY)
    * timesheets. Idempotent on re-run (M2: Idempotency-Key required -- matches the
-   * AI/Admin money-mutation pattern).
+   * AI/Admin money-mutation pattern). Accepts optional employeeIds / timesheetIds
+   * for individual/batch processing (BUG-BK).
    */
   @Post('periods/:id/generate')
   @HttpCode(200)
@@ -75,7 +87,14 @@ export class PayrollController {
     if (!idempotencyKey?.trim()) {
       throw new UnprocessableEntityException('Idempotency-Key header is required');
     }
-    return this.svc.generateReport(u, id, idempotencyKey.trim(), dto?.thirteenthMonth ?? false);
+    return this.svc.generateReport(
+      u,
+      id,
+      idempotencyKey.trim(),
+      dto?.thirteenthMonth ?? false,
+      dto?.employeeIds,
+      dto?.timesheetIds,
+    );
   }
 
   // -- FEAT-3: statutory settings & compliance reports --
@@ -150,6 +169,7 @@ export class PayrollController {
 
   /** Lock the period -- no further edits after this. */
   @Post('periods/:id/lock')
+  @Put('periods/:id/lock')
   @HttpCode(200)
   @RequirePermissions('payroll_period:update')
   lockPeriod(

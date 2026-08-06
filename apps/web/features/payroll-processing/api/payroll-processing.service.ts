@@ -9,6 +9,7 @@ export interface PayrollPeriod {
   status: PayrollPeriodStatus;
   startDate: string;
   endDate: string;
+  name?: string | null;
   lockedAt: string | null;
   exportedAt: string | null;
   /** BUG-AX: true for the standardized semi-monthly periods minted by the
@@ -65,9 +66,8 @@ export async function listPeriods(): Promise<Page<PayrollPeriod>> {
   return data;
 }
 
-/** BUG-AX: manual creation is off-cycle only — semi-monthly periods come from the
- *  scheduler, so the type is pinned to CUSTOM (the API rejects anything else). */
-export async function createPeriod(input: { type: "CUSTOM"; startDate: string; endDate: string }): Promise<PayrollPeriod> {
+/** BUG-BJ: manual creation supports optional custom period name. */
+export async function createPeriod(input: { type: "CUSTOM"; startDate: string; endDate: string; name?: string }): Promise<PayrollPeriod> {
   const { data } = await apiClient.post<PayrollPeriod>("/payroll/periods", input);
   return data;
 }
@@ -77,10 +77,13 @@ export async function getReportByPeriod(periodId: string): Promise<PayrollReport
   return data;
 }
 
-export async function generateReport(periodId: string): Promise<PayrollReport> {
+export async function generateReport(
+  periodId: string,
+  options?: { employeeIds?: string[]; timesheetIds?: string[]; thirteenthMonth?: boolean },
+): Promise<PayrollReport> {
   const { data } = await apiClient.post<PayrollReport>(
     `/payroll/periods/${periodId}/generate`,
-    {},
+    options ?? {},
     { headers: { "Idempotency-Key": crypto.randomUUID() } },
   );
   return data;

@@ -1,4 +1,4 @@
-import { IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
+import { IsArray, IsBoolean, IsEnum, IsInt, IsNumber, IsOptional, IsString, IsUUID, Max, Min } from 'class-validator';
 import { Type } from 'class-transformer';
 import { DeMinimisType, PayrollPeriodType } from '@prisma/client';
 
@@ -13,6 +13,11 @@ export class CreatePayrollPeriodDto {
   /** ISO date string, e.g. "2026-06-15" */
   @IsString()
   endDate!: string;
+
+  /** Optional custom period display name (e.g., "Mid-Year Bonus Period") */
+  @IsString()
+  @IsOptional()
+  name?: string;
 }
 
 export class GeneratePayrollDto {
@@ -25,6 +30,18 @@ export class GeneratePayrollDto {
   @IsBoolean()
   @IsOptional()
   thirteenthMonth?: boolean;
+
+  /** BUG-BK: Filter processing to specific employee IDs for selective/individual payroll calculation */
+  @IsArray()
+  @IsUUID('all', { each: true })
+  @IsOptional()
+  employeeIds?: string[];
+
+  /** BUG-BK: Filter processing to specific timesheet IDs */
+  @IsArray()
+  @IsUUID('all', { each: true })
+  @IsOptional()
+  timesheetIds?: string[];
 }
 
 export class ExportPayrollDto {

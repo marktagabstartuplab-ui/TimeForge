@@ -535,6 +535,7 @@ export class PayrollService {
         status: 'OPEN',
         startDate,
         endDate,
+        name: dto.name?.trim() || undefined,
         createdBy: p.userId,
         updatedBy: p.userId,
       },
@@ -573,6 +574,8 @@ export class PayrollService {
     periodId: string,
     idempotencyKey: string,
     thirteenthMonth = false,
+    employeeIds?: string[],
+    timesheetIds?: string[],
   ) {
     const period = await this.findOnePeriod(p, periodId);
     if (period.status === 'EXPORTED') {
@@ -594,20 +597,26 @@ export class PayrollService {
       if (cachedReport) return cachedReport;
     }
 
-    // Gather all Supervisor-approved timesheets within the period date range.
-    // APPROVED is the status ApprovalsService.decide() sets on approval; PAYROLL_READY
-    // is the optional downstream marker (markPayrollReady) — both count as "approved"
-    // here so approval alone is enough for the record to reach this queue.
+    // Gather Supervisor-approved timesheets within the period date range, filtered
+    // by employeeIds or timesheetIds if specified for selective processing (BUG-BK).
+    const tsWhere: any = {
+      tenantId: p.tenantId,
+      organizationId: p.organizationId,
+      status: { in: ['APPROVED', 'PAYROLL_READY'] },
+      paymentStatus: { not: 'PAID' },
+      deletedAt: null,
+      periodStart: { gte: period.startDate },
+      periodEnd: { lte: period.endDate },
+    };
+    if (employeeIds && employeeIds.length > 0) {
+      tsWhere.userId = { in: employeeIds };
+    }
+    if (timesheetIds && timesheetIds.length > 0) {
+      tsWhere.id = { in: timesheetIds };
+    }
+
     const timesheets = await this.prisma.timesheet.findMany({
-      where: {
-        tenantId: p.tenantId,
-        organizationId: p.organizationId,
-        status: { in: ['APPROVED', 'PAYROLL_READY'] },
-        paymentStatus: { not: 'PAID' },
-        deletedAt: null,
-        periodStart: { gte: period.startDate },
-        periodEnd: { lte: period.endDate },
-      },
+      where: tsWhere,
       select: { id: true, userId: true, totalMinutes: true, overtimeMinutesOverride: true },
     });
 
@@ -695,12 +704,12 @@ export class PayrollService {
     });
 
     // Fetch all approved time entries to compute daily overtime (>8h/day)
-    const timesheetIds = timesheets.map((t) => t.id);
-    const approvedEntries = timesheetIds.length > 0
+    const targetTimesheetIds = timesheets.map((t) => t.id);
+    const approvedEntries = targetTimesheetIds.length > 0
       ? await this.prisma.timeEntry.findMany({
           where: {
             tenantId: p.tenantId,
-            timesheetId: { in: timesheetIds },
+            timesheetId: { in: targetTimesheetIds },
             deletedAt: null,
           },
           select: {
