@@ -279,7 +279,7 @@ describe('BUG-BA — Philippine T&A Premiums (NSD, Holidays, Rest Days)', () => 
     const nsdHours = 7;
     // 10% premium: 7h * ₱100 * (1.10 - 1) = ₱70
     const nsdPay = nsdHours * hourlyRate * (settings.nightShiftPremium - 1);
-    expect(nsdPay).toBe(70);
+    expect(nsdPay).toBeCloseTo(70, 8);
   });
 
   it('(d) applies 100% premium for work on Regular Holiday', () => {
@@ -295,7 +295,7 @@ describe('BUG-BA — Philippine T&A Premiums (NSD, Holidays, Rest Days)', () => 
     const holidayHours = 8;
     // 30% premium (multiplier 1.30): increment = 8 * 100 * (1.30 - 1) = ₱240
     const holidayPay = holidayHours * hourlyRate * (settings.specialHolidayWorkedRate - 1);
-    expect(holidayPay).toBe(240);
+    expect(holidayPay).toBeCloseTo(240, 8);
   });
 
   it('(f) applies 30% premium for work on employee scheduled day off / Rest Day', () => {
@@ -303,6 +303,6 @@ describe('BUG-BA — Philippine T&A Premiums (NSD, Holidays, Rest Days)', () => 
     const restDayHours = 8;
     // 30% rest day premium: 8 * 100 * (1.30 - 1) = ₱240
     const restDayPay = restDayHours * hourlyRate * (settings.restDayWorkedRate - 1);
-    expect(restDayPay).toBe(240);
+    expect(restDayPay).toBeCloseTo(240, 8);
   });
 });
