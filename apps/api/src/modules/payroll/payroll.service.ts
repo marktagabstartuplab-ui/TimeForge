@@ -2740,6 +2740,14 @@ export class PayrollService {
     let employeeTotal = new Decimal(0);
     let employerTotal = new Decimal(0);
 
+    // `grossTotal` is one period's gross. The contribution brackets are keyed on
+    // the *monthly* basis (DeductionService.calculateAll multiplies by the same
+    // factor before looking up the table, then divides the result back down), so
+    // reporting the period gross under a "Monthly Basis" heading understated it
+    // — a semi-monthly ₱27,007.50 is really a ₱54,015.00 monthly basis, which is
+    // what hit the SSS ceiling. Agency portals expect the monthly figure too.
+    const periodsInMonth = periodsPerMonth(period.type);
+
     const rows = items.map((item) => {
       const share = pick(item);
       employeeTotal = employeeTotal.add(share.employee);
@@ -2753,7 +2761,7 @@ export class PayrollService {
         // can show a clerk exactly what the portal expects. Blank when HR has
         // not captured that ID yet, which the screen flags as incomplete.
         memberNumber: formatStatutoryId(AGENCY_ID_FIELD[agency], item.user[AGENCY_ID_FIELD[agency]]),
-        monthlyGrossBasis: item.grossTotal.toFixed(2),
+        monthlyGrossBasis: new Decimal(item.grossTotal).mul(periodsInMonth).toFixed(2),
         employeeShare: share.employee.toFixed(2),
         employerShare: share.employer.toFixed(2),
         total: new Decimal(share.employee).add(share.employer).toFixed(2),
@@ -2870,6 +2878,10 @@ export class PayrollService {
       ? items.filter((i) => i.user.department?.name === query.departmentId)
       : items;
 
+    // Same as the on-screen report: portals expect the monthly basis the
+    // brackets were keyed on, not one period's gross.
+    const periodsInMonth = periodsPerMonth(period.type);
+
     const rows: StatutoryExportRow[] = scoped.map((item) => {
       const s = share(item);
       return {
@@ -2879,7 +2891,7 @@ export class PayrollService {
         sssNumber: item.user.sssNumber,
         philhealthNumber: item.user.philhealthNumber,
         pagibigNumber: item.user.pagibigNumber,
-        monthlyGrossBasis: item.grossTotal.toFixed(2),
+        monthlyGrossBasis: new Decimal(item.grossTotal).mul(periodsInMonth).toFixed(2),
         employeeShare: s.employee.toFixed(2),
         employerShare: s.employer.toFixed(2),
         total: new Decimal(s.employee).add(s.employer).toFixed(2),
