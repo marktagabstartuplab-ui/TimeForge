@@ -358,7 +358,11 @@ export function AccountApprovalsContent() {
 
             <div>
               <Label className="mb-1.5">Employment Type</Label>
-              <Select value={approveEmploymentType || "EMPLOYEE"} onValueChange={(v) => setApproveEmploymentType(v ?? "EMPLOYEE")}>
+              <Select
+                value={approveEmploymentType || "EMPLOYEE"}
+                onValueChange={(v) => setApproveEmploymentType(v ?? "EMPLOYEE")}
+                items={EMPLOYMENT_TYPES.map((et) => ({ value: et, label: EMPLOYMENT_TYPE_LABELS[et] }))}
+              >
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {EMPLOYMENT_TYPES.map((et) => (
@@ -370,7 +374,11 @@ export function AccountApprovalsContent() {
 
             <div>
               <Label className="mb-1.5">Role</Label>
-              <Select value={approveRole || "EMPLOYEE"} onValueChange={(v) => setApproveRole(v ?? "EMPLOYEE")}>
+              <Select
+                value={approveRole || "EMPLOYEE"}
+                onValueChange={(v) => setApproveRole(v ?? "EMPLOYEE")}
+                items={ROLES.map((r) => ({ value: r, label: ROLE_LABELS[r] }))}
+              >
                 <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   {ROLES.map((r) => (

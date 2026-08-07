@@ -34,7 +34,14 @@ export function DepartmentHeatmap() {
     <SectionCard
       title="Participation Heatmap"
       action={
-        <Select value={week} onValueChange={(v) => setWeek(v as "current" | "previous")}>
+        <Select
+          value={week}
+          onValueChange={(v) => setWeek(v as "current" | "previous")}
+          items={[
+            { value: "current", label: "Current Week" },
+            { value: "previous", label: "Previous Week" },
+          ]}
+        >
           <SelectTrigger className="w-36"><SelectValue /></SelectTrigger>
           <SelectContent>
             <SelectItem value="current">Current Week</SelectItem>

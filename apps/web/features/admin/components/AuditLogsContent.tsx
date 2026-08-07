@@ -210,7 +210,13 @@ export function AuditLogsContent() {
             onChange={(e) => setSearch(e.target.value)}
             className="sm:max-w-xs"
           />
-          <Select value={action} onValueChange={(v) => setAction(v as AuditAction | "ALL")}>
+          {/* Without `items` the trigger shows the raw enum instead of the
+              label the options render. */}
+          <Select
+            value={action}
+            onValueChange={(v) => setAction(v as AuditAction | "ALL")}
+            items={ACTIONS.map((a) => ({ value: a, label: a === "ALL" ? "All Actions" : actionLabel(a) }))}
+          >
             <SelectTrigger className="w-full sm:w-56"><SelectValue /></SelectTrigger>
             <SelectContent>
               {ACTIONS.map((a) => (

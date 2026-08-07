@@ -82,7 +82,11 @@ export function PendingLeavePanel({ onToast }: { onToast: (t: ToastState) => voi
       <SectionCard
         title="Review Pending Leave Requests"
         action={
-          <Select value={statusFilter} onValueChange={(v) => setStatusFilter(v ?? "PENDING")}>
+          <Select
+            value={statusFilter}
+            onValueChange={(v) => setStatusFilter(v ?? "PENDING")}
+            items={STATUS_OPTIONS.map((opt) => ({ value: opt.value, label: opt.label }))}
+          >
             <SelectTrigger className="h-8 w-32">
               <SelectValue />
             </SelectTrigger>

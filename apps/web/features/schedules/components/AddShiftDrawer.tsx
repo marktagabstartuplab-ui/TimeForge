@@ -417,7 +417,11 @@ export function AddShiftDrawer({ open, onOpenChange, onToast, managedDeptIds }: 
 
             <div>
               <FieldLabel htmlFor="shift-type">Shift Type</FieldLabel>
-              <Select value={shiftType} onValueChange={(v) => setShiftType(v as ShiftType)}>
+              <Select
+                value={shiftType}
+                onValueChange={(v) => setShiftType(v as ShiftType)}
+                items={SHIFT_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+              >
                 <SelectTrigger id="shift-type" className="h-11 w-full rounded-[10px] border-[#c3c6d2] bg-white px-3.5 text-[15px]">
                   <SelectValue />
                 </SelectTrigger>

@@ -139,7 +139,15 @@ export function OversightTable({ onToast }: { onToast: (t: ToastState) => void }
           <div className="flex-1 min-w-[180px]">
             <label className="mb-1 block text-xs font-semibold text-brand-muted">Department</label>
             <Select value={departmentId} onValueChange={(v) => setDepartmentId(v ?? "ALL")}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              {/* Without children SelectValue renders the raw `value` — the
+                  department's UUID. Resolve it back to a name here. */}
+              <SelectTrigger className="w-full">
+                <SelectValue>
+                  {departmentId === "ALL"
+                    ? "All Departments"
+                    : departments?.find((d) => d.id === departmentId)?.name}
+                </SelectValue>
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All Departments</SelectItem>
                 {departments?.map((d) => (
@@ -151,7 +159,13 @@ export function OversightTable({ onToast }: { onToast: (t: ToastState) => void }
           <div className="flex-1 min-w-[160px]">
             <label className="mb-1 block text-xs font-semibold text-brand-muted">Status</label>
             <Select value={status} onValueChange={(v) => setStatus(v ?? "ALL")}>
-              <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
+              {/* Same here: the raw value keeps the underscore (PENDING_APPROVAL)
+                  while the options show it spaced. */}
+              <SelectTrigger className="w-full">
+                <SelectValue>
+                  {status === "ALL" ? "All Statuses" : status.replace("_", " ")}
+                </SelectValue>
+              </SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All Statuses</SelectItem>
                 {STATUSES.map((s) => (

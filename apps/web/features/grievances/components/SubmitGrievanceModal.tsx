@@ -111,7 +111,7 @@ export function SubmitGrievanceModal({
 
           <div className="flex flex-col gap-1">
             <label className="text-xs font-semibold text-brand-navy">Category</label>
-            <Select value={category} onValueChange={(v) => setCategory(v as GrievanceCategory)}>
+            <Select value={category} onValueChange={(v) => setCategory(v as GrievanceCategory)} items={CATEGORY_OPTIONS}>
               <SelectTrigger className="h-10 text-sm border-[#c3c6d2]">
                 <SelectValue />
               </SelectTrigger>

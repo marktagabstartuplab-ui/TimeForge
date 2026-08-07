@@ -153,6 +153,7 @@ export function NotificationCenterModal() {
                     setTab(v as TabValue);
                     setPage(1);
                   }}
+                  items={TABS.map((t) => ({ value: t.value, label: t.label }))}
                 >
                   <SelectTrigger size="sm" aria-label="Filter notifications" className="min-w-[160px]">
                     <span className="text-xs font-bold uppercase tracking-wide text-brand-muted">Filter:</span>
@@ -168,7 +169,11 @@ export function NotificationCenterModal() {
                 </Select>
               </div>
               <div className="shrink-0">
-                <Select value={sortBy} onValueChange={(v) => setSortBy(v as NotificationSort)}>
+                <Select
+                  value={sortBy}
+                  onValueChange={(v) => setSortBy(v as NotificationSort)}
+                  items={SORT_OPTIONS.map((o) => ({ value: o.value, label: o.label }))}
+                >
                   <SelectTrigger size="sm" aria-label="Sort by" className="min-w-[140px]">
                     <span className="text-xs font-bold uppercase tracking-wide text-brand-muted">Sort:</span>
                     <SelectValue />

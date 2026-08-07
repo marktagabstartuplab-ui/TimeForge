@@ -135,7 +135,11 @@ export function CreateEmployeeModal({
                 control={control}
                 name="employmentType"
                 render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    items={EMPLOYMENT_TYPES.map((t) => ({ value: t, label: t.replace("_", " ") }))}
+                  >
                     <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                     <SelectContent>
                       {EMPLOYMENT_TYPES.map((t) => (
