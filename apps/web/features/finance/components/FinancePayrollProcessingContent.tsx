@@ -15,7 +15,6 @@ import {
   FileText,
   FileSpreadsheet,
   Download,
-  History,
   Users,
   ShieldCheck,
   Pencil,
@@ -323,7 +322,6 @@ export function FinancePayrollProcessingContent() {
   };
 
   const employees = dashboard?.employees ?? [];
-  const auditLog = dashboard?.auditLog ?? [];
   const processingStatus = dashboard?.processingStatus ?? "DRAFT";
   const grossPayroll = dashboard?.grossPayroll ?? 0;
   const totalEmployees = dashboard?.totalEmployees ?? 0;
@@ -696,8 +694,7 @@ export function FinancePayrollProcessingContent() {
             )}
           </SectionCard>
 
-          <div className="grid grid-cols-1 gap-6 lg:grid-cols-3">
-            <SectionCard title="Processing Panel" className="lg:col-span-1">
+          <SectionCard title="Processing Panel">
               <div className="flex flex-col gap-3">
                 <div className="text-xs text-brand-muted">
                   Current status: <span className="font-semibold text-brand-navy">{processingStatus.replace(/_/g, " ")}</span>
@@ -771,35 +768,6 @@ export function FinancePayrollProcessingContent() {
                 </div>
               </div>
             </SectionCard>
-
-            <SectionCard title="Audit Log" className="lg:col-span-2">
-              {auditLog.length === 0 ? (
-                <EmptyState message="No audit entries yet. Actions will be logged here." />
-              ) : (
-                <div className="flex flex-col gap-1">
-                  {auditLog.map((entry) => {
-                    const actionLabel = entry.action.replace(/_/g, " ").replace(/\b\w/g, (c) => c.toUpperCase());
-                    return (
-                      <div
-                        key={entry.id}
-                        className="flex items-start gap-3 rounded-[8px] p-2.5 transition-colors hover:bg-[#f6f3f4]"
-                      >
-                        <div className="flex h-8 w-8 shrink-0 items-center justify-center rounded-[8px] bg-[#f6f3f4] text-brand-muted">
-                          <History className="h-4 w-4" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium text-brand-navy">{actionLabel}</p>
-                          <p className="text-xs text-brand-muted">
-                            by {entry.actorName ?? "System"} · {formatDateTime(entry.createdAt)}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </SectionCard>
-          </div>
         </>
       )}
 
