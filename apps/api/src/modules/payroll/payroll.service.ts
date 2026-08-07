@@ -2201,7 +2201,16 @@ export class PayrollService {
 
   async getProcessingDashboard(p: AuthPrincipal, periodId: string) {
     const period = await this.findOnePeriod(p, periodId);
-    if (period.processingStatus === 'DRAFT' || period.status === 'OPEN') {
+    // The HR -> Finance handoff is PayrollPeriod.status (OPEN -> GENERATED ->
+    // LOCKED -> EXPORTED); lockPeriod is HR's "Send to Finance". processingStatus
+    // is Finance's own pipeline (DRAFT -> VALIDATED -> ...), and DRAFT is exactly
+    // the state Finance validates *from*, so rejecting on DRAFT locked Finance out
+    // of every period HR had just handed over. Pending means HR is still working:
+    // the period is OPEN, or GENERATED and untouched by Finance.
+    if (
+      period.status === 'OPEN' ||
+      (period.status === 'GENERATED' && period.processingStatus === 'DRAFT')
+    ) {
       throw new ForbiddenException('Pending HR Submission — HR is currently reviewing');
     }
 
