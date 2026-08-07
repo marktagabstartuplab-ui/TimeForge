@@ -602,6 +602,12 @@ export function FinancePayrollProcessingContent() {
                       {/* Base pay ÷ (hours × rate) — describes the base rate
                           uplift only, so it deliberately excludes premiums. */}
                       <th className="py-3 px-4">Pay Multiplier</th>
+                      {/* Finance dispatches the payments, so it needs the same
+                          deductions and take-home the HR table shows — the
+                          dashboard already returned these. */}
+                      <th className="py-3 px-4">Contributions</th>
+                      <th className="py-3 px-4">Tax Withheld</th>
+                      <th className="py-3 px-4">Net Pay</th>
                       <th className="py-3 px-4">Status</th>
                     </tr>
                   </thead>
@@ -708,6 +714,9 @@ export function FinancePayrollProcessingContent() {
                         </td>
                         <td className="py-3 px-4 font-semibold text-brand-ink">{formatCurrency(emp.grossTotal)}</td>
                         <td className="py-3 px-4 text-brand-ink">{emp.payMultiplier.toFixed(2)}x</td>
+                        <td className="py-3 px-4 text-brand-ink">{formatCurrency(emp.contributions)}</td>
+                        <td className="py-3 px-4 text-brand-ink">{formatCurrency(emp.incomeTaxWithheld)}</td>
+                        <td className="py-3 px-4 font-semibold text-brand-ink">{formatCurrency(emp.netPay)}</td>
                         <td className="py-3 px-4">
                           <StatusBadge label={emp.rowStatus} tone={STATUS_TONE[emp.rowStatus] ?? "neutral"} />
                         </td>
