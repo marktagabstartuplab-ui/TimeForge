@@ -254,7 +254,8 @@ export function PayrollProcessingContent() {
       approved += Number(li.approvedHours);
       pending += Number(li.pendingHours);
       rejected += Number(li.rejectedHours);
-      pay += Number(li.estimatedPay);
+      // True gross, matching the Gross Pay column and the statutory reports.
+      pay += Number(li.grossTotal);
     }
     const totalHours = approved + pending + rejected;
     const approvedPct = totalHours > 0 ? Math.round((approved / totalHours) * 100) : 0;
@@ -615,6 +616,12 @@ export function PayrollProcessingContent() {
                       <th className="py-3 px-4">Approved Hours / Days</th>
                       <th className="py-3 px-4">Overtime (HH:MM)</th>
                       <th className="py-3 px-4">Rate</th>
+                      {/* Base + Premiums = Gross Pay. Showing base pay alone under
+                          a "Gross Pay" heading made net pay look larger than gross
+                          for anyone earning holiday/night-diff/rest-day premiums,
+                          since net is computed from grossTotal. */}
+                      <th className="py-3 px-4">Base Pay</th>
+                      <th className="py-3 px-4">Premiums</th>
                       <th className="py-3 px-4">Gross Pay</th>
                       {/* The statutory breakdown was computed and stored at
                           generation time and returned by the report endpoint all
@@ -674,7 +681,29 @@ export function PayrollProcessingContent() {
                               ? `₱${Number((li as any).dailyRate ?? (Number(li.hourlyRate) * 8)).toFixed(2)}/day`
                               : `₱${Number(li.hourlyRate).toFixed(2)}/hr`}
                           </td>
-                          <td className="py-3 px-4 font-semibold text-brand-ink">{formatCurrency(Number(li.estimatedPay))}</td>
+                          <td className="py-3 px-4 text-brand-ink">{formatCurrency(Number(li.estimatedPay))}</td>
+                          <td className="py-3 px-4 text-brand-ink">
+                            {(() => {
+                              const holiday = Number(li.holidayPay);
+                              const night = Number(li.nightDifferential);
+                              const restDay = Number(li.restDayPay);
+                              const deMinimis = Number(li.deMinimisTotal);
+                              const premiums = holiday + night + restDay + deMinimis;
+                              if (premiums === 0) return <span className="text-brand-muted">—</span>;
+                              const parts = [
+                                holiday > 0 ? `Holiday ${formatCurrency(holiday)}` : null,
+                                night > 0 ? `Night diff ${formatCurrency(night)}` : null,
+                                restDay > 0 ? `Rest day ${formatCurrency(restDay)}` : null,
+                                deMinimis > 0 ? `De minimis ${formatCurrency(deMinimis)}` : null,
+                              ].filter(Boolean);
+                              return (
+                                <span title={parts.join(" · ")} className="cursor-help underline decoration-dotted">
+                                  {formatCurrency(premiums)}
+                                </span>
+                              );
+                            })()}
+                          </td>
+                          <td className="py-3 px-4 font-semibold text-brand-ink">{formatCurrency(Number(li.grossTotal))}</td>
                           <td
                             className="py-3 px-4 text-brand-ink tabular-nums"
                             title={`SSS ${formatCurrency(Number(li.sssContribution))} · PhilHealth ${formatCurrency(Number(li.philhealthContribution))} · Pag-IBIG ${formatCurrency(Number(li.pagibigContribution))}`}

@@ -42,6 +42,12 @@ export interface PayrollLineItem {
   // (it `include`s the whole line item) — they were simply never declared here,
   // so the payroll table could not show what it was deducting.
   grossTotal: string;
+  // Premium components. grossTotal = estimatedPay + these, and it is grossTotal
+  // (not estimatedPay) that tax, contributions and net pay are computed from.
+  holidayPay: string;
+  nightDifferential: string;
+  restDayPay: string;
+  deMinimisTotal: string;
   sssContribution: string;
   philhealthContribution: string;
   pagibigContribution: string;

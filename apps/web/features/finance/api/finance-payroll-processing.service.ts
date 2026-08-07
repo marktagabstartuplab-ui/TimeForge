@@ -36,7 +36,17 @@ export interface PayrollEmployee {
   hourlyRate: number;
   payrollEligible: boolean;
   status: string;
+  /** Regular + overtime only. `grossTotal` is what tax and contributions use. */
   estimatedPay: number;
+  basePay: number;
+  holidayPay: number;
+  nightDifferential: number;
+  restDayPay: number;
+  deMinimisTotal: number;
+  grossTotal: number;
+  contributions: number;
+  incomeTaxWithheld: number;
+  netPay: number;
   approvedHours: number;
   pendingHours: number;
   overtimeHours: number;

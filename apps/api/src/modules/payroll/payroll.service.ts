@@ -2236,17 +2236,24 @@ export class PayrollService {
 
     let grossPayroll = 0;
     let totalHours = 0;
+    let taxWithheld = 0;
 
     const employees = lineItems.map((li) => {
-      const estimatedPay = Number(li.estimatedPay);
-      grossPayroll += estimatedPay;
+      // `estimatedPay` is regular + overtime only. The true gross that tax and
+      // contributions are assessed on is `grossTotal`, which adds the premiums
+      // (see computeStatutoryFigures). Summing estimatedPay here understated
+      // the payroll and made net pay exceed the "gross" shown in the table.
+      const basePay = Number(li.estimatedPay);
+      const grossTotal = Number(li.grossTotal);
+      grossPayroll += grossTotal;
+      taxWithheld += Number(li.incomeTaxWithheld);
       totalHours += Number(li.approvedHours) + Number(li.overtimeHours);
       const baseRate = Number(li.hourlyRate);
       const approvedHrs = Number(li.approvedHours);
       const overtimeHrs = Number(li.overtimeHours);
       const totalHrs = approvedHrs + overtimeHrs;
       const payMultiplier = baseRate > 0 && totalHrs > 0
-        ? Number((estimatedPay / (totalHrs * baseRate)).toFixed(2))
+        ? Number((basePay / (totalHrs * baseRate)).toFixed(2))
         : 1;
 
       let status: string;
@@ -2275,7 +2282,19 @@ export class PayrollService {
         userVersion: li.user.version,
         payrollEligible: li.user.payrollEligible,
         status: li.user.status,
-        estimatedPay,
+        // `estimatedPay` stays the base (regular + OT) for backwards
+        // compatibility; the premium components and the true gross are new.
+        estimatedPay: basePay,
+        basePay,
+        holidayPay: Number(li.holidayPay),
+        nightDifferential: Number(li.nightDifferential),
+        restDayPay: Number(li.restDayPay),
+        deMinimisTotal: Number(li.deMinimisTotal),
+        grossTotal,
+        contributions:
+          Number(li.sssContribution) + Number(li.philhealthContribution) + Number(li.pagibigContribution),
+        incomeTaxWithheld: Number(li.incomeTaxWithheld),
+        netPay: Number(li.netPay),
         approvedHours: approvedHrs,
         pendingHours: Number(li.pendingHours),
         overtimeHours: overtimeHrs,
@@ -2286,7 +2305,10 @@ export class PayrollService {
       };
     });
 
-    const estimatedTax = grossPayroll * 0.15;
+    // Was a flat `grossPayroll * 0.15` placeholder, which contradicted the
+    // per-employee withholding the HR screen shows. Use the real BIR figure the
+    // line items already carry so both screens quote the same number.
+    const estimatedTax = round2(taxWithheld);
 
     const auditLogRaw = await this.prisma.auditLog.findMany({
       where: {
