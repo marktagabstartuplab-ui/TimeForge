@@ -197,6 +197,21 @@ export async function getScrumCarryOver(): Promise<ScrumCarryOver> {
   return data;
 }
 
+/** BUG-BQ: the previous EOD review, summarised, to pre-fill Yesterday's Accomplishments. */
+export interface PreviousEodSummary {
+  /** YYYY-MM-DD of the day summarised — may be older than yesterday (Fri → Mon). */
+  sourceDate: string | null;
+  /** Null when there is nothing to carry forward; the field then stays empty. */
+  summary: string | null;
+}
+
+export async function getPreviousEodSummary(): Promise<PreviousEodSummary> {
+  const { data } = await apiClient.get<PreviousEodSummary>("/scrum-entries/previous-eod", {
+    params: { _t: Date.now() },
+  });
+  return data;
+}
+
 export async function getScrumEntry(id: string): Promise<ScrumEntry> {
   const { data } = await apiClient.get<ScrumEntry>(`/scrum-entries/${id}`, {
     params: { _t: Date.now() }
