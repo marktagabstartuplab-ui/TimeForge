@@ -533,7 +533,7 @@ export function FinancePayrollProcessingContent() {
             <div className="rounded-[16px] border border-[#c3c6d2]/50 bg-white p-5 shadow-sm">
               <div className="flex items-center gap-2 text-brand-muted">
                 <PesoIcon className="h-5 w-5" />
-                <span className="text-sm">Estimated Tax (15%)</span>
+                <span className="text-sm">Tax Withheld</span>
               </div>
               <p className="mt-2 text-2xl font-bold text-brand-ink">{formatCurrency(estimatedTax)}</p>
             </div>
@@ -596,8 +596,9 @@ export function FinancePayrollProcessingContent() {
                       <th className="py-3 px-4">Employee</th>
                       <th className="py-3 px-4">Department</th>
                       <th className="py-3 px-4">Hourly Rate</th>
+                      <th className="py-3 px-4">Base Pay</th>
+                      <th className="py-3 px-4">Premiums</th>
                       <th className="py-3 px-4">Gross Payroll</th>
-                      <th className="py-3 px-4">Pay Multiplier</th>
                       <th className="py-3 px-4">Status</th>
                     </tr>
                   </thead>
@@ -680,8 +681,29 @@ export function FinancePayrollProcessingContent() {
                             </div>
                           )}
                         </td>
-                        <td className="py-3 px-4 font-semibold text-brand-ink">{formatCurrency(emp.estimatedPay)}</td>
-                        <td className="py-3 px-4 text-brand-ink">{emp.payMultiplier.toFixed(2)}x</td>
+                        {/* Base + Premiums = Gross Payroll. Showing only base pay
+                            here (the old "Gross Payroll" column) made net pay look
+                            larger than gross whenever an employee earned premiums. */}
+                        <td className="py-3 px-4 text-brand-ink">{formatCurrency(emp.basePay)}</td>
+                        <td className="py-3 px-4 text-brand-ink">
+                          {(() => {
+                            const premiums =
+                              emp.holidayPay + emp.nightDifferential + emp.restDayPay + emp.deMinimisTotal;
+                            if (premiums === 0) return <span className="text-brand-muted">—</span>;
+                            const parts = [
+                              emp.holidayPay > 0 ? `Holiday ${formatCurrency(emp.holidayPay)}` : null,
+                              emp.nightDifferential > 0 ? `Night diff ${formatCurrency(emp.nightDifferential)}` : null,
+                              emp.restDayPay > 0 ? `Rest day ${formatCurrency(emp.restDayPay)}` : null,
+                              emp.deMinimisTotal > 0 ? `De minimis ${formatCurrency(emp.deMinimisTotal)}` : null,
+                            ].filter(Boolean);
+                            return (
+                              <span title={parts.join(" · ")} className="cursor-help underline decoration-dotted">
+                                {formatCurrency(premiums)}
+                              </span>
+                            );
+                          })()}
+                        </td>
+                        <td className="py-3 px-4 font-semibold text-brand-ink">{formatCurrency(emp.grossTotal)}</td>
                         <td className="py-3 px-4">
                           <StatusBadge label={emp.rowStatus} tone={STATUS_TONE[emp.rowStatus] ?? "neutral"} />
                         </td>
