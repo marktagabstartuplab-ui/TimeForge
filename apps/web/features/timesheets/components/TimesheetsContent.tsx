@@ -69,11 +69,24 @@ export function TimesheetsContent() {
       }),
   });
 
+  // Declared before the queries below because they scope themselves to this id.
+  const { data: me } = useQuery({ queryKey: ["account", "me"], queryFn: getMe });
+
   // ── Period entries (for audit table + metric cards) ───────────────────────
+  // Scoped to the signed-in user explicitly. GET /timesheets treats an absent
+  // userId as "no user filter" for anyone holding timesheet:read_org, so on this
+  // self-service page an HR/Finance/Admin user was handed the first timesheet in
+  // the whole organisation and shown it as their own.
   const timesheetsQuery = useQuery({
-    queryKey: ["timesheets", "current-period"],
+    queryKey: ["timesheets", "current-period", me?.id],
     queryFn: () =>
-      listTimesheets({ from: toOrgIsoDate(period.start), to: toOrgIsoDate(period.start), limit: 5 }),
+      listTimesheets({
+        userId: me!.id,
+        from: toOrgIsoDate(period.start),
+        to: toOrgIsoDate(period.start),
+        limit: 5,
+      }),
+    enabled: Boolean(me?.id),
   });
 
   const entriesQuery = useQuery({
@@ -89,7 +102,6 @@ export function TimesheetsContent() {
   const { data: projects } = useQuery({ queryKey: ["catalog", "projects"], queryFn: listProjects });
   // Already-exposed field (Me.supervisor) — was never wired to this card, which
   // showed a hardcoded "not exposed by the API yet" placeholder instead.
-  const { data: me } = useQuery({ queryKey: ["account", "me"], queryFn: getMe });
 
   const timesheet: Timesheet | null = timesheetsQuery.data?.data[0] ?? null;
 

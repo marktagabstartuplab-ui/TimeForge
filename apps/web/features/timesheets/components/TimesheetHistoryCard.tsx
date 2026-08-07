@@ -6,6 +6,7 @@ import { EmptyState } from "@/components/shared/EmptyState";
 import { Skeleton } from "@/components/ui/skeleton";
 import { DataTable, type DataTableColumn } from "@/components/shared/DataTable";
 import { StatusBadge, timesheetStatusTone } from "@/components/shared/StatusBadge";
+import { getMe } from "@/features/account/api/account.service";
 import { listTimesheets, type Timesheet } from "../api/timesheets.service";
 import { formatPeriodRange, minutesToHours } from "@/lib/time";
 
@@ -51,9 +52,14 @@ const columns: DataTableColumn<Timesheet>[] = [
  * REVISION_REQUESTED periods are called out — those re-open the submit flow.
  */
 export function TimesheetHistoryCard() {
+  const { data: me } = useQuery({ queryKey: ["account", "me"], queryFn: getMe });
+  // Explicitly scoped to the signed-in user — see TimesheetsContent: an absent
+  // userId means "no user filter" for a caller with timesheet:read_org, which
+  // filled this employee-facing history with other people's timesheets.
   const { data, isLoading, isError } = useQuery({
-    queryKey: ["timesheets", "history"],
-    queryFn: () => listTimesheets({ limit: 12 }),
+    queryKey: ["timesheets", "history", me?.id],
+    queryFn: () => listTimesheets({ userId: me!.id, limit: 12 }),
+    enabled: Boolean(me?.id),
   });
 
   const sheets = [...(data?.data ?? [])].sort((a, b) => b.periodStart.localeCompare(a.periodStart));

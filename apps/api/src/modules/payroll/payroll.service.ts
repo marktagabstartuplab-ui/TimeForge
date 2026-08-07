@@ -969,7 +969,11 @@ export class PayrollService {
         const dpw = user.daysPerWeek ? Number(user.daysPerWeek) : 5;
         const effectiveHourlyRate = compType === 'DAILY' ? dRate / 8 : hRate;
 
-        const approvedMins = userMinutes.get(user.id) ?? 0;
+        // Timesheet.totalMinutes, summed across this user's sheets. NOT used to
+        // pay — time entries are the ledger and this column is a cache of them
+        // (see the reconciliation check after the split below). Kept only to
+        // detect the two disagreeing.
+        const headerMins = userMinutes.get(user.id) ?? 0;
         const pendingMins = pendingMinutes.get(user.id) ?? 0;
         const rejectedMins = rejectedMinutes.get(user.id) ?? 0;
 
@@ -987,6 +991,24 @@ export class PayrollService {
               regularMins += dayMinutes;
             }
           }
+        }
+
+        // Reconciliation. Time entries are authoritative: attachEntries refuses
+        // an entry already owned by another sheet, so each entry belongs to
+        // exactly one timesheet and cannot be paid twice. Timesheet.totalMinutes
+        // is a cache recomputed from those entries, so a mismatch means the
+        // cache is stale — never a reason to pay minutes with no entry behind
+        // them. Paying the header instead would let a stale cache bill for
+        // minutes whose entries now sit on a different, separately payable
+        // sheet. Surfaced rather than swallowed: this used to be computed and
+        // silently discarded, so a header claiming time that no entry supported
+        // showed as hours in Timesheets and zero in Payroll with nothing said.
+        if (headerMins !== regularMins + overtimeMins) {
+          this.logger.warn(
+            `Timesheet total (${headerMins}m) disagrees with its time entries ` +
+              `(${regularMins + overtimeMins}m) for user ${user.id} in period ${periodId}. ` +
+              'Paying the entries.',
+          );
         }
 
         const overtimeHours = new Decimal(overtimeMins).div(60);
