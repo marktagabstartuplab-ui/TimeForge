@@ -828,8 +828,31 @@ export class TimesheetsService {
       where: { id: { in: dto.entryIds } },
       data: { timesheetId: id, updatedBy: p.userId, version: { increment: 1 } },
     });
+    await this.recalcTotalMinutes(id, p.userId);
 
     return this.prisma.timesheet.findUniqueOrThrow({ where: { id } });
+  }
+
+  /**
+   * Re-derives Timesheet.totalMinutes from the entries currently attached.
+   *
+   * The column is a cache of the time entries, which are the ledger — payroll
+   * pays from the entries and only warns when the two disagree. Until this
+   * existed, only submit() recomputed it, so attaching or detaching entries on a
+   * draft left the header quoting a total no entry supported.
+   */
+  private async recalcTotalMinutes(timesheetId: string, actorId: string): Promise<void> {
+    const agg = await this.prisma.timeEntry.aggregate({
+      where: { timesheetId, deletedAt: null },
+      _sum: { durationMinutes: true },
+    });
+    await this.prisma.timesheet.update({
+      where: { id: timesheetId },
+      // Deliberately no version bump: this is a derived field recomputed from
+      // the entry rows, not a user edit of the sheet. Bumping would invalidate
+      // the optimistic-lock token the caller is holding for its next write.
+      data: { totalMinutes: agg._sum.durationMinutes ?? 0, updatedBy: actorId },
+    });
   }
 
   /** Removes a single entry from a DRAFT timesheet (sets timesheetId = null). */
@@ -850,6 +873,7 @@ export class TimesheetsService {
       where: { id: entryId },
       data: { timesheetId: null, updatedBy: p.userId, version: { increment: 1 } },
     });
+    await this.recalcTotalMinutes(timesheetId, p.userId);
   }
 
   /** Soft-deletes a DRAFT timesheet and detaches all its entries. */
