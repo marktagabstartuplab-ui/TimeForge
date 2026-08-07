@@ -221,6 +221,19 @@ export class PayrollController {
   }
 
   /** The current report for a period, if generated — null otherwise. Never regenerates. */
+  /**
+   * BUG-BR: whether this period's report predates the approvals feeding it, so
+   * the screen can say so instead of relying on the operator remembering.
+   */
+  @Get('periods/:id/staleness')
+  @RequirePermissions('payroll_period:read')
+  periodStaleness(
+    @CurrentUser() u: AuthPrincipal,
+    @Param('id', ParseUUIDPipe) id: string,
+  ) {
+    return this.svc.periodStaleness(u, id);
+  }
+
   @Get('periods/:id/report')
   @RequirePermissions('payroll_period:read')
   findReportByPeriod(
