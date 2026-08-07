@@ -85,6 +85,10 @@ export function EmployeeRelationsContent() {
   });
   const employees = useMemo(() => employeePage?.data ?? [], [employeePage]);
 
+  // Both Selects store an employee id; the triggers need the person behind it.
+  const selectedNteEmployee = employees.find((e) => e.id === nteEmployeeId);
+  const selectedClearanceEmployee = employees.find((e) => e.id === clearanceEmployeeId);
+
   const {
     data: ntes,
     isLoading: ntesLoading,
@@ -191,11 +195,18 @@ export function EmployeeRelationsContent() {
                     <label className="text-xs font-bold text-brand-navy">Employee</label>
                     <Select value={nteEmployeeId} onValueChange={(v) => setNteEmployeeId(v ?? "")}>
                       <SelectTrigger className="h-9 border-[#c3c6d2] text-xs">
-                        <SelectValue placeholder="Select an employee…" />
+                        {/* Without explicit children SelectValue renders the raw
+                            `value` — here the employee's UUID. The trigger has to
+                            resolve the id back to a name itself. */}
+                        <SelectValue placeholder="Select an employee…">
+                          {selectedNteEmployee
+                            ? `${selectedNteEmployee.firstName} ${selectedNteEmployee.lastName}`
+                            : undefined}
+                        </SelectValue>
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="w-auto max-w-[min(24rem,calc(100vw-2rem))] min-w-(--anchor-width)">
                         {employees.map((e) => (
-                          <SelectItem key={e.id} value={e.id}>
+                          <SelectItem key={e.id} value={e.id} className="whitespace-nowrap">
                             {e.firstName} {e.lastName}
                           </SelectItem>
                         ))}
@@ -318,11 +329,17 @@ export function EmployeeRelationsContent() {
                       onValueChange={(v) => setClearanceEmployeeId(v ?? "")}
                     >
                       <SelectTrigger className="h-9 border-[#c3c6d2] text-xs">
-                        <SelectValue placeholder="Select an employee…" />
+                        {/* Same as the NTE picker above: otherwise the trigger
+                            shows the employee's UUID. */}
+                        <SelectValue placeholder="Select an employee…">
+                          {selectedClearanceEmployee
+                            ? `${selectedClearanceEmployee.firstName} ${selectedClearanceEmployee.lastName}`
+                            : undefined}
+                        </SelectValue>
                       </SelectTrigger>
-                      <SelectContent>
+                      <SelectContent className="w-auto max-w-[min(24rem,calc(100vw-2rem))] min-w-(--anchor-width)">
                         {employees.map((e) => (
-                          <SelectItem key={e.id} value={e.id}>
+                          <SelectItem key={e.id} value={e.id} className="whitespace-nowrap">
                             {e.firstName} {e.lastName}
                           </SelectItem>
                         ))}
