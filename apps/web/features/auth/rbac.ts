@@ -47,7 +47,12 @@ const ROLE_PERMISSIONS: Record<string, readonly string[]> = {
   ],
   HR: [
     "user:read",
+    "time_entry:read",
     "timesheet:read", "timesheet:read_org",
+    // HR creates the off-cycle periods payroll runs against. Missing here, the
+    // "Add Custom Period" button was hidden for HR and shown for Finance — the
+    // same screen appearing to gain and lose a control depending on who opened it.
+    "payroll_period:create",
     "holiday:read", "holiday:write",
     "kpi_progress:read_org", "kpi:read_org", "kpi_template:read",
     "attendance:read_org",
