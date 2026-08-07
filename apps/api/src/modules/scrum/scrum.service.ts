@@ -88,6 +88,20 @@ function isEodEntryReportOnly(dto: UpdateScrumEntryDto): boolean {
 /** How far back carry-over looks for a day with uncompleted "continue tomorrow" tasks. */
 const CARRY_OVER_LOOKBACK_DAYS = 7;
 
+/**
+ * BUG-BQ. The EOD review appends its accomplishments to `ScrumEntry.today`
+ * behind this marker (see EodReviewModal) — everything before it is the
+ * morning's commitment, everything after is what actually got done.
+ */
+const EOD_MARKER = 'EOD Review — ';
+
+/**
+ * How far back "Yesterday's Accomplishments" looks. Deliberately not one day:
+ * Monday's scrum should offer Friday's review, and a day off in between must not
+ * silently produce an empty field.
+ */
+const PREVIOUS_EOD_LOOKBACK_DAYS = 7;
+
 /** Refusal message shared by every locked-record guard. */
 const LOCKED_MESSAGE =
   "Today's scrum plan is locked. Ask your supervisor to unlock the day to change it.";
@@ -173,6 +187,59 @@ export class ScrumService {
    * already re-planned today (same title) are filtered out, so the section
    * empties itself as they're added.
    */
+  /**
+   * BUG-BQ: summarises the caller's most recent previous EOD review so the
+   * Daily Plan can pre-fill "Yesterday's Accomplishments" instead of asking
+   * them to retype what they already reported.
+   *
+   * Read-only and lossless by design — it returns a suggestion the employee
+   * edits and saves as their own text. Nothing is written here, and the EOD
+   * record itself is never touched.
+   *
+   * Prefers the EOD narrative, falling back to the completed commitments and
+   * their reported actuals: an employee who closed their tasks but skipped the
+   * review still has something true to carry forward.
+   */
+  async previousEodSummary(
+    p: AuthPrincipal,
+  ): Promise<{ sourceDate: string | null; summary: string | null }> {
+    const today = await this.todayDate(p);
+    const lookbackFrom = new Date(today.getTime() - PREVIOUS_EOD_LOOKBACK_DAYS * 86_400_000);
+
+    const previous = await this.prisma.scrumEntry.findFirst({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        userId: p.userId,
+        deletedAt: null,
+        entryDate: { gte: lookbackFrom, lt: today },
+      },
+      orderBy: { entryDate: 'desc' },
+      select: { id: true, entryDate: true, today: true },
+    });
+    if (!previous) return { sourceDate: null, summary: null };
+
+    const sourceDate = previous.entryDate.toISOString().slice(0, 10);
+
+    // The narrative the employee wrote in their review. `today` can hold several
+    // marker blocks if a review was re-submitted, so take the last one.
+    const blocks = (previous.today ?? '').split(EOD_MARKER);
+    const narrative = blocks.length > 1 ? blocks[blocks.length - 1].trim() : '';
+    if (narrative) return { sourceDate, summary: narrative.slice(0, 2000) };
+
+    const completed = await this.prisma.scrumTask.findMany({
+      where: { scrumEntryId: previous.id, deletedAt: null, taskStatus: 'COMPLETED' },
+      select: { title: true, actualCompleted: true },
+      orderBy: { createdAt: 'asc' },
+    });
+    if (completed.length === 0) return { sourceDate, summary: null };
+
+    const summary = completed
+      .map((t) => (t.actualCompleted ? `${t.title} (${t.actualCompleted})` : t.title))
+      .join('; ');
+    return { sourceDate, summary: summary.slice(0, 2000) };
+  }
+
   async carryOverTasks(
     p: AuthPrincipal,
   ): Promise<{ sourceEntryId: string | null; sourceDate: string | null; tasks: ScrumTask[] }> {

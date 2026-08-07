@@ -42,6 +42,7 @@ import {
   createScrumBlocker,
   createScrumEntry,
   createScrumTask,
+  getPreviousEodSummary,
   deleteScrumBlocker,
   deleteScrumTask,
   getMyScrumEditRequest,
@@ -295,6 +296,33 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
         );
     }
   }, [entry, reset]);
+
+  // BUG-BQ: yesterday's EOD review, offered as the starting text for Yesterday's
+  // Accomplishments so the employee isn't retyping what they already reported.
+  const { data: previousEod } = useQuery({
+    queryKey: ["scrum-previous-eod"],
+    queryFn: getPreviousEodSummary,
+  });
+  const [prefilledFrom, setPrefilledFrom] = useState<string | null>(null);
+  const prefillApplied = useRef(false);
+
+  useEffect(() => {
+    if (prefillApplied.current) return;
+    // Wait for the entry query: the reset() effect above re-seeds this field
+    // when it lands, and would wipe a prefill applied before it.
+    if (loading) return;
+    if (planLocked) return;
+    if (!previousEod?.summary) return;
+    // Never overwrite the employee's own words — a saved entry or a restored
+    // local draft both win over the suggestion.
+    if (getValues("yesterday").trim()) return;
+
+    prefillApplied.current = true;
+    setPrefilledFrom(previousEod.sourceDate);
+    // shouldDirty so Save is enabled: this is unsaved text like anything else
+    // typed here, and it is only a suggestion until the employee saves it.
+    setValue("yesterday", previousEod.summary, { shouldDirty: true });
+  }, [previousEod, loading, planLocked, getValues, setValue]);
 
   const hasUnsavedWork = !locked && isDirty;
 
@@ -1193,6 +1221,13 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
               className="bg-white"
               {...register("yesterday")}
             />
+            {/* Says where the text came from, so it reads as a suggestion to
+                check rather than something the system already filed. */}
+            {prefilledFrom ? (
+              <p className="mt-1 text-[11px] text-brand-muted">
+                Filled in from your {prefilledFrom} end-of-day review — edit it before saving.
+              </p>
+            ) : null}
             <FieldError message={errors.yesterday?.message} />
           </div>
 

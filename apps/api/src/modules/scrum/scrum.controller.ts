@@ -46,6 +46,17 @@ export class ScrumController {
     return this.svc.carryOverTasks(u);
   }
 
+  /**
+   * BUG-BQ: the caller's most recent previous EOD review, summarised, to
+   * pre-fill "Yesterday's Accomplishments". Declared before `:id` for the same
+   * reason as carry-over above.
+   */
+  @Get('previous-eod')
+  @RequirePermissions('scrum:read')
+  previousEod(@CurrentUser() u: AuthPrincipal) {
+    return this.svc.previousEodSummary(u);
+  }
+
   /** Employee asks their supervisor to reopen this locked entry. */
   @Post(':id/edit-request')
   @RequirePermissions('scrum:update')
