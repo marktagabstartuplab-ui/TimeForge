@@ -186,7 +186,11 @@ export function RequestLeaveDrawer({ open, onOpenChange }: RequestLeaveDrawerPro
                 control={control}
                 name="leaveType"
                 render={({ field }) => (
-                  <Select value={field.value} onValueChange={field.onChange}>
+                  <Select
+                    value={field.value}
+                    onValueChange={field.onChange}
+                    items={LEAVE_TYPES.map((t) => ({ value: t.value, label: t.label }))}
+                  >
                     <SelectTrigger
                       id="leave-type"
                       aria-label="Leave Type"

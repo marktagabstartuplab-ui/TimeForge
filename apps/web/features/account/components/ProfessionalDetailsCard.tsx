@@ -169,7 +169,11 @@ export function ProfessionalDetailsCard({
         <div>
           <Label className="mb-1.5">Employment Type</Label>
           {isEditing && onEmploymentTypeChange ? (
-            <Select value={selectedEmploymentType ?? me.employmentType} onValueChange={(v) => onEmploymentTypeChange(v ?? "")}>
+            <Select
+              value={selectedEmploymentType ?? me.employmentType}
+              onValueChange={(v) => onEmploymentTypeChange(v ?? "")}
+              items={EMPLOYMENT_TYPES.map((et) => ({ value: et, label: EMPLOYMENT_TYPE_LABELS[et] }))}
+            >
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 {EMPLOYMENT_TYPES.map((et) => (

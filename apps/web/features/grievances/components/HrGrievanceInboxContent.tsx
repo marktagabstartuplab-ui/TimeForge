@@ -121,7 +121,16 @@ export function HrGrievanceInboxContent() {
               onChange={(e) => setSearch(e.target.value)}
               className="h-9 w-48 text-xs"
             />
-            <Select value={statusFilter} onValueChange={(value) => setStatusFilter(value ?? "ALL")}>
+            <Select
+              value={statusFilter}
+              onValueChange={(value) => setStatusFilter(value ?? "ALL")}
+              items={[
+                { value: "ALL", label: "All Statuses" },
+                { value: "SUBMITTED", label: "Submitted" },
+                { value: "UNDER_REVIEW", label: "Under Review" },
+                { value: "RESOLVED", label: "Resolved" },
+              ]}
+            >
               <SelectTrigger className="h-9 w-40 rounded-[8px] border-[#c3c6d2] bg-white text-xs">
                 <SelectValue placeholder="All Statuses" />
               </SelectTrigger>
@@ -262,7 +271,15 @@ export function HrGrievanceInboxContent() {
               <div className="border-t border-[#c3c6d2]/40 pt-4 space-y-3">
                 <div className="flex flex-col gap-1">
                   <label className="text-xs font-bold text-brand-navy">Update Status</label>
-                  <Select value={editStatus} onValueChange={(v) => setEditStatus(v as GrievanceStatus)}>
+                  <Select
+                    value={editStatus}
+                    onValueChange={(v) => setEditStatus(v as GrievanceStatus)}
+                    items={[
+                      { value: "SUBMITTED", label: "Submitted" },
+                      { value: "UNDER_REVIEW", label: "Under Review" },
+                      { value: "RESOLVED", label: "Resolved" },
+                    ]}
+                  >
                     <SelectTrigger className="h-9 text-xs border-[#c3c6d2]">
                       <SelectValue />
                     </SelectTrigger>

@@ -97,7 +97,11 @@ export function GeneratePayrollModal({
               control={control}
               name="type"
               render={({ field }) => (
-                <Select value={field.value} onValueChange={field.onChange}>
+                <Select
+                  value={field.value}
+                  onValueChange={field.onChange}
+                  items={PERIOD_TYPES.map((t) => ({ value: t, label: t.replace("_", " ") }))}
+                >
                   <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
                   <SelectContent>
                     {PERIOD_TYPES.map((t) => (

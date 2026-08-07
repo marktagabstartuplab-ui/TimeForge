@@ -251,7 +251,16 @@ export function EmployeeTable({ isAdmin, onToast }: { isAdmin: boolean; onToast:
           </div>
           <div className="flex-1 min-w-[150px]">
             <label className="mb-1 block text-xs font-semibold text-brand-muted">Status</label>
-            <Select value={status} onValueChange={(v) => setStatus(v ?? "ALL")}>
+            {/* Without `items` the trigger renders the raw value (ACTIVE) rather
+                than the label the options show ("Active"). */}
+            <Select
+              value={status}
+              onValueChange={(v) => setStatus(v ?? "ALL")}
+              items={[
+                { value: "ALL", label: "All Statuses" },
+                ...STATUSES.map((s) => ({ value: s, label: statusTone(s).label })),
+              ]}
+            >
               <SelectTrigger className="w-full"><SelectValue /></SelectTrigger>
               <SelectContent>
                 <SelectItem value="ALL">All Statuses</SelectItem>
