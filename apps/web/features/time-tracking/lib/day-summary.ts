@@ -43,9 +43,16 @@ export function summarizeDay(entries: TimeEntry[], now = new Date()): DaySummary
   let running: TimeEntry | null = null;
   let prevEnd: string | null = null;
 
-  const dayStart = new Date(now);
+  // Clamp to the day being summarised, anchored on its own entries — not on
+  // `now`. Callers that summarise history (MyTimesheetCard, one call per past
+  // day) pass no `now`, so anchoring here on today put every past day's window
+  // in the wrong place: the interval never overlapped and the day reported 0m
+  // despite having a clock-in and a clock-out. Today's row was unaffected,
+  // which is why only history looked broken.
+  const anchor = sorted.length > 0 ? new Date(sorted[0].startTime) : new Date(now);
+  const dayStart = new Date(anchor);
   dayStart.setHours(0, 0, 0, 0);
-  const dayEnd = new Date(now);
+  const dayEnd = new Date(anchor);
   dayEnd.setHours(23, 59, 59, 999);
   const dayStartTime = dayStart.getTime();
   const dayEndTime = dayEnd.getTime();
