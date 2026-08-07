@@ -437,7 +437,23 @@ export function FinancePayrollProcessingContent() {
             </div>
           ))}
         </div>
-      ) : activePeriod?.status === "OPEN" || processingStatus === "DRAFT" || isDashError ? (
+      ) : /*
+           Whether HR has handed the period over is PayrollPeriod.status
+           (OPEN -> GENERATED -> LOCKED -> EXPORTED). processingStatus is
+           Finance's own pipeline (DRAFT -> VALIDATED -> APPROVED ->
+           SENT_TO_BANK), and gating on `processingStatus === "DRAFT"` made this
+           screen unusable: DRAFT is exactly the state Finance validates from
+           (canValidate below), so the Validate button only ever rendered on a
+           screen that only appeared when it was disabled. HR locking a period
+           left it LOCKED/DRAFT and Finance saw "Pending HR Submission" forever.
+
+           Pending means HR is still working: the period is OPEN, or GENERATED
+           and untouched by Finance. A locked/exported period, or one Finance has
+           already progressed, opens the workspace.
+        */
+      activePeriod?.status === "OPEN" ||
+        (activePeriod?.status === "GENERATED" && processingStatus === "DRAFT") ||
+        isDashError ? (
         <div className="rounded-[16px] border border-[#c3c6d2]/50 bg-white p-12 text-center shadow-sm flex flex-col items-center justify-center gap-3">
           <div className="flex h-14 w-14 items-center justify-center rounded-full bg-amber-50 text-amber-600">
             <Clock className="h-7 w-7" />
