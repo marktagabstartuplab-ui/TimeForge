@@ -599,6 +599,9 @@ export function FinancePayrollProcessingContent() {
                       <th className="py-3 px-4">Base Pay</th>
                       <th className="py-3 px-4">Premiums</th>
                       <th className="py-3 px-4">Gross Payroll</th>
+                      {/* Base pay ÷ (hours × rate) — describes the base rate
+                          uplift only, so it deliberately excludes premiums. */}
+                      <th className="py-3 px-4">Pay Multiplier</th>
                       <th className="py-3 px-4">Status</th>
                     </tr>
                   </thead>
@@ -704,6 +707,7 @@ export function FinancePayrollProcessingContent() {
                           })()}
                         </td>
                         <td className="py-3 px-4 font-semibold text-brand-ink">{formatCurrency(emp.grossTotal)}</td>
+                        <td className="py-3 px-4 text-brand-ink">{emp.payMultiplier.toFixed(2)}x</td>
                         <td className="py-3 px-4">
                           <StatusBadge label={emp.rowStatus} tone={STATUS_TONE[emp.rowStatus] ?? "neutral"} />
                         </td>
