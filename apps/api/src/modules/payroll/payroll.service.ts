@@ -620,26 +620,7 @@ export class PayrollService {
 
     // Gather Supervisor-approved timesheets within the period date range, filtered
     // by employeeIds or timesheetIds if specified for selective processing (BUG-BK).
-    const tsWhere: any = {
-      tenantId: p.tenantId,
-      organizationId: p.organizationId,
-      status: { in: ['APPROVED', 'PAYROLL_READY'] },
-      paymentStatus: { not: 'PAID' },
-      deletedAt: null,
-      // BUG-BL: honour the explicit period link the employee chose at submission
-      // (and that BUG-BM keeps pinned), falling back to the work-date range only
-      // for sheets not linked to any period. Same predicate as the send-to-bank
-      // step, so a sheet routed here is paid here — a late submission against a
-      // historical period is picked up by that period's run, not a neighbour's.
-      OR: [
-        { payrollPeriodId: periodId },
-        {
-          payrollPeriodId: null,
-          periodStart: { gte: period.startDate },
-          periodEnd: { lte: period.endDate },
-        },
-      ],
-    };
+    const tsWhere: any = this.payableTimesheetsWhere(p, period);
     if (employeeIds && employeeIds.length > 0) {
       tsWhere.userId = { in: employeeIds };
     }
@@ -1429,6 +1410,98 @@ export class PayrollService {
   }
 
   /** The current report for a period (if generated yet), for the Payroll Processing wizard — read-only, never regenerates. */
+  /**
+   * The timesheets a generation run for `period` would pay.
+   *
+   * Extracted (BUG-BR) so the staleness check asks exactly the question
+   * Recalculate answers — a second copy of this predicate would drift from the
+   * run it claims to describe, and a banner that lies about pending work is
+   * worse than no banner.
+   *
+   * BUG-BL: honour the explicit period link the employee chose at submission
+   * (and that BUG-BM keeps pinned), falling back to the work-date range only for
+   * sheets not linked to any period. Same predicate as the send-to-bank step, so
+   * a sheet routed here is paid here — a late submission against a historical
+   * period is picked up by that period's run, not a neighbour's.
+   */
+  private payableTimesheetsWhere(
+    p: AuthPrincipal,
+    period: { id: string; startDate: Date; endDate: Date },
+  ): Prisma.TimesheetWhereInput {
+    return {
+      tenantId: p.tenantId,
+      organizationId: p.organizationId,
+      status: { in: ['APPROVED', 'PAYROLL_READY'] },
+      paymentStatus: { not: 'PAID' },
+      deletedAt: null,
+      OR: [
+        { payrollPeriodId: period.id },
+        {
+          payrollPeriodId: null,
+          periodStart: { gte: period.startDate },
+          periodEnd: { lte: period.endDate },
+        },
+      ],
+    };
+  }
+
+  /**
+   * BUG-BR: is this period's report older than the approvals feeding it?
+   *
+   * Approving a timesheet does not recalculate payroll, and nothing said so —
+   * which is how a period showed "0 hours" for someone whose sheet was approved
+   * four hours after the report was generated. This answers the question the
+   * screen needs to ask, so an operator can see the gap instead of having to
+   * remember to click Recalculate.
+   *
+   * Deliberately a read: auto-generating on approval would rewrite a report — it
+   * deletes and recreates every line item — on a schedule nobody chose, and the
+   * decision to redo payroll belongs to Finance, not to whoever approves a
+   * timesheet.
+   */
+  async periodStaleness(p: AuthPrincipal, periodId: string) {
+    const period = await this.findOnePeriod(p, periodId); // 404s if not in this org
+
+    const report = await this.prisma.payrollReport.findFirst({
+      where: {
+        payrollPeriodId: periodId,
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        deletedAt: null,
+      },
+      select: { createdAt: true },
+    });
+
+    const payable = await this.prisma.timesheet.findMany({
+      where: this.payableTimesheetsWhere(p, period),
+      select: { decidedAt: true, updatedAt: true },
+    });
+
+    // decidedAt is when the supervisor approved it; fall back to updatedAt for
+    // rows that predate the column being populated.
+    const approvalTimes = payable
+      .map((t) => t.decidedAt ?? t.updatedAt)
+      .filter((d): d is Date => Boolean(d));
+    const latestApprovalAt =
+      approvalTimes.length > 0
+        ? new Date(Math.max(...approvalTimes.map((d) => d.getTime())))
+        : null;
+
+    const lastRecalculatedAt = report?.createdAt ?? null;
+    const isStale =
+      payable.length > 0 &&
+      (lastRecalculatedAt === null ||
+        (latestApprovalAt !== null && latestApprovalAt > lastRecalculatedAt));
+
+    return {
+      lastRecalculatedAt,
+      latestApprovalAt,
+      /** Approved, unpaid timesheets this period's next run would pay. */
+      payableTimesheetCount: payable.length,
+      isStale,
+    };
+  }
+
   async findReportByPeriod(p: AuthPrincipal, periodId: string) {
     await this.findOnePeriod(p, periodId); // 404s if the period doesn't exist / isn't in this org
     return this.prisma.payrollReport.findFirst({

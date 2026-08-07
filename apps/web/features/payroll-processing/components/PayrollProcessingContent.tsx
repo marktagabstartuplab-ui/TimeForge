@@ -31,6 +31,7 @@ import {
   listPeriods,
   createPeriod,
   getReportByPeriod,
+  getPeriodStaleness,
   generateReport,
   lockPeriod,
   resetPeriod,
@@ -86,6 +87,17 @@ function formatCurrency(n: number): string {
   return `₱${n.toLocaleString("en-US", { minimumFractionDigits: 2, maximumFractionDigits: 2 })}`;
 }
 
+/** Date + time — the staleness banner compares two moments, so minutes matter. */
+function formatTimestamp(iso: string | null): string | null {
+  if (!iso) return null;
+  return new Date(iso).toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
+
 function formatDateRange(start: string, end: string): string {
   const opt: Intl.DateTimeFormatOptions = { month: "short", day: "numeric", year: "numeric" };
   return `${new Date(start).toLocaleDateString("en-US", opt)} - ${new Date(end).toLocaleDateString("en-US", opt)}`;
@@ -128,6 +140,16 @@ export function PayrollProcessingContent() {
   const { data: report, isLoading: isReportLoading, isError: isReportError } = useQuery({
     queryKey: ["payroll-processing", "report", activePeriodId],
     queryFn: () => getReportByPeriod(activePeriodId as string),
+    enabled: Boolean(activePeriodId),
+    refetchInterval: 30_000,
+  });
+
+  // BUG-BR: approving a timesheet does not recalculate payroll, and nothing on
+  // this screen said so. Keyed under "payroll-processing" so invalidateAll()
+  // below refreshes it — recalculating clears the banner.
+  const { data: staleness } = useQuery({
+    queryKey: ["payroll-processing", "staleness", activePeriodId],
+    queryFn: () => getPeriodStaleness(activePeriodId as string),
     enabled: Boolean(activePeriodId),
     refetchInterval: 30_000,
   });
@@ -469,8 +491,41 @@ export function PayrollProcessingContent() {
             </div>
           </div>
 
+          {/* BUG-BR: the report predates the approvals feeding it. Shown ahead of
+              the "no approved hours" hint below, which is a narrower symptom of
+              the same thing. */}
+          {staleness?.isStale && activePeriod?.status !== "EXPORTED" && (
+            <div className="flex flex-wrap items-start gap-3 rounded-[12px] border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
+              <div className="min-w-0 flex-1">
+                <p className="font-semibold">
+                  Payroll data is stale — recalculate to include the latest approvals
+                </p>
+                <p className="mt-0.5 text-xs text-amber-700">
+                  Last recalculated:{" "}
+                  <strong>{formatTimestamp(staleness.lastRecalculatedAt) ?? "never"}</strong>
+                  {" · "}Latest approval:{" "}
+                  <strong>{formatTimestamp(staleness.latestApprovalAt) ?? "—"}</strong>
+                  {" · "}
+                  {staleness.payableTimesheetCount} approved timesheet
+                  {staleness.payableTimesheetCount === 1 ? "" : "s"} would be included.
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => generateMutation.mutate(undefined)}
+                disabled={!canRecalculate || isBusy}
+                className="shrink-0 border-amber-300 bg-white text-xs text-amber-700 hover:bg-amber-50"
+              >
+                {generateMutation.isPending ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <RefreshCw className="h-3.5 w-3.5" />}
+                Recalculate
+              </Button>
+            </div>
+          )}
+
           {/* Sync hint: report exists but no approved hours were captured */}
-          {report && totals.approved === 0 && activePeriod?.status !== "EXPORTED" && (
+          {!staleness?.isStale && report && totals.approved === 0 && activePeriod?.status !== "EXPORTED" && (
             <div className="flex items-start gap-3 rounded-[12px] border border-amber-300 bg-amber-50 px-4 py-3 text-sm text-amber-800">
               <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" aria-hidden="true" />
               <div className="min-w-0">

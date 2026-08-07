@@ -82,6 +82,19 @@ export async function createPeriod(input: { type: "CUSTOM"; startDate: string; e
   return data;
 }
 
+/** BUG-BR: is the stored report older than the approvals that feed it? */
+export interface PeriodStaleness {
+  lastRecalculatedAt: string | null;
+  latestApprovalAt: string | null;
+  payableTimesheetCount: number;
+  isStale: boolean;
+}
+
+export async function getPeriodStaleness(periodId: string): Promise<PeriodStaleness> {
+  const { data } = await apiClient.get<PeriodStaleness>(`/payroll/periods/${periodId}/staleness`);
+  return data;
+}
+
 export async function getReportByPeriod(periodId: string): Promise<PayrollReport | null> {
   const { data } = await apiClient.get<PayrollReport | null>(`/payroll/periods/${periodId}/report`);
   return data;
