@@ -21,10 +21,15 @@ const principal = {
   permissions: [],
 } as unknown as AuthPrincipal;
 
+/** Single-day case: one entry in the window, with its completed tasks. */
 async function buildService(entry: unknown, tasks: unknown[] = []) {
+  return buildServiceWith(entry ? [{ ...(entry as object), tasks }] : []);
+}
+
+/** Multi-day case: the whole window, newest first, each with its own tasks. */
+async function buildServiceWith(entries: unknown[]) {
   const prisma = {
-    scrumEntry: { findFirst: jest.fn().mockResolvedValue(entry) },
-    scrumTask: { findMany: jest.fn().mockResolvedValue(tasks) },
+    scrumEntry: { findMany: jest.fn().mockResolvedValue(entries) },
   };
 
   const module: TestingModule = await Test.createTestingModule({
@@ -103,13 +108,16 @@ describe('BUG-BQ — previous EOD summary', () => {
     });
   });
 
-  it('returns nothing when the previous day has neither a review nor completed work', async () => {
+  // sourceDate names where the summary came from, so with no summary there is
+  // no source to name — and once the whole window is searched, singling out one
+  // of several empty days would be arbitrary.
+  it('returns nothing when no day in the window has a review or completed work', async () => {
     const { service } = await buildService(entryOn('2026-08-05', 'Commitment only'), []);
 
-    const result = await service.previousEodSummary(principal);
-
-    expect(result.summary).toBeNull();
-    expect(result.sourceDate).toBe('2026-08-05');
+    expect(await service.previousEodSummary(principal)).toEqual({
+      sourceDate: null,
+      summary: null,
+    });
   });
 
   // Friday → Monday: the lookback window is a week, not one day, so a weekend or
@@ -123,7 +131,7 @@ describe('BUG-BQ — previous EOD summary', () => {
 
     expect(result.summary).toBe('Friday wrap-up');
     // Newest-first, strictly before today, bounded by the lookback window.
-    const [args] = prisma.scrumEntry.findFirst.mock.calls[0];
+    const [args] = prisma.scrumEntry.findMany.mock.calls[0];
     expect(args.orderBy).toEqual({ entryDate: 'desc' });
     expect(args.where.entryDate.lt).toBeInstanceOf(Date);
     expect(args.where.entryDate.gte).toBeInstanceOf(Date);
@@ -132,12 +140,45 @@ describe('BUG-BQ — previous EOD summary', () => {
     expect(spanDays).toBe(7);
   });
 
+  // The bug this originally shipped with: planning a day creates an entry
+  // whether or not the review is ever filed, so the newest entry was often an
+  // empty one. Taking only that entry let it shadow every earlier day that did
+  // have a review, and the field stayed blank despite the week-long lookback.
+  it('skips a planned-but-unreviewed day and uses the last real review', async () => {
+    const { service } = await buildServiceWith([
+      { ...entryOn('2026-08-06', ''), tasks: [] },
+      { ...entryOn('2026-08-05', 'Plan\n\nEOD Review — Shipped the exporter'), tasks: [] },
+    ]);
+
+    const result = await service.previousEodSummary(principal);
+
+    expect(result.summary).toBe('Shipped the exporter');
+    expect(result.sourceDate).toBe('2026-08-05');
+  });
+
+  // Each day is judged whole before falling further back, so yesterday's closed
+  // commitments beat an older write-up — they're the more recent real work.
+  it('prefers a recent day\'s completed work over an older narrative', async () => {
+    const { service } = await buildServiceWith([
+      {
+        ...entryOn('2026-08-06', 'Commitment only'),
+        tasks: [{ title: 'Ship the invoice fix', actualCompleted: null }],
+      },
+      { ...entryOn('2026-08-05', 'Plan\n\nEOD Review — Older write-up'), tasks: [] },
+    ]);
+
+    const result = await service.previousEodSummary(principal);
+
+    expect(result.summary).toBe('Ship the invoice fix');
+    expect(result.sourceDate).toBe('2026-08-06');
+  });
+
   it('scopes the lookup to the caller', async () => {
     const { service, prisma } = await buildService(null);
 
     await service.previousEodSummary(principal);
 
-    const [args] = prisma.scrumEntry.findFirst.mock.calls[0];
+    const [args] = prisma.scrumEntry.findMany.mock.calls[0];
     expect(args.where).toMatchObject({
       userId: 'user-1',
       tenantId: 'tenant-1',
