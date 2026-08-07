@@ -206,7 +206,11 @@ export class ScrumService {
     const today = await this.todayDate(p);
     const lookbackFrom = new Date(today.getTime() - PREVIOUS_EOD_LOOKBACK_DAYS * 86_400_000);
 
-    const previous = await this.prisma.scrumEntry.findFirst({
+    // Every entry in the window, not just the newest. Planning a day creates an
+    // entry whether or not the review is ever filed, so taking only the most
+    // recent one let an unreviewed day shadow every earlier day that *did* have
+    // a review — the lookback existed but could never reach past yesterday.
+    const candidates = await this.prisma.scrumEntry.findMany({
       where: {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
@@ -215,29 +219,40 @@ export class ScrumService {
         entryDate: { gte: lookbackFrom, lt: today },
       },
       orderBy: { entryDate: 'desc' },
-      select: { id: true, entryDate: true, today: true },
+      select: {
+        id: true,
+        entryDate: true,
+        today: true,
+        tasks: {
+          where: { deletedAt: null, taskStatus: 'COMPLETED' },
+          select: { title: true, actualCompleted: true },
+          orderBy: { createdAt: 'asc' },
+        },
+      },
     });
-    if (!previous) return { sourceDate: null, summary: null };
 
-    const sourceDate = previous.entryDate.toISOString().slice(0, 10);
+    // Walk back day by day and take the first that actually says something.
+    // Each day is judged whole — its narrative, else its closed commitments —
+    // before falling further back, so the most recent real work wins over an
+    // older write-up.
+    for (const entry of candidates) {
+      const sourceDate = entry.entryDate.toISOString().slice(0, 10);
 
-    // The narrative the employee wrote in their review. `today` can hold several
-    // marker blocks if a review was re-submitted, so take the last one.
-    const blocks = (previous.today ?? '').split(EOD_MARKER);
-    const narrative = blocks.length > 1 ? blocks[blocks.length - 1].trim() : '';
-    if (narrative) return { sourceDate, summary: narrative.slice(0, 2000) };
+      // The narrative the employee wrote in their review. `today` can hold
+      // several marker blocks if a review was re-submitted, so take the last.
+      const blocks = (entry.today ?? '').split(EOD_MARKER);
+      const narrative = blocks.length > 1 ? blocks[blocks.length - 1].trim() : '';
+      if (narrative) return { sourceDate, summary: narrative.slice(0, 2000) };
 
-    const completed = await this.prisma.scrumTask.findMany({
-      where: { scrumEntryId: previous.id, deletedAt: null, taskStatus: 'COMPLETED' },
-      select: { title: true, actualCompleted: true },
-      orderBy: { createdAt: 'asc' },
-    });
-    if (completed.length === 0) return { sourceDate, summary: null };
+      if (entry.tasks.length > 0) {
+        const summary = entry.tasks
+          .map((t) => (t.actualCompleted ? `${t.title} (${t.actualCompleted})` : t.title))
+          .join('; ');
+        return { sourceDate, summary: summary.slice(0, 2000) };
+      }
+    }
 
-    const summary = completed
-      .map((t) => (t.actualCompleted ? `${t.title} (${t.actualCompleted})` : t.title))
-      .join('; ');
-    return { sourceDate, summary: summary.slice(0, 2000) };
+    return { sourceDate: null, summary: null };
   }
 
   async carryOverTasks(
