@@ -12,6 +12,13 @@ export interface DaySummary {
   /** Number of distinct breaks (gaps ≥ 1 min between sessions). */
   breakCount: number;
   entryCount: number;
+  /**
+   * BUG-BX — distinct clock-in sessions in the day. A split shift produces
+   * several, and the timesheet reports one merged row annotated with this
+   * count rather than a row per session. Manual entries (no `workSessionId`)
+   * each count once, and a day with no timer sessions reports 0.
+   */
+  sessionCount: number;
   running: TimeEntry | null;
   /** First session start today (clock in), null before the first Time In. */
   clockInAt: string | null;
@@ -89,6 +96,7 @@ export function summarizeDay(entries: TimeEntry[], now = new Date()): DaySummary
     breakMinutes: Math.round(breaks),
     breakCount,
     entryCount: sorted.length,
+    sessionCount: new Set(sorted.map((e) => e.workSessionId ?? `entry:${e.id}`)).size,
     running,
     clockInAt: sorted[0]?.startTime ?? null,
     clockOutAt: running ? null : (last?.endTime ?? null),

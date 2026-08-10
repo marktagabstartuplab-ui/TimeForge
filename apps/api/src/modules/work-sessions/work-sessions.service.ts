@@ -1,4 +1,10 @@
-import { ConflictException, ForbiddenException, Injectable, NotFoundException } from '@nestjs/common';
+import {
+  BadRequestException,
+  ConflictException,
+  ForbiddenException,
+  Injectable,
+  NotFoundException,
+} from '@nestjs/common';
 import { AuditAction, Prisma, SessionEvent, WorkSession } from '@prisma/client';
 import { orgDateOnly } from '@timeforge/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
@@ -18,6 +24,34 @@ export interface WorkSessionSummary {
    * clients that ignore this field are unaffected.
    */
   shiftLimit: ShiftLimitStatus | null;
+  /** BUG-BX — the whole day across every session, for the Time In gate. */
+  dailyTotals: DailyTotals;
+}
+
+/**
+ * BUG-BX — split shifts. A day is no longer one session: the cap that matters
+ * is the *cumulative* worked time across all of today's sessions, which is what
+ * decides whether Time In is offered again.
+ */
+export interface DailyTotals {
+  /** Worked minutes across every session today, breaks excluded, running segment included. */
+  workedMinutes: number;
+  /** The organization's daily ceiling; null when no shift configuration applies. */
+  maxDailyMinutes: number | null;
+  /** Null when unlimited. Floors at 0 — never negative. */
+  remainingMinutes: number | null;
+  /** False when a new session would start already at or over the ceiling. */
+  canClockIn: boolean;
+  /** Why Time In is unavailable, for the button's tooltip. Null when it is available. */
+  blockedReason: string | null;
+}
+
+/** BUG-BW — one organization-local day of immutable DTR events. */
+export interface DailyLog {
+  /** The requested day, echoed back as YYYY-MM-DD. */
+  date: string;
+  /** Chronological, oldest first. Empty when nothing was clocked that day. */
+  events: SessionEvent[];
 }
 
 @Injectable()
@@ -45,14 +79,24 @@ export class WorkSessionsService {
       }
     }
 
+    const today = await this.today(p);
+    const dailyTotals = await this.dailyTotals(p, today, Boolean(active));
+
     const session =
       active ??
       (await this.prisma.workSession.findFirst({
-        where: { tenantId: p.tenantId, userId: p.userId, workDate: await this.today(p) },
+        where: { tenantId: p.tenantId, userId: p.userId, workDate: today },
         orderBy: { clockIn: 'desc' },
       }));
     if (!session) {
-      return { session: null, onBreak: false, runningEntryId: null, workedMinutes: 0, shiftLimit: null };
+      return {
+        session: null,
+        onBreak: false,
+        runningEntryId: null,
+        workedMinutes: 0,
+        shiftLimit: null,
+        dailyTotals,
+      };
     }
 
     const entries = await this.prisma.timeEntry.findMany({
@@ -71,6 +115,7 @@ export class WorkSessionsService {
       runningEntryId: running?.id ?? null,
       workedMinutes,
       shiftLimit: session.isActive ? shiftLimit : null,
+      dailyTotals,
     };
   }
 
@@ -80,32 +125,27 @@ export class WorkSessionsService {
     });
     if (active) throw new ConflictException('You already have an active session');
 
-    // Block re-clock-in if today's session was already completed via EOD
-    // (clockOut set + isActive false). New sessions are only allowed the
-    // next calendar day (after midnight). This prevents employees from
-    // starting a second session after submitting their End of Day Review.
+    // BUG-BX \u2014 split shifts. Closing a session no longer closes the day: an
+    // employee who works 1pm\u20136pm can come back at 8pm. What bounds the day is
+    // the cumulative worked time, not the session count, so the ceiling is
+    // checked here rather than inferred from "a session already ended".
+    //
+    // This also un-breaks two cases the old guard caught by accident: a
+    // shift-limit auto-clock-out and the worker's midnight rollover both set
+    // clockOut, and both used to lock the employee out for the rest of the day.
     const todayStart = await this.today(p);
-    const todayEnd = new Date(todayStart);
-    todayEnd.setUTCDate(todayEnd.getUTCDate() + 1);
-    const todayCompletedSession = await this.prisma.workSession.findFirst({
-      where: {
-        tenantId: p.tenantId,
-        userId: p.userId,
-        workDate: { gte: todayStart, lt: todayEnd },
-        clockOut: { not: null },
-        isActive: false,
-      },
-    });
-    if (todayCompletedSession) {
-      throw new ConflictException(
-        "Today\u2019s work session is complete. New sessions are available from tomorrow.",
-      );
+    const totals = await this.dailyTotals(p, todayStart, false);
+    if (!totals.canClockIn) {
+      throw new ConflictException(totals.blockedReason ?? 'You cannot start another session today');
     }
 
     // Snapshot the shift configuration onto the session, so a later config change
     // cannot retroactively move the deadline of a shift already in progress.
     const clockIn = new Date();
     const config = await this.shiftLimits.defaultConfig(p.tenantId, p.organizationId);
+    const priorSessions = await this.prisma.workSession.count({
+      where: { tenantId: p.tenantId, userId: p.userId, workDate: todayStart },
+    });
     const session = await this.prisma.workSession.create({
       data: {
         tenantId: p.tenantId,
@@ -134,7 +174,21 @@ export class WorkSessionsService {
       },
     });
     await this.event(p, session.id, 'CLOCK_IN');
-    await this.audit(p, AuditAction.ADMIN_ACTION, 'work_session', session.id, { event: 'CLOCK_IN' });
+    await this.audit(p, AuditAction.ADMIN_ACTION, 'work_session', session.id, {
+      event: 'CLOCK_IN',
+      // Which session of the day this is — a split shift is otherwise
+      // indistinguishable from a normal one in the audit trail.
+      sessionOrdinal: priorSessions + 1,
+    });
+
+    // BUG-BX (4) — a second session gets to plan its own commitments. BUG-BP
+    // freezes the plan on first save, which is right for one continuous day but
+    // would leave an employee returning at 8pm unable to record what the evening
+    // is for. Reopening is scoped to a genuinely new session, so a single-session
+    // day keeps BUG-BP's lock exactly as it is.
+    if (priorSessions > 0) {
+      await this.reopenPlanForNewSession(p, todayStart);
+    }
     return this.current(p);
   }
 
@@ -251,6 +305,38 @@ export class WorkSessionsService {
     return this.current(p);
   }
 
+  /**
+   * BUG-BW — the caller's own DTR event history for one organization-local day:
+   * every clock-in, break start/end and clock-out across every session filed
+   * under that `workDate`, oldest first.
+   *
+   * Read-only by construction. `occurredAt` is written server-side (either
+   * `now()` at the time of the action, or the exact deadline/cutoff for an
+   * auto-close), and there is no endpoint that edits or deletes a SessionEvent —
+   * which is the whole point of the log for attendance disputes.
+   */
+  async dailyLog(p: AuthPrincipal, date: string): Promise<DailyLog> {
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(date)) {
+      throw new BadRequestException('date must be an ISO calendar date (YYYY-MM-DD)');
+    }
+    const workDate = new Date(`${date}T00:00:00.000Z`);
+    if (Number.isNaN(workDate.getTime())) {
+      throw new BadRequestException('date must be a valid calendar date');
+    }
+
+    const sessions = await this.prisma.workSession.findMany({
+      where: { tenantId: p.tenantId, userId: p.userId, workDate },
+      select: { id: true },
+    });
+    if (sessions.length === 0) return { date, events: [] };
+
+    const events = await this.prisma.sessionEvent.findMany({
+      where: { tenantId: p.tenantId, userId: p.userId, workSessionId: { in: sessions.map((s) => s.id) } },
+      orderBy: { occurredAt: 'asc' },
+    });
+    return { date, events };
+  }
+
   async events(p: AuthPrincipal, sessionId: string): Promise<SessionEvent[]> {
     const session = await this.prisma.workSession.findFirst({
       where: { id: sessionId, tenantId: p.tenantId, organizationId: p.organizationId },
@@ -265,6 +351,95 @@ export class WorkSessionsService {
   }
 
   // ── Private helpers ─────────────────────────────────────────────────────────
+
+  /**
+   * BUG-BX — the day's worked minutes across *every* session, and what that
+   * leaves. Breaks are excluded (it sums time entries, which are closed at
+   * break start and reopened at break end), and a running segment counts up to
+   * now, so the figure matches the timer the employee is watching.
+   *
+   * @param hasActiveSession suppresses `canClockIn` — a second concurrent
+   *   session is refused regardless of how much of the day is left.
+   */
+  private async dailyTotals(
+    p: AuthPrincipal,
+    workDate: Date,
+    hasActiveSession: boolean,
+  ): Promise<DailyTotals> {
+    const sessions = await this.prisma.workSession.findMany({
+      where: { tenantId: p.tenantId, userId: p.userId, workDate },
+      select: { id: true },
+    });
+
+    let workedMinutes = 0;
+    if (sessions.length > 0) {
+      const entries = await this.prisma.timeEntry.findMany({
+        where: { workSessionId: { in: sessions.map((s) => s.id) }, deletedAt: null },
+      });
+      const now = new Date();
+      workedMinutes = entries.reduce(
+        (sum, e) => sum + (e.durationMinutes ?? this.minutes(e.startTime, now)),
+        0,
+      );
+    }
+
+    // The ceiling is the organization's configured shift length, reused as the
+    // daily cap. No configuration means no ceiling, matching how the shift-limit
+    // service already reports UNLIMITED.
+    const config = await this.shiftLimits.defaultConfig(p.tenantId, p.organizationId);
+    const maxDailyMinutes = config?.maxShiftMinutes ?? null;
+    const remainingMinutes =
+      maxDailyMinutes === null ? null : Math.max(0, maxDailyMinutes - workedMinutes);
+
+    const overCap = remainingMinutes !== null && remainingMinutes <= 0;
+    return {
+      workedMinutes,
+      maxDailyMinutes,
+      remainingMinutes,
+      canClockIn: !hasActiveSession && !overCap,
+      blockedReason: hasActiveSession
+        ? 'You already have an active session'
+        : overCap
+          ? `You have reached your ${this.hoursLabel(maxDailyMinutes!)} daily limit. New sessions are available tomorrow.`
+          : null,
+    };
+  }
+
+  /**
+   * BUG-BX (4) — clears the plan lock so the new session can log its own
+   * commitments. Only the lock is lifted: existing commitments, blockers and
+   * everything already reported stay exactly as they are, and a day that never
+   * locked its plan is untouched.
+   */
+  private async reopenPlanForNewSession(p: AuthPrincipal, workDate: Date): Promise<void> {
+    const entry = await this.prisma.scrumEntry.findFirst({
+      where: {
+        tenantId: p.tenantId,
+        organizationId: p.organizationId,
+        userId: p.userId,
+        entryDate: workDate,
+        deletedAt: null,
+      },
+      select: { id: true, planLockedAt: true, isLocked: true },
+    });
+    // A fully-locked day (every commitment complete) stays locked — that is the
+    // supervisor's gate (BUG-AE), not the plan lock, and it is not ours to lift.
+    if (!entry || !entry.planLockedAt || entry.isLocked) return;
+
+    await this.prisma.scrumEntry.update({
+      where: { id: entry.id },
+      data: { planLockedAt: null, updatedBy: p.userId },
+    });
+    await this.audit(p, AuditAction.ADMIN_ACTION, 'scrum_entry', entry.id, {
+      event: 'PLAN_REOPENED_FOR_NEW_SESSION',
+    });
+  }
+
+  /** "12-hour" / "7.5-hour" — for limit messages. */
+  private hoursLabel(minutes: number): string {
+    const hours = minutes / 60;
+    return `${Number.isInteger(hours) ? hours : hours.toFixed(1)}-hour`;
+  }
 
   private async audit(p: AuthPrincipal, action: AuditAction, entityType: string, entityId: string, metadata: Prisma.InputJsonValue) {
     await this.prisma.auditLog.create({ data: { tenantId: p.tenantId, actorId: p.userId, action, entityType, entityId, metadata } });

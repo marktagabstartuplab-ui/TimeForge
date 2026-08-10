@@ -38,9 +38,17 @@ export interface ScrumPlanPrefill {
   kpiTemplateId?: string;
   plannedTarget?: string;
   projectId?: string;
+  /**
+   * BUG-BV: how complete the employee says the task already is, 0–100, chosen
+   * in the Load Task modal. Undefined leaves the planner's own selection alone.
+   */
+  completionPercentage?: number;
   /** YYYY-MM-DD of the day this commitment was carried over from, when applicable. */
   carriedOverFrom?: string;
 }
+
+/** BUG-BV: the Task Progress steps offered wherever progress is set. */
+export const TASK_PROGRESS_STEPS = [0, 25, 50, 75, 100] as const;
 
 /** First line = task title; the rest = long-form description. */
 export function splitDescription(description: string | null): { task: string; details: string } {

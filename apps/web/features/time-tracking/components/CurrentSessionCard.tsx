@@ -43,6 +43,12 @@ interface CurrentSessionCardProps {
   reviewReady: boolean;
   /** Human-readable reason(s) reviewReady is false, shown as a tooltip + inline note. */
   reviewBlockedReason?: string | null;
+  /**
+   * BUG-BX — a new session started. `isAdditional` is true from the second
+   * session of the day onward, which is when the employee is sent back to the
+   * planner to log what this stretch is for.
+   */
+  onSessionStarted?: (isAdditional: boolean) => void;
 }
 
 /**
@@ -60,6 +66,7 @@ export function CurrentSessionCard({
   onTimeOut,
   reviewReady,
   reviewBlockedReason,
+  onSessionStarted,
 }: CurrentSessionCardProps) {
   const queryClient = useQueryClient();
   const [now, setNow] = useState(() => Date.now());
@@ -85,10 +92,17 @@ export function CurrentSessionCard({
   const shiftLimit = workSession?.shiftLimit ?? null;
   const onBreak = workSession?.onBreak ?? false;
   const running = Boolean(session?.isActive && !onBreak);
-  // Day is complete when today's session was explicitly closed via EOD
-  // (clockOut is set, isActive is false). Employees cannot re-clock-in
-  // until the next calendar day.
-  const dayCompleted = Boolean(session?.clockOut && !session?.isActive);
+  // BUG-BX — closing a session no longer closes the day. Time In comes back for
+  // a split shift and only greys out once the cumulative daily limit is spent,
+  // which is the server's call (`dailyTotals`), not something derived from the
+  // last session's clockOut. Optimistic default so the button is not disabled
+  // during the first fetch.
+  const dailyTotals = workSession?.dailyTotals ?? null;
+  const canClockIn = dailyTotals?.canClockIn ?? true;
+  const clockInBlockedReason = dailyTotals?.blockedReason ?? null;
+  // A finished stretch with the day still open — the state that used to be a
+  // dead end.
+  const betweenSessions = Boolean(session?.clockOut && !session?.isActive && canClockIn);
 
   useEffect(() => {
     if (!running && !onBreak) return;
@@ -114,7 +128,13 @@ export function CurrentSessionCard({
           }
           : {},
       ),
-    onSuccess: invalidate,
+    onSuccess: () => {
+      // Captured before invalidating: once the cache refreshes there is an
+      // active session and the "was this a resume?" signal is gone.
+      const isAdditional = betweenSessions;
+      invalidate();
+      onSessionStarted?.(isAdditional);
+    },
     onError: (err) => setError(err instanceof ApiError ? err.message : "Could not start the shift"),
   });
 
@@ -298,19 +318,51 @@ export function CurrentSessionCard({
                 setError(null);
                 clockIn.mutate();
               }}
-              disabled={pending || loading}
-              className={cn(btnBase, "bg-brand text-white hover:bg-[#1467d6]")}
+              // BUG-BX — greys out only once the daily limit is spent. Previously
+              // this stayed enabled after any Time Out and simply 409'd, because
+              // `dayCompleted` was computed and never used.
+              disabled={pending || loading || !canClockIn}
+              title={!canClockIn ? clockInBlockedReason ?? undefined : undefined}
+              className={cn(
+                btnBase,
+                canClockIn
+                  ? "bg-brand text-white hover:bg-[#1467d6]"
+                  : "cursor-not-allowed bg-[#c3c6d2] text-white",
+              )}
             >
               {clockIn.isPending ? (
                 <Loader2 className="h-4 w-4 animate-spin" aria-hidden="true" />
               ) : (
                 <Timer className="h-4 w-4" aria-hidden="true" />
               )}
-              Clock In
+              {betweenSessions ? "Clock In Again" : "Clock In"}
               {selectedTask ? ` — ${selectedTask.title}` : ""}
             </button>
           )}
         </div>
+
+        {/* BUG-BX — the day across every session. Only worth showing once a
+            split shift is actually in play (more than one session, or the day
+            is capped), so a plain single-shift day is unchanged. */}
+        {dailyTotals && dailyTotals.maxDailyMinutes !== null && (betweenSessions || !canClockIn) ? (
+          <p
+            role="status"
+            className={cn(
+              "w-full rounded-[8px] px-3 py-2 text-xs font-medium",
+              canClockIn ? "bg-[#f6f3f4] text-brand-muted" : "bg-amber-50 text-amber-700",
+            )}
+          >
+            {canClockIn ? (
+              <>
+                {formatMinutes(dailyTotals.workedMinutes)} logged today across all sessions ·{" "}
+                <strong>{formatMinutes(dailyTotals.remainingMinutes ?? 0)} left</strong> of your{" "}
+                {formatMinutes(dailyTotals.maxDailyMinutes)} daily limit.
+              </>
+            ) : (
+              clockInBlockedReason
+            )}
+          </p>
+        ) : null}
 
         {(running || onBreak) && !reviewReady && reviewBlockedReason ? (
           <p role="status" className="w-full rounded-[8px] bg-amber-50 px-3 py-2 text-xs font-medium text-amber-700">

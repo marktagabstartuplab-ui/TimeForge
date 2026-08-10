@@ -34,6 +34,8 @@ interface DayRow {
   workMinutes: number;
   breakMinutes: number;
   totalMinutes: number;
+  /** BUG-BX — clock-in sessions behind this one merged row; >1 on a split shift. */
+  sessionCount: number;
   status: { label: string; tone: BadgeTone };
 }
 
@@ -76,6 +78,7 @@ function buildDayRows(entries: TimeEntry[]): DayRow[] {
         workMinutes: day.trackedMinutes,
         breakMinutes: day.breakMinutes,
         totalMinutes: day.trackedMinutes + day.breakMinutes,
+        sessionCount: day.sessionCount,
         status: day.running
           ? { label: "In Progress", tone: "success" as const }
           : allVerified
@@ -87,13 +90,14 @@ function buildDayRows(entries: TimeEntry[]): DayRow[] {
 
 /** Builds and downloads the CSV for the currently filtered rows. */
 function exportCsv(rows: DayRow[], fromIso: string, toIso: string) {
-  const header = ["Date", "Time In", "Time Out", "Work Hours", "Break Time", "Total", "Status"];
+  const header = ["Date", "Time In", "Time Out", "Work Hours", "Sessions", "Break Time", "Total", "Status"];
   const lines = rows.map((r) =>
     [
       r.dateKey,
       r.clockInAt ? formatClockTime(r.clockInAt) : "",
       r.clockOutAt ? formatClockTime(r.clockOutAt) : "In progress",
       formatMinutesClock(r.workMinutes),
+      r.sessionCount,
       formatMinutesClock(r.breakMinutes),
       formatMinutesClock(r.totalMinutes),
       r.status.label,
@@ -206,7 +210,16 @@ export function MyTimesheetCard({ onDaySelect }: { onDaySelect?: (dateKey: strin
     {
       key: "work",
       header: "Work Hours",
-      render: (r) => <span className="font-semibold text-brand-ink">{formatMinutes(r.workMinutes)}</span>,
+      // BUG-BX — a split shift stays one row; the session count is what says
+      // the day was worked in more than one stretch.
+      render: (r) => (
+        <span className="whitespace-nowrap font-semibold text-brand-ink">
+          {formatMinutes(r.workMinutes)}
+          {r.sessionCount > 1 ? (
+            <span className="ml-1 font-normal text-brand-muted">({r.sessionCount} sessions)</span>
+          ) : null}
+        </span>
+      ),
     },
     {
       key: "break",

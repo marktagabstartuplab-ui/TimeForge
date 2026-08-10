@@ -1264,3 +1264,608 @@ entry updates in list, (f) Error Boundary catches any remaining Hook
 errors with graceful fallback UI instead of full crash, (g) `npm run
 test` passes (add regression test for Hook usage in task edit component).
 ```
+
+---
+
+## BUG-BH — Feature Update: EOD Scrum Checklist and Ad-Hoc Task Addition
+
+**Where:** Employee Portal > End of Day (EOD) Review Modal
+
+```
+Fix: "Today's Commitments" uses numeric inputs instead of intuitive
+checklist. Employees can't add unexpected tasks that arise mid-shift;
+morning scrum list is locked.
+
+Expected: (1) convert commitment items to checklist with checkboxes
+(mark "Done" or leave unchecked), (2) add "+ Add Unexpected Task"
+button in commitments section to bypass morning lock, (3) employees can
+name ad-hoc tasks and check them off without editing morning scrum.
+
+Scope: frontend (replace "Actual Completed" input with checkboxes, add
+"+ Add Task" button), backend (update EOD submission endpoint to accept
+array of boolean flags for morning tasks + array of ad_hoc_tasks).
+
+Do not touch: morning scrum submission (remain locked), KPI numeric
+targets (keep as secondary text if needed).
+
+Verify: (a) each morning commitment displays checkbox, (b) check box to
+mark complete, (c) "+ Add Unexpected Task" button visible, (d) click
+button opens inline form to name task, (e) new task saved and checked
+off, (f) EOD submission includes both morning task flags + new ad_hoc
+tasks array, (g) ad-hoc tasks appear in timesheet/work details, (h)
+`npm run test` passes.
+```
+
+---
+
+## BUG-BI — Feature Update: Remove "Work Details" Function / Module
+
+**Where:** HR Workspace & Employee Portal (all views)
+
+```
+Fix: "Work Details" function is obsolete and creates interface clutter.
+Must be removed entirely while preserving historical data for archiving.
+
+Expected: (1) UI: completely remove "Work Details" section/tabs/buttons
+from all role views (Employee, HR, Supervisor, Admin), (2) Data:
+historical Work Details records retained in DB for archive, but not
+actively queried or displayed in main UI.
+
+Scope: frontend (remove all React components rendering Work Details),
+backend (deprecate endpoints exclusive to Work Details, ensure Payroll
+/Timesheet engines don't break if they were fetching from Work Details
+table — reroute to Employee Profile or Timesheet DB instead).
+
+Do not touch: historical data in database, other timesheet features.
+
+Verify: (a) Work Details UI completely hidden from all pages, (b)
+surrounding layout not broken by removal, (c) Payroll/Timesheet
+calculations still work (no missing data deps), (d) historical Work
+Details records still exist in DB (query directly), (e) `npm run test`
+passes.
+```
+
+---
+
+## BUG-BJ — Feature Restoration: Restore "Custom Period" Creation Functionality
+
+**Where:** Finance & HR Workspace > Payroll Periods / Timesheet Settings
+
+```
+Fix: "Add Custom Period" button/modal was removed/disabled. Users
+blocked from defining non-standard date ranges.
+
+Expected: (1) restore "Add Custom Period" button to UI, (2) clicking
+opens modal to enter Start Date, End Date, optional Period Name (e.g.,
+"Mid-Year Bonus Period"), (3) custom period immediately available in
+dropdowns for timesheet/payroll processing.
+
+Scope: frontend (revert code removal, restore Create Custom Period form
++ date-picker), backend (re-enable POST /api/payroll-periods/custom
+endpoint, ensure DB saves custom date parameters, payroll engine accepts
+them).
+
+Do not touch: automated semi-monthly period generation (BUG-AX separate).
+
+Verify: (a) "Add Custom Period" button visible, (b) click opens date
+picker modal, (c) enter dates, save creates record, (d) custom period
+appears in dropdown, (e) selecting it loads correct date range for
+timesheet/payroll, (f) payroll calculates correctly for custom period,
+(g) `npm run test` passes.
+```
+
+---
+
+## BUG-BK — Feature Update: Individual Timesheet Processing and Flexible Payroll Period Locking
+
+**Where:** HR & Finance Workspace > Timesheet Approvals & Payroll Processing
+
+```
+Fix: system forces batch processing and auto-locks entire period.
+Creates bottleneck: on-time employees delayed by late submitters, late
+submitters stuck after lock.
+
+Expected: (1) individual per-employee timesheet processing (checkboxes
+next to each employee), (2) processing batch doesn't lock period — stays
+Open/Partially Processed, (3) manual "Lock/Close Period" button for
+explicit period closure (after late submissions handled or cutoff
+reached).
+
+Scope: frontend (add employee checkboxes for selective processing,
+replace auto-lock with manual "Lock Period" button), backend (refactor
+payroll processing endpoint to accept array of timesheet_ids or
+employee_ids, remove auto-lock logic, add PUT
+/api/payroll-periods/:id/lock endpoint for manual close).
+
+Do not touch: timesheet approval workflow, payroll calculations.
+
+Verify: (a) checkboxes visible next to each employee, (b) select subset
+of employees, click "Process", (c) only selected employees processed, (d)
+period status remains Open/Partially Processed, (e) Finance can return
+to same period later to process late submissions, (f) "Lock Period"
+button in header, (g) clicking "Lock" prevents further processing for
+that period, (h) `npm run test` passes.
+```
+
+---
+
+## BUG-BL — Feature Update: Selectable Payroll Period for Timesheet Submission
+
+**Where:** Employee Portal > Timesheet Submission Form
+
+```
+Fix: employees can't select payroll period; statically assigned. Blocks
+late submissions to open past periods or routing to custom periods.
+
+Expected: (1) static "Period Ends" text converted to dropdown menu, (2)
+dropdown auto-populates with all Open/Partially Processed periods
+(including custom), Locked periods hidden/disabled, (3) selected period
+determines which payroll run timesheet is linked to.
+
+Scope: frontend (replace static date with "Payroll Period" select
+dropdown, ensure selected period drives validation), backend (update
+timesheet submission endpoint to accept period_id from payload, validate
+period is still open before accepting).
+
+Do not touch: automatic period assignment (alternative path for
+frontline employees if needed), timesheet validation logic.
+
+Verify: (a) "Period Ends" displays as dropdown, (b) dropdown shows all
+open periods, (c) Locked periods not selectable, (d) employee selects
+period, (e) submits timesheet, (f) backend links to selected period_id,
+(g) late submission routed to correct historical period, (h) payroll
+correctly scopes to selected period, (i) `npm run test` passes.
+```
+
+---
+
+## BUG-BM — Feature Update: Tag Late Timesheet Submissions and Retain Original Period Assignment
+
+**Where:** HR & Finance Workspace > Timesheet Approvals & Payroll Processing
+
+```
+Fix: late submissions not visually flagged. May be incorrectly assigned
+to current active period instead of historical work period.
+
+Expected: (1) each period has defined cutoff_date/time, (2) if submit >
+cutoff, system accepts but applies prominent "Late Submission" badge,
+(3) timesheet permanently linked to original period_id (never
+overwritten to current period).
+
+Scope: database (add cutoff_date column to payroll_period table),
+frontend (add "Late" status badge on Timesheet Approvals, add filter
+"Only Late Submissions"), backend (update timesheet submission endpoint:
+if submitted_at > period.cutoff_date, set is_late_submission: true,
+prevent period_id overwrite).
+
+Do not touch: period assignment logic for on-time submissions, payroll
+calculations.
+
+Verify: (a) payroll period has cutoff_date set, (b) employee submits
+after cutoff, (c) "Late Submission" badge appears on dashboard, (d)
+timesheet remains linked to original period (not current period), (e)
+Finance filters "Only Late Submissions" works, (f) late submission
+processes in correct historical period, (g) tax/reporting uses correct
+period, (h) `npm run test` passes.
+```
+
+---
+
+## BUG-BN — Missing Logo/Branding on HR Admin Pages
+
+**Where:** HR & Admin workspace pages (HR Complaints Inbox, Holiday Calendar, etc.)
+
+```
+Fix: certain admin and HR pages lack the TimeForge logo/branding header.
+Creates a disconnected, unprofessional appearance — users may not
+recognize they're still in the TimeForge application.
+
+Expected: (1) all HR/Admin pages display consistent branding (logo,
+application name, or header bar), (2) logo/branding placement matches
+main app shell header pattern, (3) maintains visual continuity across
+all workspaces (Employee, HR, Finance, Admin).
+
+Scope: frontend (add logo/branding component to admin/HR page templates,
+ensure consistent styling and positioning across all admin routes).
+
+Do not touch: sidebar navigation, main app shell (just ensure admin
+pages follow same pattern).
+
+Verify: (a) HR Complaints Inbox displays logo, (b) Holiday Calendar
+displays logo, (c) all admin pages have consistent branding treatment,
+(d) logo clickable to return to home/dashboard (if applicable), (e)
+responsive on mobile, (f) matches existing app shell branding.
+```
+
+---
+
+## BUG-BO — Holiday Calendar Access & Design System Compliance
+
+**Where:** Holiday Calendar page (currently HR-only; should be accessible to all roles)
+
+```
+Fix: Holiday Calendar is (1) rendered as standalone page with no
+sidebar, breaking design system, AND (2) only accessible to HR role,
+when it should be available to all roles (employees need to see holidays
+for planning, finance for payroll premiums, etc.).
+
+Expected: (1) Holiday Calendar accessible from all workspaces (Employee,
+HR, Finance, Admin) with role-appropriate permissions, (2) page includes
+standard AppShell sidebar matching other modules, (3) layout respects
+design system (not standalone full-width), (4) users can view holidays
+relevant to their role without leaving the app structure.
+
+Scope: frontend (integrate Holiday Calendar into sidebar navigation for
+all roles, wrap page in AppShell, adjust layout to include sidebar),
+backend (ensure Holiday Calendar endpoint accessible to non-HR roles
+with appropriate read permissions).
+
+Do not touch: Holiday Calendar feature logic, premium calculation, data table.
+
+Verify: (a) Employee views Holiday Calendar, sees holidays + premiums
+(read-only), (b) HR views Holiday Calendar with full access (create/edit
+holidays), (c) Finance views Holiday Calendar (read-only for payroll
+planning), (d) Admin views Holiday Calendar with edit access, (e) page
+loads with sidebar visible for all roles, (f) sidebar shows active
+section highlighted, (g) no layout shifts on mobile, (h) breadcrumb/title
+correct per role.
+```
+
+---
+
+## BUG-BP — Daily Plan Should Lock After Save (No Editing/Adding Blockers)
+
+**Where:** Daily Scrum module > Daily Plan / Today's Commitments
+
+```
+Fix: when user saves their daily plan, the plan remains fully editable.
+Users can still add new tasks, edit existing ones, and add active
+blockers after the save is complete. Daily plan should be locked once
+submitted to prevent mid-day changes.
+
+Expected: (1) user fills out daily plan (commitments, blockers, targets),
+(2) clicks "Save Daily Plan" or "Submit", (3) plan immediately locks —
+all fields become read-only, (4) "Add Task", "Add Blocker" buttons
+become disabled/hidden, (5) edit icons disappear from task/blocker rows,
+(6) UI visually indicates locked state (e.g., lock icon, "Locked" badge,
+grayed-out fields).
+
+Scope: frontend (convert editable form fields to read-only display after
+save, disable action buttons and edit icons, show locked indicator),
+backend (ensure API rejects any edit/add attempts if plan status is
+SUBMITTED/LOCKED).
+
+Do not touch: daily plan data model, approval workflow, permission
+hierarchy.
+
+Verify: (a) before save: all fields editable, buttons enabled, (b)
+click Save, (c) after save: all fields read-only/grayed, (d) "Add Task"
+button disabled/hidden, (e) "Add Blocker" button disabled/hidden, (f)
+inline edit icons gone from rows, (g) lock icon or "Locked" badge
+visible, (h) attempt to edit via DevTools/API rejected by backend, (i)
+`npm run test` passes.
+```
+
+---
+
+## BUG-BQ — Feature: Auto-Populate "Yesterday's Accomplishments" from EOD Summary
+
+**Where:** Daily Scrum module > Daily Plan form > "Yesterday's Accomplishments" field
+
+```
+Fix: employees must manually re-type their accomplishments from yesterday.
+The system should automatically pull and summarize the previous EOD
+submission to populate this field, reducing redundant data entry.
+
+Expected: (1) on Daily Scrum form load, system fetches yesterday's EOD
+submission, (2) extracts and summarizes the accomplishments/work completed,
+(3) auto-populates "Yesterday's Accomplishments" field with that summary,
+(4) employee can view the auto-generated text and optionally edit it before
+saving today's plan.
+
+Scope: frontend (fetch yesterday's EOD data on form mount, display summary
+in "Yesterday's Accomplishments" field as pre-filled text), backend (expose
+endpoint to fetch previous day's EOD submission by date, include
+accomplishments/summary field).
+
+Do not touch: EOD submission workflow, daily scrum approval process.
+
+Verify: (a) open Daily Scrum form in morning, (b) "Yesterday's
+Accomplishments" field auto-populated with yesterday's EOD summary, (c)
+text is readable and relevant, (d) employee can edit the auto-populated
+text if needed, (e) if no EOD submitted yesterday, field remains empty
+with placeholder, (f) works correctly across day boundaries (Friday EOD →
+Monday scrum gets Friday summary), (g) `npm run test` passes.
+```
+
+---
+
+## BUG-BR — Payroll Reports Require Manual "Recalculate" Click (No Auto-Generation)
+
+**Where:** Finance > Payroll Processing > Payroll Table (Recalculate button)
+
+```
+Fix: approving a timesheet does NOT auto-trigger payroll calculations.
+Users must manually click "Recalculate" on the period. This causes stale
+payroll reports ("0 hours", "missing period", "not showing in payroll").
+Operators don't always remember to click Recalculate, leading to data
+visibility issues.
+
+Expected: (1) option to auto-trigger Recalculate when timesheet is
+approved (recommended), OR (2) add a staleness warning banner on Payroll
+Processing screen showing "Payroll data is stale — click Recalculate to
+refresh" if calculations are older than the latest timesheet approval.
+
+Scope: frontend (add staleness banner showing last recalculate timestamp
+vs latest approval timestamp), backend (optionally auto-trigger
+Recalculate on timesheet approval if configured).
+
+Do not touch: Recalculate calculation logic, timesheet approval workflow.
+
+Verify: (a) if auto-trigger: approve timesheet → payroll recalculates
+automatically, (b) if staleness banner: approve timesheet → banner appears
+on Payroll screen, (c) banner shows "Last recalculated: [timestamp],
+Latest approval: [timestamp]", (d) clicking Recalculate dismisses banner,
+(e) payroll reports show correct data after Recalculate, (f) `npm run
+test` passes.
+```
+
+---
+
+## BUG-BS — End-to-End Late Timesheet Submission Verification
+
+**Where:** Timesheet submission, approval, and payroll processing workflow
+
+```
+Fix: cannot fully verify late-submission workflow without real employee
+account. The e2e path is: submit timesheet against past period (e.g.,
+Jul 22–31) → supervisor approves → Finance clicks Recalculate on that
+period → verify late submission routed to correct period in payroll.
+
+This test requires a real employee account and supervisor approval. The
+developer cannot submit/approve on behalf of testers. User will provide
+an account and check the database at each step to pinpoint where the
+workflow breaks (if at all).
+
+Scope: testing & verification (not code change). Steps:
+1. Create employee account (or use existing)
+2. Employee submits timesheet for Jul 22–31 (past period, not current)
+3. Supervisor approves the timesheet
+4. Finance clicks Recalculate on Jul 22–31 period
+5. Check database: is timesheet linked to Jul 22–31 period (not current period)?
+6. Check payroll report: does late submission appear?
+
+Do not touch: timesheet or payroll logic. This is verification only.
+
+Verify: (a) late timesheet successfully submitted against past period,
+(b) supervisor can approve it, (c) Recalculate processes it, (d) database
+shows correct period_id (not overwritten to current), (e) payroll report
+includes late submission, (f) tax/deductions calculated for correct
+period, (g) no duplicate processing risk.
+
+** Requires real account & supervisor approval. Developer can provide
+test environment; QA/user must perform actual submissions & approvals.**
+```
+
+---
+
+## BUG-BT — GitHub Actions CI Not Running on Merges (CRITICAL INFRASTRUCTURE)
+
+**Where:** `.github/workflows/ci.yml` — CI gate is broken
+
+```
+Fix: GitHub Actions CI has not run on any of today's six merges. No
+automated checks gating pull requests. Only local test runs provided a
+check — this is a critical gap and the #1 infrastructure priority.
+
+Expected: every push to main (and every PR) automatically triggers the CI
+pipeline, running build + tests + lint checks before allowing merge.
+
+Root causes to investigate:
+- Is CI workflow disabled in GitHub settings?
+- Is the workflow file malformed or has syntax errors?
+- Are branch protection rules not enforcing CI checks before merge?
+- Is the workflow not subscribed to the right events (push/pull_request)?
+
+Scope: infrastructure (enable/fix GitHub Actions workflow, ensure branch
+protection rules require passing CI checks before merge).
+
+Do not touch: test suite, build logic. This is purely CI pipeline
+configuration.
+
+Verify: (a) create a test PR with a deliberate lint error, (b) CI pipeline
+triggers automatically, (c) fails on lint error, (d) cannot merge until
+CI passes, (e) fix the error, (f) CI re-runs and passes, (g) merge is now
+allowed, (h) subsequent merges always gated by CI.
+
+** THIS IS THE #1 FIX FOR TOMORROW. Code is shipping ungated. **
+```
+
+---
+
+## BUG-BU — UI Fix: Holiday Calendar Missing Navigation & Action Controls
+
+**Where:** HR/Admin > Holiday Calendar page
+
+```
+Fix: Holiday Calendar is a "dead end" — no back button to navigate
+away, and no action controls to actually manage holidays (add, edit,
+delete). Page displays static list with no management UI.
+
+Expected: (1) Back button or breadcrumb (e.g., "< Back to Settings" or
+"< Dashboard") at top left, (2) "Add New Holiday" button (top right of
+table), (3) Actions column on table with edit/delete icons for each
+holiday, (4) page wrapped in standard app layout (sidebar + header).
+
+Scope: frontend (add back navigation, add "Add Holiday" button, add
+Actions column with edit/delete icons, wrap in AppShell/standard layout).
+
+Do not touch: holiday data model, premium calculation logic.
+
+Verify: (a) Back button visible and navigates to previous page, (b) "Add
+Holiday" button visible and opens modal/form, (c) each table row has
+edit/delete icons, (d) clicking edit opens modal to modify holiday, (d)
+clicking delete removes holiday with confirmation, (e) page displays
+within standard layout (not isolated), (f) mobile responsive.
+```
+
+---
+
+## BUG-BV — Feature: Task Progress Tracker for Carry-Over Tasks
+
+**Where:** Employee Portal > Work Details / Load Task modal
+
+```
+Fix: when employees carry over multi-day tasks, there's no way to
+indicate partial completion. Gap between "Not Started" and "Completed"
+makes it hard for supervisors to gauge project pacing.
+
+Expected: (1) add "Task Progress" field to Work Details form (slider or
+dropdown: 0%, 25%, 50%, 75%, 100%), (2) employee sets progress when
+loading carry-over task (e.g., "80% complete, finishing 20% today"), (3)
+progress saved with timesheet submission and visible to supervisors in
+Team Scrum view.
+
+Scope: frontend (add progress input to Work Details), backend (update
+timesheet/scrum endpoint to accept completion_percentage per task,
+expose to supervisor view).
+
+Do not touch: task creation/deletion, scrum approval workflow.
+
+Verify: (a) Load Task modal shows progress field, (b) can set 0-100%,
+(c) progress saved with scrum submission, (d) supervisor sees progress
+in Team Scrum view, (e) progress persists after page reload, (f)
+`npm run test` passes.
+```
+
+---
+
+## BUG-BW — Feature: Comprehensive Daily Time Log (DTR Event History)
+
+**Where:** Employee Portal > Timesheets / Dashboard > Time Tracking Widget
+
+```
+Fix: system only shows total hours worked, no granular visibility into
+clock in/out events throughout the day. No audit trail for disputes or
+attendance verification.
+
+Expected: (1) add "Daily Log" or "Activity History" section below time
+tracker, (2) display chronological timeline of all time events: "Clocked
+In at 8:02 AM", "Started Break at 12:00 PM", "Resumed Work at 12:58 PM",
+"Clocked Out at 5:05 PM", (3) events read-only (immutable), use server
+time only (no client edits).
+
+Scope: frontend (create vertical timeline/list component showing daily
+events, update in real-time as buttons are clicked), backend (update
+attendance logging to store individual event types [TIME_IN, BREAK_START,
+BREAK_END, TIME_OUT] with timestamps, expose GET /api/attendance/daily-log/:date).
+
+Do not touch: clock in/out button logic, payroll calculations.
+
+Verify: (a) Daily Log appears below time tracker, (b) each clock action
+appears in log with timestamp, (c) log shows all events chronologically,
+(d) events are read-only (cannot be edited by employee), (e) log updates
+in real-time, (f) persists after page reload, (g) `npm run test` passes.
+```
+
+---
+
+## BUG-BX — Feature: Multiple Time-In Sessions Per Day (Split Shifts)
+
+**Where:** Employee Portal > Time Tracking Widget & Daily Scrum Module
+
+```
+Fix: system restricts employees to one Time-In / Time-Out per day. Split
+shifts, extended breaks, or flexible schedules cannot be tracked —
+"Time In" button locks after first "Time Out".
+
+Expected: (1) after Time Out, "Time In" button resets and becomes
+available again (same calendar day), (2) system tracks cumulative hours
+across all sessions, (3) if total hours reach daily limit (e.g., 12h),
+"Time In" button grays out, (4) new Time-In triggers Daily Scrum modal
+again for task/commitment logging for that session.
+
+Scope: frontend (unlock "Time In" button after Time Out if under daily
+limit, trigger scrum modal on each new session), backend (remove "one
+Time-In per date" constraint, validate cumulative daily hours on Time-In
+request, reject if exceeds max_daily_hours, allow multiple scrum
+submissions per employee per day).
+
+Do not touch: daily hour limit logic, timesheet approval.
+
+Verify: (a) normal 8h shift: clock in 8 AM, clock out 5 PM (8h), (b)
+clock in again at 6 PM after break (would be 9h), "Time In" button
+enabled, (c) clock out at 9 PM (total 9h within 12h limit), (d) if
+total is 11h and employee tries to clock in again (would exceed 12h),
+button grayed out, (e) split shift example: 4h morning (8-12), 4h
+afternoon (1-5), total 8h — can clock in again if needed before 12h
+limit, (f) cumulative hours correct on timesheet, (g) `npm run test`
+passes.
+```
+
+---
+
+## BUG-BY — Feature: Configurable 13th-Month Pay Computation Settings
+
+**Where:** HR/Admin Portal > Payroll Settings > 13th-Month Pay Settings
+
+```
+Fix: 13th-month pay computation is hardcoded. Admins cannot adjust
+variables for policy changes (unpaid absence deductions, maternity leave
+treatment, De Minimis inclusion), forcing code updates for any policy
+shift.
+
+Expected: (1) new "13th-Month Pay Settings" panel in Payroll Settings,
+(2) configurable toggles for: Deduct Unpaid Absences (Yes/No), Include
+Maternity Leave in Accrual (Yes/No), Base Salary Includes De Minimis
+(Yes/No), (3) payroll engine fetches settings dynamically, applies to
+all 13th-month calculations, (4) changes take effect immediately.
+
+Scope: database (new table or extend settings table to store 13th-month
+preferences), frontend (add settings form with toggles/dropdowns), backend
+(create PUT /api/payroll/settings/13th-month endpoint, rewrite
+13th-month service to fetch and apply configuration flags dynamically,
+remove hardcoded formula).
+
+Do not touch: monthly payroll calculations, tax formulas, De Minimis
+benefit logic.
+
+Verify: (a) Settings panel accessible, (b) can toggle each option, (c)
+settings persist after save, (d) next 13th-month calculation uses new
+settings, (e) payroll report reflects changes, (f) multiple policy
+changes don't conflict, (g) `npm run test` passes.
+```
+
+---
+
+## BUG-BZ — Team Productivity Report Shows No Data
+
+**Where:** Reports > Team Productivity Report
+
+```
+Fix: Team Productivity Report displays empty results ("No active
+productivity records found for this period") even when timesheet data
+exists for the selected date range. Summary cards show 0 hours, ₱0
+payroll, 0 pending approvals.
+
+Expected: report should display:
+- Total Approved Hours (sum of approved timesheets for period)
+- Est. Payroll Liability (calculated from approved hours × rates)
+- Pending Approvals (unapproved timesheets awaiting supervisor)
+- Table with employee breakdown (name, hours, pending, rejected, payroll)
+
+Root cause: likely same as BUG-BR — report data isn't auto-generated
+after timesheet approval, or needs manual Recalculate trigger.
+
+Scope: backend (ensure report endpoint queries correct approved
+timesheet data for date range, or expose manual refresh/recalculate
+button), frontend (add "Refresh" or "Recalculate" button if data is
+stale, show staleness warning if needed).
+
+Do not touch: timesheet approval logic, payroll calculation formulas.
+
+Verify: (a) select date range with known approved timesheets, (b) apply
+filter, (c) report populates with employee data, (d) summary cards show
+correct totals, (e) payroll estimate calculated correctly, (f) if manual
+refresh needed, button is visible and works, (g) `npm run test` passes.
+```

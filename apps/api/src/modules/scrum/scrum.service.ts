@@ -909,6 +909,7 @@ export class ScrumService {
         kpi: kpiFields?.kpi ?? dto.kpi ?? null,
         plannedTarget: dto.plannedTarget ?? kpiFields?.suggestedTarget ?? null,
         actualCompleted: dto.actualCompleted ?? null,
+        completionPercentage: dto.completionPercentage ?? null,
         estimatedHours: dto.estimatedHours ?? null,
         createdBy: p.userId,
         updatedBy: p.userId,
@@ -949,6 +950,10 @@ export class ScrumService {
         kpi: kpiFields ? kpiFields.kpi : dto.kpi !== undefined ? (dto.kpi ?? null) : task.kpi,
         plannedTarget: kpiFields ? (dto.plannedTarget ?? kpiFields.suggestedTarget) : dto.plannedTarget !== undefined ? (dto.plannedTarget ?? null) : task.plannedTarget,
         actualCompleted: dto.actualCompleted !== undefined ? (dto.actualCompleted ?? null) : task.actualCompleted,
+        completionPercentage:
+          dto.completionPercentage !== undefined
+            ? (dto.completionPercentage ?? null)
+            : task.completionPercentage,
         continueTomorrow: dto.continueTomorrow !== undefined ? (dto.continueTomorrow ?? null) : task.continueTomorrow,
         notCompletedReason:
           dto.notCompletedReason !== undefined ? (dto.notCompletedReason || null) : task.notCompletedReason,

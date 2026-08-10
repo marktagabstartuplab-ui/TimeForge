@@ -43,6 +43,16 @@ export class WorkSessionsController {
     return this.svc.clockOut(u);
   }
 
+  /**
+   * BUG-BW — the caller's own DTR event history for one day (YYYY-MM-DD).
+   * Declared before `:id/events` so a date is never fed to the UUID pipe.
+   */
+  @Get('daily-log/:date')
+  @RequirePermissions('time_entry:read')
+  dailyLog(@CurrentUser() u: AuthPrincipal, @Param('date') date: string) {
+    return this.svc.dailyLog(u, date);
+  }
+
   @Get(':id/events')
   @RequirePermissions('time_entry:read')
   events(@CurrentUser() u: AuthPrincipal, @Param('id', ParseUUIDPipe) id: string) {

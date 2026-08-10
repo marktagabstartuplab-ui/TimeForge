@@ -9,6 +9,7 @@ import {
   DialogDescription,
   DialogTitle,
 } from "@/components/ui/dialog";
+import { TASK_PROGRESS_STEPS } from "../lib/task-select";
 
 /** One label/value row in the preview. Rows with no value are dropped. */
 export interface TaskPreviewField {
@@ -23,6 +24,13 @@ interface TaskPreviewModalProps {
   /** "Recent task" / "Continued task" — what kind of card was clicked. */
   kind: string;
   fields: TaskPreviewField[];
+  /**
+   * BUG-BV: current Task Progress, 0–100. Provided only for a carried-over
+   * commitment (a recent task has no plan to be partway through); omitting it
+   * hides the control entirely.
+   */
+  progress?: number;
+  onProgressChange?: (value: number) => void;
   /** Confirmed — the caller performs the actual population. */
   onConfirm: () => void;
 }
@@ -39,9 +47,12 @@ export function TaskPreviewModal({
   title,
   kind,
   fields,
+  progress,
+  onProgressChange,
   onConfirm,
 }: TaskPreviewModalProps) {
   const rows = fields.filter((f) => f.value && f.value.trim().length > 0);
+  const showProgress = progress !== undefined && onProgressChange !== undefined;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -76,6 +87,45 @@ export function TaskPreviewModal({
               This task has no extra details recorded — only its name.
             </p>
           )}
+          {/* BUG-BV — the point of capture for a multi-day task: the employee
+              says how far along it already is as they pick it up, so "80%
+              complete, finishing the last 20% today" is on the record rather
+              than sitting between Not Started and Completed. */}
+          {showProgress ? (
+            <div className="mt-5 rounded-[10px] border border-[#c3c6d2]/50 bg-white p-4">
+              <label
+                htmlFor="task-preview-progress"
+                className="text-[11px] font-bold uppercase tracking-[0.5px] text-brand-muted"
+              >
+                Task Progress
+              </label>
+              <p className="mt-0.5 text-xs text-brand-muted">
+                How much of this is already done before today&apos;s work?
+              </p>
+              <div className="mt-2.5 flex items-center gap-3">
+                <input
+                  id="task-preview-progress"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={25}
+                  value={progress}
+                  onChange={(e) => onProgressChange(Number(e.target.value))}
+                  aria-valuetext={`${progress} percent complete`}
+                  className="h-2 flex-1 cursor-pointer accent-brand"
+                />
+                <span className="w-14 shrink-0 text-right font-mono text-sm font-bold text-brand">
+                  {progress}%
+                </span>
+              </div>
+              <div className="mt-1 flex justify-between text-[10px] font-semibold text-brand-muted/70">
+                {TASK_PROGRESS_STEPS.map((mark) => (
+                  <span key={mark}>{mark}%</span>
+                ))}
+              </div>
+            </div>
+          ) : null}
+
           <p className="mt-5 rounded-[10px] bg-[#f6f3f4] px-4 py-3 text-xs text-brand-muted">
             Loading replaces the unsaved contents of Work Details. Your current Work Details stay
             as they are until you choose Load Task.

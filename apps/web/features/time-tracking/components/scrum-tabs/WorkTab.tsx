@@ -7,6 +7,7 @@ import type { TimeEntry } from "../../api/time-entries.service";
 import type { DaySummary } from "../../lib/day-summary";
 import type { WorkTask } from "../../lib/task-select";
 import { CurrentSessionCard } from "../CurrentSessionCard";
+import { DailyLogCard } from "../DailyLogCard";
 import { WorkDetailsCard } from "../WorkDetailsCard";
 import { TodayEntriesList } from "../TodayEntriesList";
 import { TodayProgressCard } from "../TodayProgressCard";
@@ -28,6 +29,8 @@ interface WorkTabProps {
   onTimeOut: () => void;
   reviewReady: boolean;
   reviewBlockedReason: string | null;
+  /** BUG-BX — a new session began; `isAdditional` marks the 2nd+ of the day. */
+  onSessionStarted?: (isAdditional: boolean) => void;
 }
 
 /**
@@ -49,6 +52,7 @@ export function WorkTab({
   onTimeOut,
   reviewReady,
   reviewBlockedReason,
+  onSessionStarted,
 }: WorkTabProps) {
   return (
     <div className="grid grid-cols-1 items-start gap-4 xl:grid-cols-[minmax(0,2fr)_minmax(280px,1fr)]">
@@ -62,7 +66,12 @@ export function WorkTab({
           onTimeOut={onTimeOut}
           reviewReady={reviewReady}
           reviewBlockedReason={reviewBlockedReason}
+          onSessionStarted={onSessionStarted}
         />
+
+        {/* BUG-BW — the DTR event history, directly under the tracker it
+            describes and above the aggregated entry list. */}
+        <DailyLogCard />
 
         <TodayEntriesList entries={entries} />
       </div>
