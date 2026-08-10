@@ -863,6 +863,10 @@ model ScrumTask {
   kpi            String?
   plannedTarget   String?             @map("planned_target")
   actualCompleted String?             @map("actual_completed")
+  /// BUG-BV: self-reported completion of a multi-day task, 0–100 in steps of 25.
+  /// Null on tasks planned before the field existed, and on tasks the employee
+  /// never rated — distinct from an explicit 0%.
+  completionPercentage Int?           @map("completion_percentage")
   continueTomorrow   Boolean?         @map("continue_tomorrow")
   notCompletedReason String?          @map("not_completed_reason")
   kpiTemplateId   String?             @map("kpi_template_id") @db.Uuid

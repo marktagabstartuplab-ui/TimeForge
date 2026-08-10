@@ -22,8 +22,12 @@ interface QuickSelectRailProps {
   carryOver: ScrumTask[];
   /** YYYY-MM-DD the carried-over commitments came from. */
   carryOverDate: string | null;
-  /** Confirmed in the preview modal — loads the commitment into the Daily Scrum planner. */
-  onSelectCarryOver: (task: ScrumTask) => void;
+  /**
+   * Confirmed in the preview modal — loads the commitment into the Daily Scrum
+   * planner. `progress` is the Task Progress the employee set on the way in
+   * (BUG-BV).
+   */
+  onSelectCarryOver: (task: ScrumTask, progress: number) => void;
   onToast: (toast: ToastState) => void;
 }
 
@@ -159,11 +163,15 @@ export function QuickSelectRail({
   const [preview, setPreview] = useState<
     { kind: "task"; task: WorkTask } | { kind: "carryOver"; task: ScrumTask } | null
   >(null);
+  // BUG-BV — Task Progress for the commitment being previewed. Seeded from
+  // whatever was last recorded on it, so re-picking a task the employee already
+  // rated at 50% opens at 50% rather than back at zero.
+  const [previewProgress, setPreviewProgress] = useState(0);
 
   const confirmPreview = () => {
     if (!preview) return;
     if (preview.kind === "task") onSelect(preview.task);
-    else onSelectCarryOver(preview.task);
+    else onSelectCarryOver(preview.task, previewProgress);
     onToast({ message: `"${preview.task.title}" loaded into your Daily Scrum planner.` });
     setPreview(null);
   };
@@ -194,7 +202,10 @@ export function QuickSelectRail({
 
   const pick = (task: WorkTask) => setPreview({ kind: "task", task });
 
-  const pickCarryOver = (task: ScrumTask) => setPreview({ kind: "carryOver", task });
+  const pickCarryOver = (task: ScrumTask) => {
+    setPreviewProgress(task.completionPercentage ?? 0);
+    setPreview({ kind: "carryOver", task });
+  };
 
   const togglePin = (key: string) => setPinnedKeys(togglePinnedKey(key));
 
@@ -305,6 +316,9 @@ export function QuickSelectRail({
         title={preview?.task.title ?? ""}
         kind={preview?.kind === "carryOver" ? "Continued task" : "Recent task"}
         fields={previewFields}
+        // Only a carried-over commitment can be partway done (BUG-BV).
+        progress={preview?.kind === "carryOver" ? previewProgress : undefined}
+        onProgressChange={preview?.kind === "carryOver" ? setPreviewProgress : undefined}
         onConfirm={confirmPreview}
       />
     </div>

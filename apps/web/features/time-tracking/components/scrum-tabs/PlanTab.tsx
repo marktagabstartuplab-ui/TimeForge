@@ -18,7 +18,8 @@ interface PlanTabProps {
   onSelectTask: (task: WorkTask) => void;
   carryOver: ScrumTask[];
   carryOverDate: string | null;
-  onSelectCarryOver: (task: ScrumTask) => void;
+  /** `progress` is the Task Progress chosen in the Load Task modal (BUG-BV). */
+  onSelectCarryOver: (task: ScrumTask, progress: number) => void;
 }
 
 /** "08:42 AM" for the shift clock strip. */

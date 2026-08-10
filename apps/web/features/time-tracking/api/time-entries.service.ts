@@ -23,6 +23,8 @@ export interface TimeEntry {
   id: string;
   userId: string;
   timesheetId: string | null;
+  /** BUG-BX — which clock-in/clock-out session this segment belongs to; null for manual entries. */
+  workSessionId: string | null;
   projectId: string | null;
   clientId: string | null;
   workCategoryId: string | null;

@@ -411,6 +411,30 @@ export function TeamScrumSubmissionsContent({
                             {task.description && (
                               <p className="text-xs text-brand-muted mt-0.5 leading-relaxed">{task.description}</p>
                             )}
+                            {/* BUG-BV — partial completion on a multi-day task,
+                                so pacing is readable without waiting for the
+                                task to flip to COMPLETED. */}
+                            {task.completionPercentage !== null && task.completionPercentage !== undefined ? (
+                              <div className="mt-1">
+                                <div className="flex items-center justify-between text-[11px] font-semibold text-brand-muted">
+                                  <span>Task Progress</span>
+                                  <span className="font-mono text-brand">{task.completionPercentage}%</span>
+                                </div>
+                                <div
+                                  role="progressbar"
+                                  aria-valuenow={task.completionPercentage}
+                                  aria-valuemin={0}
+                                  aria-valuemax={100}
+                                  aria-label={`Progress on ${task.title}`}
+                                  className="mt-1 h-1.5 w-full overflow-hidden rounded-full bg-[#c3c6d2]/40"
+                                >
+                                  <div
+                                    className="h-full rounded-full bg-brand"
+                                    style={{ width: `${task.completionPercentage}%` }}
+                                  />
+                                </div>
+                              </div>
+                            ) : null}
                             <div className="grid grid-cols-2 gap-2.5 mt-2 border-t border-[#c3c6d2]/15 pt-2.5 text-xs text-brand-ink">
                               {task.project && (
                                 <div className="col-span-2">

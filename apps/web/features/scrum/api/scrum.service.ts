@@ -52,6 +52,8 @@ export interface ScrumTask {
   kpi: string | null;
   plannedTarget: string | null;
   actualCompleted: string | null;
+  /** BUG-BV: self-reported progress 0–100. Null = never rated (not the same as 0%). */
+  completionPercentage: number | null;
   continueTomorrow: boolean | null;
   notCompletedReason: string | null;
   kpiTemplateId: string | null;
@@ -73,6 +75,8 @@ export interface CreateScrumTaskPayload {
   kpi?: string;
   plannedTarget?: string;
   actualCompleted?: string;
+  /** BUG-BV: 0–100. */
+  completionPercentage?: number;
   kpiTemplateId?: string;
   estimatedHours?: number;
 }
@@ -88,6 +92,8 @@ export interface UpdateScrumTaskPayload {
   kpi?: string;
   plannedTarget?: string;
   actualCompleted?: string;
+  /** BUG-BV: 0–100. */
+  completionPercentage?: number;
   continueTomorrow?: boolean;
   notCompletedReason?: string;
   /** null explicitly clears an existing template link (switching to custom); omit to leave unchanged. */

@@ -62,7 +62,7 @@ import { listProjects } from "../api/catalog.service";
 import { getMyKpiSummary } from "@/features/reports/api/kpi.service";
 import { runAndPollAiJob } from "@/features/scrum-management/api/ai-insight.service";
 import { dailyScrumSchema, type DailyScrumValues } from "../schemas/time-entry.schema";
-import { type ScrumPlanPrefill } from "../lib/task-select";
+import { TASK_PROGRESS_STEPS, type ScrumPlanPrefill } from "../lib/task-select";
 import { formatClockTime, toIsoDate } from "@/lib/time";
 import { ApiError } from "@/lib/api/client";
 import { cn } from "@/lib/utils";
@@ -140,6 +140,8 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
   // reveals the old manual inputs.
   const [useCustomKpi, setUseCustomKpi] = useState(false);
   const [taskProj, setTaskProj] = useState("");
+  // BUG-BV — Task Progress for a multi-day commitment, 0–100 in steps of 25.
+  const [taskProgress, setTaskProgress] = useState(0);
   const [editingTaskId, setEditingTaskId] = useState<string | null>(null);
   const [aiSuggesting, setAiSuggesting] = useState(false);
 
@@ -240,6 +242,7 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
     setTaskOutput(prefill.expectedOutput ?? "");
     setTaskCriteria(prefill.measurement ?? "");
     setTaskProj(prefill.projectId ?? "");
+    setTaskProgress(prefill.completionPercentage ?? 0);
     keepPrefilledTarget.current = Boolean(prefill.plannedTarget);
     setTaskTarget(prefill.plannedTarget ?? "");
     if (prefill.kpiTemplateId) {
@@ -385,6 +388,7 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
         kpi: useCustomKpi ? (taskKpi || undefined) : undefined,
         plannedTarget: taskTarget || undefined,
         projectId: taskProj || undefined,
+        completionPercentage: taskProgress,
       });
     },
     onSuccess: () => {
@@ -408,6 +412,7 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
         kpi: useCustomKpi ? (taskKpi || undefined) : undefined,
         plannedTarget: taskTarget || undefined,
         projectId: taskProj || undefined,
+        completionPercentage: taskProgress,
         version: task.version,
       }),
     onSuccess: () => {
@@ -461,6 +466,7 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
     setTaskKpiTemplateId("");
     setUseCustomKpi(false);
     setTaskProj("");
+    setTaskProgress(0);
     setEditingTaskId(null);
     keepPrefilledTarget.current = false;
   };
@@ -487,6 +493,7 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
     setUseCustomKpi(!task.kpiTemplateId);
     setTaskTarget(task.plannedTarget ?? "");
     setTaskProj(task.projectId ?? "");
+    setTaskProgress(task.completionPercentage ?? 0);
     // The stored target is the employee's own number — don't let the
     // "suggest the admin master target" effect overwrite it on load.
     keepPrefilledTarget.current = true;
@@ -769,6 +776,14 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
                       Done at {formatClockTime(item.completedAt)}
                     </span>
                   )}
+                  {/* BUG-BV — the partial-completion signal the plain status
+                      badge can't carry. Only rendered when actually recorded;
+                      null means "never rated", not 0%. */}
+                  {item.completionPercentage !== null ? (
+                    <span className="rounded-full bg-brand-cyan/15 px-2 py-0.5 text-[10px] font-bold text-brand">
+                      {item.completionPercentage}% done
+                    </span>
+                  ) : null}
                   <StatusBadge {...STATUS_META_THEMED[item.taskStatus]} />
                 </div>
               </div>
@@ -964,6 +979,35 @@ export function ScrumTaskCard({ entry, loading, prefill, onToast }: ScrumTaskCar
                     <option key={p.id} value={p.id}>{p.name}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* BUG-BV — Task Progress. Closes the gap between "Not Started"
+                  and "Completed" for work that spans several days: a carried-over
+                  commitment arrives here pre-set to whatever the employee chose
+                  in the Load Task modal, and supervisors read it back in Team
+                  Scrum. */}
+              <div>
+                <FieldLabel htmlFor="new-task-progress">Task Progress</FieldLabel>
+                <select
+                  id="new-task-progress"
+                  value={taskProgress}
+                  onChange={(e) => setTaskProgress(Number(e.target.value))}
+                  className="h-11 w-full rounded-[10px] border border-[#c3c6d2] bg-white px-3 text-sm focus:outline-none focus:border-brand"
+                >
+                  {TASK_PROGRESS_STEPS.map((step) => (
+                    <option key={step} value={step}>
+                      {step}%
+                      {step === 0
+                        ? " — Not started"
+                        : step === 100
+                          ? " — Complete"
+                          : " complete"}
+                    </option>
+                  ))}
+                </select>
+                <p className="mt-1 text-[10px] text-brand-muted">
+                  How much of this task is already done before today&apos;s work.
+                </p>
               </div>
               {!useCustomKpi ? (
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">

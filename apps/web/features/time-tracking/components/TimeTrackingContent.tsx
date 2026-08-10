@@ -306,6 +306,23 @@ export function TimeTrackingContent() {
 
   const onToast = useCallback((t: ToastState) => setToast(t), []);
 
+  // BUG-BX (4) — a second session of the day gets its own planning pass. The
+  // server has just lifted the plan lock, so send the employee to the planner
+  // rather than leaving them on the timer with no way to say what this stretch
+  // is for. The first session of the day is left alone: the normal
+  // Plan → Work → Review → Submit flow already starts them on Plan.
+  const handleSessionStarted = useCallback(
+    (isAdditional: boolean) => {
+      if (!isAdditional) return;
+      queryClient.invalidateQueries({ queryKey: ["scrum-entries"] });
+      goToTab("plan");
+      setToast({
+        message: "New session started — add what you're working on for this stretch.",
+      });
+    },
+    [goToTab, queryClient],
+  );
+
   // Every pick bumps `seq` so re-clicking the same card re-applies the prefill.
   const handleSelectTask = useCallback((task: WorkTask) => {
     setSelectedTask(task);
@@ -316,7 +333,7 @@ export function TimeTrackingContent() {
     }));
   }, []);
 
-  const handleSelectCarryOver = useCallback((task: ScrumTask) => {
+  const handleSelectCarryOver = useCallback((task: ScrumTask, progress: number) => {
     setPlanPrefill((prev) => ({
       seq: (prev?.seq ?? 0) + 1,
       title: task.title,
@@ -326,6 +343,9 @@ export function TimeTrackingContent() {
       kpiTemplateId: task.kpiTemplateId ?? undefined,
       plannedTarget: task.plannedTarget ?? undefined,
       projectId: task.projectId ?? undefined,
+      // BUG-BV — carried in from the Load Task modal so the planner opens on
+      // the progress the employee just declared.
+      completionPercentage: progress,
       carriedOverFrom: carryOverQuery.data?.sourceDate ?? undefined,
     }));
   }, [carryOverQuery.data]);
@@ -484,6 +504,7 @@ export function TimeTrackingContent() {
               }}
               reviewReady={canReviewDay}
               reviewBlockedReason={reviewBlockedReason}
+              onSessionStarted={handleSessionStarted}
             />
           </div>
 

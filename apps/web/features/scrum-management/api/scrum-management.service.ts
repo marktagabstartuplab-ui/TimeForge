@@ -123,6 +123,8 @@ export interface ScrumEntryDetail {
     kpi: string | null;
     plannedTarget: string | null;
     actualCompleted: string | null;
+    /** BUG-BV: employee's self-reported progress 0–100; null = never rated. */
+    completionPercentage: number | null;
     project?: {
       name: string;
     } | null;

@@ -463,6 +463,115 @@ describe('ScrumService — carry-over of continued commitments', () => {
   });
 });
 
+/**
+ * BUG-BV — Task Progress on a commitment. The gap this closes is between
+ * "Not Started" and "Completed": a task carried across several days needs to be
+ * able to say it is 80% done. Null is a distinct third state — never rated —
+ * and must not collapse into 0%.
+ */
+describe('ScrumService — task completion percentage', () => {
+  let service: ScrumService;
+  let prisma: any;
+
+  const openEntry = {
+    id: 'entry-1',
+    userId: 'user-1',
+    tenantId: 'tenant-1',
+    organizationId: 'org-1',
+    isLocked: false,
+    planLockedAt: null,
+    submittedAt: null,
+    version: 1,
+  };
+
+  const openTask = { ...baseTask, taskStatus: 'IN_PROGRESS', completedAt: null, completionPercentage: 50 };
+
+  beforeEach(async () => {
+    prisma = {
+      scrumTask: {
+        findFirst: jest.fn().mockResolvedValue(openTask),
+        create: jest.fn((args: any) => ({ id: 'task-new', ...args.data })),
+        update: jest.fn((args: any) => ({ id: 'task-1', ...args.data })),
+        findMany: jest.fn().mockResolvedValue([{ taskStatus: 'IN_PROGRESS' }]),
+      },
+      scrumEntry: { findFirst: jest.fn().mockResolvedValue(openEntry), update: jest.fn() },
+      scrumEditRequest: { findFirst: jest.fn().mockResolvedValue(null) },
+      auditLog: { create: jest.fn() },
+      user: { findFirst: jest.fn() },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        ScrumService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: NotificationsService, useValue: { create: jest.fn() } },
+        { provide: DepartmentScopeService, useValue: {} },
+        { provide: StorageService, useValue: {} },
+        {
+          provide: OrgTimeZoneService,
+          useValue: { forPrincipal: jest.fn().mockResolvedValue('Asia/Manila') },
+        },
+      ],
+    }).compile();
+
+    service = module.get(ScrumService);
+  });
+
+  it('stores the progress a carried-over commitment was planned with', async () => {
+    await service.createTask(principal, 'entry-1', {
+      title: 'Finish the migration',
+      expectedOutput: 'Migration merged',
+      measurement: 'Merged PR',
+      completionPercentage: 75,
+    } as any);
+
+    const [{ data }] = prisma.scrumTask.create.mock.calls.at(-1)!;
+    expect(data.completionPercentage).toBe(75);
+  });
+
+  // Null, not 0 — "I never rated this" is a different claim from "none of this
+  // is done", and the supervisor view keys off exactly that distinction.
+  it('leaves progress null on a task planned without one', async () => {
+    await service.createTask(principal, 'entry-1', {
+      title: 'Ad-hoc task',
+      expectedOutput: '',
+      measurement: '',
+    } as any);
+
+    const [{ data }] = prisma.scrumTask.create.mock.calls.at(-1)!;
+    expect(data.completionPercentage).toBeNull();
+  });
+
+  it('updates progress as the multi-day task advances', async () => {
+    await service.updateTask(principal, 'task-1', { completionPercentage: 100, version: 3 } as any);
+
+    const [{ data }] = prisma.scrumTask.update.mock.calls.at(-1)!;
+    expect(data.completionPercentage).toBe(100);
+  });
+
+  it('preserves the stored progress when the update does not mention it', async () => {
+    await service.updateTask(principal, 'task-1', { title: 'Renamed', version: 3 } as any);
+
+    const [{ data }] = prisma.scrumTask.update.mock.calls.at(-1)!;
+    expect(data.completionPercentage).toBe(50);
+  });
+
+  // Progress is plan data, deliberately kept out of EOD_REPORT_FIELDS: it must
+  // be frozen by the plan lock like the rest of the plan, not slip through the
+  // result-only escape hatch the End of Day review uses.
+  it('refuses a progress edit once the plan is locked', async () => {
+    prisma.scrumEntry.findFirst.mockResolvedValue({
+      ...openEntry,
+      planLockedAt: new Date('2026-08-09T01:00:00Z'),
+    });
+
+    await expect(
+      service.updateTask(principal, 'task-1', { completionPercentage: 100, version: 3 } as any),
+    ).rejects.toBeInstanceOf(ForbiddenException);
+    expect(prisma.scrumTask.update).not.toHaveBeenCalled();
+  });
+});
+
 describe('ScrumService — locked-entry edit requests', () => {
   let service: ScrumService;
   let prisma: any;

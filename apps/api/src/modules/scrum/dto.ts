@@ -208,6 +208,18 @@ export class CreateScrumTaskDto {
   @MaxLength(200)
   actualCompleted?: string;
 
+  /**
+   * BUG-BV: how far along a carried-over task already is, 0–100. Free integers
+   * are accepted (the UI offers 0/25/50/75/100) so a future finer-grained input
+   * doesn't need a contract change.
+   */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  @Type(() => Number)
+  completionPercentage?: number;
+
   @IsOptional()
   @IsUUID()
   kpiTemplateId?: string;
@@ -265,6 +277,14 @@ export class UpdateScrumTaskDto {
   @IsString()
   @MaxLength(200)
   actualCompleted?: string;
+
+  /** BUG-BV: see CreateScrumTaskDto.completionPercentage. */
+  @IsOptional()
+  @IsInt()
+  @Min(0)
+  @Max(100)
+  @Type(() => Number)
+  completionPercentage?: number;
 
   /** EOD shortfall follow-ups — only captured when actual falls short of planned. */
   @IsOptional()

@@ -30,13 +30,32 @@ export interface ShiftLimitStatus {
   requiresSupervisorOverride: boolean;
 }
 
+/**
+ * BUG-BX — the whole day across every session. `workedMinutes` on the summary
+ * is the *current session*; these are the cumulative figures that decide
+ * whether Time In is offered again after a split shift.
+ */
+export interface DailyTotals {
+  /** Worked minutes across every session today, breaks excluded. */
+  workedMinutes: number;
+  /** The org's daily ceiling in minutes; null when no shift config applies. */
+  maxDailyMinutes: number | null;
+  /** Null when unlimited; never negative. */
+  remainingMinutes: number | null;
+  canClockIn: boolean;
+  /** Why Time In is unavailable — shown as the button's tooltip. */
+  blockedReason: string | null;
+}
+
 export interface WorkSessionSummary {
   session: WorkSession | null;
   onBreak: boolean;
   runningEntryId: string | null;
+  /** This session only. For the day across all sessions see `dailyTotals`. */
   workedMinutes: number;
   /** Null when there is no active session or the org sets no shift limit. */
   shiftLimit: ShiftLimitStatus | null;
+  dailyTotals: DailyTotals;
 }
 
 export interface SessionEvent {
@@ -81,5 +100,20 @@ export async function clockOutSession(): Promise<WorkSessionSummary> {
 
 export async function getWorkSessionEvents(sessionId: string): Promise<SessionEvent[]> {
   const { data } = await apiClient.get<SessionEvent[]>(`/work-sessions/${sessionId}/events`);
+  return data;
+}
+
+/** BUG-BW — one day of immutable clock events, oldest first. */
+export interface DailyLog {
+  /** The requested day, YYYY-MM-DD. */
+  date: string;
+  events: SessionEvent[];
+}
+
+/** @param date organization-local calendar day, YYYY-MM-DD. */
+export async function getDailyLog(date: string): Promise<DailyLog> {
+  const { data } = await apiClient.get<DailyLog>(`/work-sessions/daily-log/${date}`, {
+    params: { _t: Date.now() },
+  });
   return data;
 }
