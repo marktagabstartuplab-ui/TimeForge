@@ -41,8 +41,8 @@ import {
   toOrgIsoDate,
 } from "@/lib/time";
 import { ApiError } from "@/lib/api/client";
-import { summarizeDay, buildDayTimeline } from "@/features/time-tracking/lib/day-summary";
-import { getCurrentWorkSession } from "@/features/time-tracking/api/work-sessions.service";
+import { summarizeDay, timelineFromSessionEvents } from "@/features/time-tracking/lib/day-summary";
+import { getCurrentWorkSession, getDailyLog } from "@/features/time-tracking/api/work-sessions.service";
 
 export function TimesheetsContent() {
   const queryClient = useQueryClient();
@@ -174,7 +174,28 @@ export function TimesheetsContent() {
   const onBreak = workSessionQuery.data?.onBreak ?? false;
 
   const daySummary = useMemo(() => summarizeDay(todayEntries, now), [todayEntries, now]);
-  const timeline = useMemo(() => buildDayTimeline(todayEntries, onBreak), [todayEntries, onBreak]);
+
+  // BUG-BW — the timeline reads the recorded DTR events, not gaps inferred
+  // between time entries, so every break shows at its exact server timestamp
+  // however short it was. The key carries the session's clock fields, so any
+  // clock action (which invalidates work-session/current) refetches the log.
+  const session = workSessionQuery.data?.session ?? null;
+  const logSignature = [
+    session?.id ?? "none",
+    session?.isActive ?? false,
+    session?.breakCount ?? 0,
+    session?.currentBreakStartedAt ?? "none",
+    session?.clockOut ?? "none",
+  ].join("|");
+  const dailyLogQuery = useQuery({
+    queryKey: ["work-session", "daily-log", today, logSignature],
+    queryFn: () => getDailyLog(today),
+    placeholderData: (previous) => previous,
+  });
+  const timeline = useMemo(
+    () => timelineFromSessionEvents(dailyLogQuery.data?.events ?? []),
+    [dailyLogQuery.data],
+  );
 
   // ── Mutations ─────────────────────────────────────────────────────────────
   /** Draft timesheet for the period, creating it on first save/submit. */
@@ -288,8 +309,8 @@ export function TimesheetsContent() {
         loading={todayLoading}
       />
 
-      {/* ── Daily Activity Timeline ────────────────────────────────────────── */}
-      <DayTimelineCard events={timeline} loading={todayLoading} />
+      {/* ── Daily Activity Timeline (BUG-BW — recorded DTR events) ─────────── */}
+      <DayTimelineCard events={timeline} loading={dailyLogQuery.isLoading} />
 
       {/* ── Period Metric Cards ────────────────────────────────────────────── */}
       {entriesQuery.isError ? (
