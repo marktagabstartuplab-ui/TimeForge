@@ -5,7 +5,7 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
-import { AuditAction, Prisma, SessionEvent, WorkSession } from '@prisma/client';
+import { AuditAction, Prisma, SessionEvent, ShiftConfiguration, WorkSession } from '@prisma/client';
 import { orgDateOnly } from '@timeforge/shared';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { OrgTimeZoneService } from '../../common/time/org-time-zone.service';
@@ -154,7 +154,7 @@ export class WorkSessionsService {
         workDate: todayStart,
         clockIn,
         shiftConfigurationId: config?.id ?? null,
-        maxClockOutAt: config ? this.shiftLimits.deadlineFor(clockIn, config) : null,
+        maxClockOutAt: this.sessionDeadline(clockIn, config, totals.remainingMinutes),
       },
     });
     await this.prisma.timeEntry.create({
@@ -433,6 +433,38 @@ export class WorkSessionsService {
     await this.audit(p, AuditAction.ADMIN_ACTION, 'scrum_entry', entry.id, {
       event: 'PLAN_REOPENED_FOR_NEW_SESSION',
     });
+  }
+
+  /**
+   * The hard deadline for a session starting now: the earlier of the shift cap
+   * and what is left of the day.
+   *
+   * `deadlineFor` alone grants a fresh full shift on every clock-in, so an
+   * employee with 30 minutes of daily allowance left could start a session and
+   * run another `maxShiftMinutes` — the daily ceiling was checked at clock-in
+   * and never again. Bounding the deadline hands the whole existing enforcement
+   * chain (warning, REACHED_LIMIT, the sweep's auto-clock-out) the right time
+   * without duplicating any of it, since all of them read `maxClockOutAt`.
+   *
+   * The two limits measure different things: the shift cap is elapsed wall
+   * clock, the daily allowance is net worked minutes. Taking a break in the
+   * final session therefore reaches this deadline with a few worked minutes to
+   * spare. Closing slightly early is the safe side of a cap, and a supervisor
+   * override still moves the deadline as before.
+   */
+  private sessionDeadline(
+    clockIn: Date,
+    config: ShiftConfiguration | null,
+    remainingDailyMinutes: number | null,
+  ): Date | null {
+    const shiftDeadline = config ? this.shiftLimits.deadlineFor(clockIn, config) : null;
+    const dailyDeadline =
+      remainingDailyMinutes === null
+        ? null
+        : new Date(clockIn.getTime() + remainingDailyMinutes * 60_000);
+    if (!shiftDeadline) return dailyDeadline;
+    if (!dailyDeadline) return shiftDeadline;
+    return shiftDeadline <= dailyDeadline ? shiftDeadline : dailyDeadline;
   }
 
   /** "12-hour" / "7.5-hour" — for limit messages. */

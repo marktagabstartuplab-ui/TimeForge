@@ -186,6 +186,111 @@ describe('WorkSessionsService — multiple sessions per day', () => {
 });
 
 /**
+ * The daily ceiling used to be checked only at the moment of clock-in: a
+ * session started with 30 minutes left was handed a fresh full shift and could
+ * run `maxShiftMinutes` more, putting the day well past its cap. The session
+ * deadline is now the earlier of the two limits.
+ */
+describe('WorkSessionsService — session deadline respects the day\'s remaining allowance', () => {
+  let service: WorkSessionsService;
+  let prisma: any;
+
+  const principal = {
+    userId: 'user-1',
+    tenantId: 'tenant-1',
+    organizationId: 'org-1',
+    permissions: [],
+    roles: [],
+  } as unknown as AuthPrincipal;
+
+  const MAX_SHIFT = 480; // 8h cap, matching the daily ceiling
+
+  /** Builds the service with `workedMinutes` already logged today. */
+  const build = async (workedMinutes: number, maxShiftMinutes: number | null = MAX_SHIFT) => {
+    prisma = {
+      workSession: {
+        findFirst: jest.fn().mockResolvedValue(null),
+        findMany: jest.fn().mockResolvedValue([{ id: 's-0' }]),
+        count: jest.fn().mockResolvedValue(1),
+        create: jest.fn().mockImplementation(({ data }: any) => ({ id: 'new-session', ...data })),
+      },
+      timeEntry: {
+        findMany: jest.fn().mockResolvedValue(
+          workedMinutes > 0
+            ? [
+                {
+                  id: 'entry-0',
+                  startTime: new Date('2026-08-09T01:00:00.000Z'),
+                  endTime: new Date('2026-08-09T02:00:00.000Z'),
+                  durationMinutes: workedMinutes,
+                },
+              ]
+            : [],
+        ),
+        create: jest.fn(),
+      },
+      sessionEvent: { create: jest.fn() },
+      auditLog: { create: jest.fn() },
+      scrumEntry: { findFirst: jest.fn().mockResolvedValue(null), update: jest.fn() },
+    };
+
+    const module: TestingModule = await Test.createTestingModule({
+      providers: [
+        WorkSessionsService,
+        { provide: PrismaService, useValue: prisma },
+        { provide: OrgTimeZoneService, useValue: { forPrincipal: jest.fn().mockResolvedValue('Asia/Manila') } },
+        {
+          provide: ShiftLimitsService,
+          useValue: {
+            defaultConfig: jest.fn().mockResolvedValue(
+              maxShiftMinutes === null ? null : { id: 'cfg-1', maxShiftMinutes },
+            ),
+            // The real implementation, so the two deadlines can actually differ.
+            deadlineFor: (clockIn: Date, config: any) =>
+              new Date(clockIn.getTime() + config.maxShiftMinutes * 60_000),
+            evaluateAndNotify: jest.fn(),
+            autoClockOut: jest.fn(),
+          },
+        },
+      ],
+    }).compile();
+
+    service = module.get(WorkSessionsService);
+    return prisma;
+  };
+
+  /** Minutes between the created session's clock-in and its deadline. */
+  const grantedMinutes = () => {
+    const { clockIn, maxClockOutAt } = prisma.workSession.create.mock.calls[0][0].data;
+    return Math.round((maxClockOutAt.getTime() - clockIn.getTime()) / 60_000);
+  };
+
+  it('grants only the minutes left in the day, not a whole new shift', async () => {
+    await build(450); // 7h30m of 8h done — 30m left
+
+    await service.clockIn(principal, {} as never);
+
+    expect(grantedMinutes()).toBe(30);
+  });
+
+  it('grants the full shift when the day has more allowance than one shift', async () => {
+    await build(0, 240); // fresh day, 4h shift cap under an 4h daily ceiling
+
+    await service.clockIn(principal, {} as never);
+
+    expect(grantedMinutes()).toBe(240);
+  });
+
+  it('leaves the deadline unset when the organization has no shift configuration', async () => {
+    await build(450, null);
+
+    await service.clockIn(principal, {} as never);
+
+    expect(prisma.workSession.create.mock.calls[0][0].data.maxClockOutAt).toBeNull();
+  });
+});
+
+/**
  * BUG-BW — GET /work-sessions/daily-log/:date. Own suite so it can wire the
  * sessionEvent mock it needs without disturbing the workDate suite below.
  */
