@@ -4,6 +4,24 @@ import { minutesBetween } from "@/lib/time";
 /** Gaps shorter than this between sessions are treated as continuations, not breaks. */
 export const MIN_BREAK_MINUTES = 1;
 
+/**
+ * Whether the gap between two consecutive entries falls *inside* one clock-in
+ * session, which is what makes it a break.
+ *
+ * Between sessions the employee is clocked out — not on break. Split shifts
+ * (BUG-BX) make that gap routine: travel between sites, an evening return. A
+ * 6am–12pm / 5pm–7pm day was reporting "Break 5h 00m" and a 13-hour total for
+ * 8 hours of work, and that break figure feeds the timesheet totals.
+ *
+ * Manual entries carry no `workSessionId`. Those keep the previous reading —
+ * with no session to compare, there is nothing to distinguish a break from a
+ * boundary, and treating them as breaks is the established behaviour.
+ */
+function isWithinOneSession(previous: TimeEntry, next: TimeEntry): boolean {
+  if (!previous.workSessionId || !next.workSessionId) return true;
+  return previous.workSessionId === next.workSessionId;
+}
+
 export interface DaySummary {
   /** Minutes tracked across all of today's entries (running entry counted up to now). */
   trackedMinutes: number;
@@ -49,6 +67,9 @@ export function summarizeDay(entries: TimeEntry[], now = new Date()): DaySummary
   let breakCount = 0;
   let running: TimeEntry | null = null;
   let prevEnd: string | null = null;
+  // The entry `prevEnd` belongs to, so a gap can be told apart from a session
+  // boundary. Tracked alongside prevEnd and advanced with it.
+  let prevEntry: TimeEntry | null = null;
 
   // Clamp to the day being summarised, anchored on its own entries — not on
   // `now`. Callers that summarise history (MyTimesheetCard, one call per past
@@ -79,14 +100,17 @@ export function summarizeDay(entries: TimeEntry[], now = new Date()): DaySummary
       tracked += (clampedEndMs - clampedStartMs) / 60_000;
     }
 
-    if (prevEnd) {
+    if (prevEnd && prevEntry && isWithinOneSession(prevEntry, entry)) {
       const gap = minutesBetween(prevEnd, entry.startTime);
       if (gap >= MIN_BREAK_MINUTES) {
         breaks += gap;
         breakCount += 1;
       }
     }
-    if (!prevEnd || rawEndIso > prevEnd) prevEnd = rawEndIso;
+    if (!prevEnd || rawEndIso > prevEnd) {
+      prevEnd = rawEndIso;
+      prevEntry = entry;
+    }
   }
 
   const last = sorted[sorted.length - 1] ?? null;
@@ -122,22 +146,33 @@ export function buildDayTimeline(entries: TimeEntry[], onBreak: boolean): Timeli
 
   let running = false;
   let prevEnd: string | null = null;
+  let prevEntry: TimeEntry | null = null;
 
   for (const entry of sorted) {
-    if (prevEnd && entry.startTime > prevEnd) {
+    if (prevEnd && prevEntry && entry.startTime > prevEnd) {
       const gap = minutesBetween(prevEnd, entry.startTime);
-      if (gap >= MIN_BREAK_MINUTES) {
-        events.push({
-          at: prevEnd,
-          endAt: entry.startTime,
-          durationMinutes: Math.round(gap),
-          kind: "break",
-          label: "Break",
-        });
+      if (isWithinOneSession(prevEntry, entry)) {
+        if (gap >= MIN_BREAK_MINUTES) {
+          events.push({
+            at: prevEnd,
+            endAt: entry.startTime,
+            durationMinutes: Math.round(gap),
+            kind: "break",
+            label: "Break",
+          });
+        }
+      } else {
+        // A session ended and a later one began: the employee clocked out and
+        // back in. Showing that as one "Break" misread the day.
+        events.push({ at: prevEnd, kind: "clock-out", label: "Time Out" });
+        events.push({ at: entry.startTime, kind: "clock-in", label: "Clock In" });
       }
     }
     if (!entry.endTime) running = true;
-    if (entry.endTime && (!prevEnd || entry.endTime > prevEnd)) prevEnd = entry.endTime;
+    if (entry.endTime && (!prevEnd || entry.endTime > prevEnd)) {
+      prevEnd = entry.endTime;
+      prevEntry = entry;
+    }
   }
 
   if (running) {
