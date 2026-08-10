@@ -35,6 +35,8 @@ describe('WorkSessionsService — multiple sessions per day', () => {
     priorSessions?: number;
     entries?: any[];
     maxShiftMinutes?: number | null;
+    /** The org's separate daily cap; omitted means unset, which falls back. */
+    maxDailyMinutes?: number | null;
     scrumEntry?: any;
   }) => {
     const sessions = Array.from({ length: opts.priorSessions ?? 0 }, (_, i) => ({ id: `s-${i}` }));
@@ -65,7 +67,11 @@ describe('WorkSessionsService — multiple sessions per day', () => {
             defaultConfig: jest.fn().mockResolvedValue(
               opts.maxShiftMinutes === null
                 ? null
-                : { id: 'cfg-1', maxShiftMinutes: opts.maxShiftMinutes ?? 720 },
+                : {
+                    id: 'cfg-1',
+                    maxShiftMinutes: opts.maxShiftMinutes ?? 720,
+                    maxDailyMinutes: opts.maxDailyMinutes ?? null,
+                  },
             ),
             deadlineFor: jest.fn().mockReturnValue(new Date('2026-08-09T22:00:00.000Z')),
             evaluateAndNotify: jest.fn(),
@@ -172,6 +178,36 @@ describe('WorkSessionsService — multiple sessions per day', () => {
         blockedReason: null,
       }),
     );
+  });
+
+  // The daily cap is its own setting: an org may permit a 12-hour shift but
+  // only 8 payable hours a day. Sharing one field made those inseparable.
+  it('caps the day on maxDailyMinutes, not the longer shift length', async () => {
+    await build({ priorSessions: 1, entries: loggedToday(480), maxShiftMinutes: 720, maxDailyMinutes: 480 });
+
+    const { dailyTotals } = await service.current(principal);
+
+    expect(dailyTotals.maxDailyMinutes).toBe(480);
+    expect(dailyTotals.remainingMinutes).toBe(0);
+    expect(dailyTotals.canClockIn).toBe(false);
+    expect(dailyTotals.blockedReason).toContain('8-hour');
+  });
+
+  it('refuses a session once the daily cap is spent even with shift length left', async () => {
+    await build({ priorSessions: 1, entries: loggedToday(480), maxShiftMinutes: 720, maxDailyMinutes: 480 });
+
+    await expect(service.clockIn(principal, {} as never)).rejects.toBeInstanceOf(ConflictException);
+  });
+
+  // Unset is the pre-split behaviour, and must stay that way for any org that
+  // never configures a daily cap.
+  it('falls back to the shift length when no daily cap is configured', async () => {
+    await build({ priorSessions: 1, entries: loggedToday(500), maxShiftMinutes: 720 });
+
+    const { dailyTotals } = await service.current(principal);
+
+    expect(dailyTotals.maxDailyMinutes).toBe(720);
+    expect(dailyTotals.canClockIn).toBe(true);
   });
 
   // Never negative: an overrun day would otherwise render "-45m left".

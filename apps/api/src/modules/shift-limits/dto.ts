@@ -20,6 +20,14 @@ export class UpdateShiftConfigDto {
   @IsOptional() @IsInt() @Min(60) @Max(MAX_SHIFT_MINUTES)
   maxShiftMinutes?: number;
 
+  /**
+   * Cumulative worked minutes allowed across all of a day's sessions. Separate
+   * from maxShiftMinutes so an org can allow a long single shift but a shorter
+   * payable day. Null clears it, restoring the fallback to maxShiftMinutes.
+   */
+  @IsOptional() @IsInt() @Min(60) @Max(MAX_SHIFT_MINUTES)
+  maxDailyMinutes?: number | null;
+
   @IsOptional() @IsInt() @Min(0) @Max(240)
   gracePeriodMinutes?: number;
 
