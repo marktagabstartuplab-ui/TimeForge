@@ -1,4 +1,5 @@
 import type { TimeEntry } from "../api/time-entries.service";
+import type { SessionEvent } from "../api/work-sessions.service";
 import { minutesBetween } from "@/lib/time";
 
 /** Gaps shorter than this between sessions are treated as continuations, not breaks. */
@@ -128,61 +129,68 @@ export function summarizeDay(entries: TimeEntry[], now = new Date()): DaySummary
 }
 
 /**
- * Read-only activity timeline for the day: Clock In → Breaks → Time Out,
- * chronologically. Each break is a single grouped event carrying its start,
- * end and duration (gaps under MIN_BREAK_MINUTES are continuations and don't
- * appear at all). `onBreak` turns the trailing stop into an ongoing break
- * instead of a time-out.
+ * Read-only activity timeline for the day, built from the DTR events the
+ * server recorded (BUG-BW) rather than inferred from gaps between time
+ * entries.
+ *
+ * Inference was lossy in both directions: a break shorter than
+ * MIN_BREAK_MINUTES vanished entirely, and any gap it did keep was labelled a
+ * break whether or not one was taken. These rows are the breaks — BREAK_START
+ * paired with its BREAK_END — so every one appears at its exact server
+ * timestamp, however short, and the timeline agrees with the audit record by
+ * construction.
+ *
+ * Events must be chronological, which is the order the daily-log endpoint
+ * returns them in. TASK_COMPLETED is not a clock event and is skipped.
  */
-export function buildDayTimeline(entries: TimeEntry[], onBreak: boolean): TimelineEvent[] {
-  const sorted = [...entries].sort(
-    (a, b) => new Date(a.startTime).getTime() - new Date(b.startTime).getTime(),
-  );
-  if (sorted.length === 0) return [];
+export function timelineFromSessionEvents(events: SessionEvent[]): TimelineEvent[] {
+  const timeline: TimelineEvent[] = [];
+  // The BREAK_START waiting for its BREAK_END. Held back so the pair can be
+  // emitted as one event carrying the whole break, matching how the card
+  // renders a break as a range rather than two separate rows.
+  let openBreakAt: string | null = null;
+  let lastAt: string | null = null;
+  let clockedOut = false;
 
-  const events: TimelineEvent[] = [
-    { at: sorted[0].startTime, kind: "clock-in", label: "Clock In" },
-  ];
-
-  let running = false;
-  let prevEnd: string | null = null;
-  let prevEntry: TimeEntry | null = null;
-
-  for (const entry of sorted) {
-    if (prevEnd && prevEntry && entry.startTime > prevEnd) {
-      const gap = minutesBetween(prevEnd, entry.startTime);
-      if (isWithinOneSession(prevEntry, entry)) {
-        if (gap >= MIN_BREAK_MINUTES) {
-          events.push({
-            at: prevEnd,
-            endAt: entry.startTime,
-            durationMinutes: Math.round(gap),
+  for (const event of events) {
+    lastAt = event.occurredAt;
+    switch (event.eventType) {
+      case "CLOCK_IN":
+        timeline.push({ at: event.occurredAt, kind: "clock-in", label: "Clock In" });
+        clockedOut = false;
+        break;
+      case "BREAK_START":
+        openBreakAt = event.occurredAt;
+        break;
+      case "BREAK_END":
+        if (openBreakAt) {
+          timeline.push({
+            at: openBreakAt,
+            endAt: event.occurredAt,
+            durationMinutes: Math.round(minutesBetween(openBreakAt, event.occurredAt)),
             kind: "break",
             label: "Break",
           });
+          openBreakAt = null;
         }
-      } else {
-        // A session ended and a later one began: the employee clocked out and
-        // back in. Showing that as one "Break" misread the day.
-        events.push({ at: prevEnd, kind: "clock-out", label: "Time Out" });
-        events.push({ at: entry.startTime, kind: "clock-in", label: "Clock In" });
-      }
-    }
-    if (!entry.endTime) running = true;
-    if (entry.endTime && (!prevEnd || entry.endTime > prevEnd)) {
-      prevEnd = entry.endTime;
-      prevEntry = entry;
+        break;
+      case "CLOCK_OUT":
+        timeline.push({ at: event.occurredAt, kind: "clock-out", label: "Time Out" });
+        clockedOut = true;
+        break;
+      default:
+        break;
     }
   }
 
-  if (running) {
-    const last = sorted[sorted.length - 1];
-    events.push({ at: last.startTime, kind: "running", label: "Session in progress" });
-  } else if (onBreak && prevEnd) {
-    events.push({ at: prevEnd, endAt: null, kind: "break", label: "Break" });
-  } else if (prevEnd) {
-    events.push({ at: prevEnd, kind: "clock-out", label: "Time Out" });
+  // A break still open at the end of the log is one the employee is on now.
+  if (openBreakAt) {
+    timeline.push({ at: openBreakAt, endAt: null, kind: "break", label: "Break" });
+    return timeline;
   }
-
-  return events;
+  // Clocked in, not on break, no clock-out yet — the session is still running.
+  if (!clockedOut && lastAt && timeline.length > 0) {
+    timeline.push({ at: lastAt, kind: "running", label: "Session in progress" });
+  }
+  return timeline;
 }

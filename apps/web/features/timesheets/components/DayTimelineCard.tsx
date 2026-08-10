@@ -116,9 +116,14 @@ export function DayTimelineCard({ events, loading }: DayTimelineCardProps) {
                     <p className="text-sm font-semibold text-brand-ink">{event.label}</p>
                     {event.kind === "break" ? (
                       <p className="text-xs text-brand-muted">
-                        {event.durationMinutes != null
-                          ? formatMinutes(event.durationMinutes)
-                          : "Ongoing"}
+                        {event.durationMinutes == null
+                          ? "Ongoing"
+                          : // A break of a few seconds is real and now appears
+                            // (it is a recorded event, not an inferred gap),
+                            // but rounds to zero — "0m" reads as a glitch.
+                            event.durationMinutes < 1
+                            ? "Under 1m"
+                            : formatMinutes(event.durationMinutes)}
                       </p>
                     ) : null}
                   </div>
