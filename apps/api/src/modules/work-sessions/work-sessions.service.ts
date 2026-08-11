@@ -383,11 +383,13 @@ export class WorkSessionsService {
       );
     }
 
-    // The ceiling is the organization's configured shift length, reused as the
-    // daily cap. No configuration means no ceiling, matching how the shift-limit
-    // service already reports UNLIMITED.
+    // The ceiling is the organization's daily cap. It falls back to the shift
+    // length for a configuration that has never set one — which is how this
+    // behaved when the two shared a single field, so nothing changes for an org
+    // that hasn't opted in. No configuration at all means no ceiling, matching
+    // how the shift-limit service already reports UNLIMITED.
     const config = await this.shiftLimits.defaultConfig(p.tenantId, p.organizationId);
-    const maxDailyMinutes = config?.maxShiftMinutes ?? null;
+    const maxDailyMinutes = config?.maxDailyMinutes ?? config?.maxShiftMinutes ?? null;
     const remainingMinutes =
       maxDailyMinutes === null ? null : Math.max(0, maxDailyMinutes - workedMinutes);
 

@@ -1085,6 +1085,12 @@ model ShiftConfiguration {
   organizationId             String  @map("organization_id") @db.Uuid
   shiftName                  String  @default("Standard") @map("shift_name")
   maxShiftMinutes            Int     @default(720) @map("max_shift_minutes")
+  /// Cumulative worked minutes allowed across ALL of a day's sessions — the cap
+  /// that decides whether Time In is offered again after a split shift (BUG-BX).
+  /// Distinct from maxShiftMinutes, which bounds one continuous session: an org
+  /// may allow a 12-hour shift but only 8 hours of paid work a day. Null falls
+  /// back to maxShiftMinutes, which is how this behaved before the split.
+  maxDailyMinutes            Int?    @map("max_daily_minutes")
   /// Minutes past the limit before the session is force-closed. The warning and
   /// the REACHED_LIMIT violation fire at the limit; auto-clock-out fires at
   /// limit + grace, and the recorded clock-out time is always the limit itself.

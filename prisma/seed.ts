@@ -338,6 +338,8 @@ async function main() {
         organizationId: org.id,
         shiftName: 'Standard',
         maxShiftMinutes: 720,
+        // 12h is the longest single shift; 8h is the day's payable ceiling.
+        maxDailyMinutes: 480,
         gracePeriodMinutes: 0,
         warningLeadMinutes: 60,
         requiresSupervisorOverride: true,

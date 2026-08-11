@@ -88,9 +88,17 @@ export class ShiftLimitsService {
       throw new BadRequestException('warningLeadMinutes must be less than maxShiftMinutes');
     }
 
+    // `??` would treat an explicit null as "not supplied"; null is how a caller
+    // clears the daily cap and returns the org to the maxShiftMinutes fallback,
+    // so absence has to be tested separately. A daily cap *below* the shift
+    // length is the point of the setting, not a mistake, so it isn't rejected.
+    const maxDailyMinutes =
+      dto.maxDailyMinutes !== undefined ? dto.maxDailyMinutes : (existing?.maxDailyMinutes ?? null);
+
     const data = {
       shiftName: dto.shiftName ?? existing?.shiftName ?? 'Standard',
       maxShiftMinutes,
+      maxDailyMinutes,
       warningLeadMinutes,
       gracePeriodMinutes: dto.gracePeriodMinutes ?? existing?.gracePeriodMinutes ?? 0,
       requiresSupervisorOverride:
@@ -116,6 +124,7 @@ export class ShiftLimitsService {
     await this.audit(p, 'shift_configuration', config.id, {
       event: 'SHIFT_CONFIG_UPDATED',
       maxShiftMinutes: config.maxShiftMinutes,
+      maxDailyMinutes: config.maxDailyMinutes,
       gracePeriodMinutes: config.gracePeriodMinutes,
       warningLeadMinutes: config.warningLeadMinutes,
       requiresSupervisorOverride: config.requiresSupervisorOverride,
