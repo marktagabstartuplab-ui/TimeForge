@@ -26,6 +26,8 @@ export interface PayrollSettings {
   regularHolidayUnworkedRate: string;
   specialHolidayWorkedRate: string;
   thirteenthMonthExemptionCap: string;
+  /** BUG-BY — whether de minimis counts towards the 13th-month basic salary. */
+  thirteenthMonthIncludesDeMinimis: boolean;
   birTaxTableYear: number;
   version: number;
 }
@@ -51,6 +53,7 @@ export type PayrollSettingsUpdate = Partial<{
   regularHolidayUnworkedRate: number;
   specialHolidayWorkedRate: number;
   thirteenthMonthExemptionCap: number;
+  thirteenthMonthIncludesDeMinimis: boolean;
   birTaxTableYear: number;
 }>;
 
