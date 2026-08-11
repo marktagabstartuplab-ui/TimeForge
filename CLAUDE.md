@@ -1,6 +1,6 @@
 # HeroTime — Project Status Snapshot
 
-Last updated: 2026-07-28
+Last updated: 2026-08-11
 
 **All client feature gaps are closed. The project is production-deploy ready.**
 
@@ -44,7 +44,7 @@ timeforge/
 | Exception filter | ✅ | `AllExceptionsFilter` — structured `{ success, error, code }`, no stack leakage |
 | RLS | ✅ | `scripts/apply-rls.js` — run `npm run db:rls` after deploy |
 | Migrations | ✅ | Squashed to a single `0_init` baseline (see [Migration baseline](#migration-baseline)) |
-| Tests | ✅ | `jest.config.ts` + 7 suites / 42 tests — prisma, department scope, mailer, admin, AI, storage, timesheet adjustments |
+| Tests | ✅ | `jest.config.ts` + 36 suites / 378 tests, all backend. `apps/web` still has none — it is covered only by typecheck and lint |
 | CI | ✅ | `.github/workflows/ci.yml` — `build` job (api/worker + Prisma + seed + `npm test`) and `web` job (typecheck + lint). See [CI gate](#ci-gate) |
 
 ### Other fixes completed during gap work
@@ -54,6 +54,26 @@ timeforge/
 - `AttendanceReportsContent.tsx` — fixed Select `undefined` first-paint bug
 - `MyProfileContent.tsx` — type cast for form state
 - Sidebar nav — added AI Settings under SYSTEM section
+
+### Time tracking & payroll work, August 2026 (PRs #138–#143)
+
+| Area | What changed | Key files |
+|---|---|---|
+| **Split shifts** (BUG-BX) | A day is many sessions, bounded by *cumulative* worked minutes rather than "a session already ended". Time In returns after Time Out, `sessionOrdinal` lands in the audit trail, and the scrum plan lock reopens only for session 2+ | `work-sessions.service.ts` (`dailyTotals`, `sessionDeadline`), `CurrentSessionCard.tsx` |
+| **Daily hours cap** | `ShiftConfiguration.maxDailyMinutes` — its own setting, **distinct from `maxShiftMinutes`** (which bounds one continuous session and drives auto-clock-out/override). Null falls back to `maxShiftMinutes`. Existing orgs backfilled to 480 | `schema.prisma`, `work-sessions.service.ts` |
+| **DTR daily log** (BUG-BW) | Immutable `SessionEvent` rows (`CLOCK_IN`/`BREAK_START`/`BREAK_END`/`CLOCK_OUT`) behind `GET /work-sessions/daily-log/:date`. Read-only by construction — no endpoint edits or deletes one | `work-sessions.service.ts`, `DailyLogCard.tsx` |
+| **Timesheet timeline** | Reads those recorded events instead of inferring breaks from gaps between entries. Gaps *between* sessions are no longer counted as break time | `day-summary.ts` (`timelineFromSessionEvents`) |
+| **Team Productivity** (BUG-BZ) | Was empty for Admin/HR: employees were scoped to departments the caller *manages*, which is none for them. Org readers now see the organization; supervisors unchanged | `reports.service.ts` (`productivityUserScope`) |
+| **13th-month settings** (BUG-BY) | `PayrollSettings.thirteenthMonthIncludesDeMinimis` + `GET`/`PUT /payroll/settings/13th-month`. The tracker resolves policy per request — no cache, no recalculation step | `payroll-settings.service.ts`, `compensation-benefits.service.ts`, `PayrollSettingsContent.tsx` |
+
+Two traps found the hard way, both with regression tests pinning them:
+
+- `ReportsService.validateScope()` **mutates** `query.departmentId`, overwriting
+  it with the supervisor's own department — which is not necessarily one they
+  manage. Narrowing on that field empties the report for supervisors.
+- `summarizeDay()` treats any gap ≥ `MIN_BREAK_MINUTES` as a break. With split
+  shifts that turned a 5-hour off-clock gap into "Break 5h 00m" and a 13-hour
+  day. Gaps now only count within a single `workSessionId`.
 
 ---
 
@@ -142,6 +162,52 @@ Never edit an already-applied migration file. Prisma stores a checksum of each
 one, and a modified file makes `migrate deploy` fail on every environment that
 already ran it.
 
+### The drift came back once — don't let it happen again
+
+By 2026-08-11 the same problem had re-accumulated: `grievances`, three enums,
+`timesheets.payment_status`, `timesheets.payroll_period_id`,
+`payroll_periods.is_auto_generated`, two FKs, two indexes and two index renames
+existed in production and in `schema.prisma` but in **no migration**. A database
+provisioned from migrations was missing a table the API queries, and every
+`migrate dev` tried to regenerate the whole backlog — two migrations had to be
+hand-trimmed before shipping because of it.
+
+`20260811070000_reconcile_db_push_drift` closes that gap. Its SQL is generated,
+not hand-written:
+
+```bash
+npx prisma migrate diff --from-migrations prisma/migrations \
+    --to-schema-datamodel prisma/schema.prisma --script
+```
+
+**The cause was `prisma db push` against a database whose schema is tracked by
+migrations.** Use it only on a throwaway local database. Anywhere shared, the
+schema change must be a migration, or the next person gets a `migrate dev` that
+wants to recreate objects production already has.
+
+**Check before writing a migration.** If this returns anything, the tree has
+drifted again and needs reconciling before you add to it:
+
+```bash
+npx prisma migrate diff --from-migrations prisma/migrations \
+    --to-schema-datamodel prisma/schema.prisma \
+    --shadow-database-url <throwaway-db-url> --script
+```
+
+An environment that already has the objects records the migration instead of
+running it (running it fails on `CREATE TYPE`/`CREATE TABLE`):
+
+```bash
+npx prisma migrate resolve --applied 20260811070000_reconcile_db_push_drift
+```
+
+Verify production matches the schema *before* resolving — an empty result here
+is what makes "mark as applied" honest rather than a paper-over:
+
+```bash
+npx prisma migrate diff --from-url "$DIRECT_URL" --to-schema-datamodel prisma/schema.prisma --script
+```
+
 ## Role permission scripts
 
 Two scripts write `RolePermission` rows, and they are **not** interchangeable:
@@ -207,6 +273,11 @@ Supabase is used as **managed PostgreSQL + object storage** only — NOT Supabas
 | AI feature toggles | `apps/api/src/modules/ai/dto.ts` (feature list), `AdminService.getAiConfig()` (read), `AiService.checkFeatureEnabled()` (enforce) |
 | Scrum recurring-blocker | `apps/api/src/modules/scrum/scrum.service.ts` (`attachRecurringBlockerFlag`) |
 | Time entry service | `apps/api/src/modules/time-tracking/time-tracking.service.ts` |
+| Clock in/out, breaks, daily totals | `apps/api/src/modules/work-sessions/work-sessions.service.ts` |
+| Shift limit / auto-clock-out | `apps/api/src/modules/shift-limits/shift-limits.service.ts` |
+| Day aggregation & activity timeline | `apps/web/features/time-tracking/lib/day-summary.ts` |
+| Payroll settings (statutory + 13th-month) | `apps/api/src/modules/payroll/payroll-settings.service.ts` |
+| Report scoping (org vs supervisor) | `apps/api/src/modules/reports/reports.service.ts` |
 | Prisma tenant middleware | `apps/api/src/common/prisma/prisma.service.ts` |
 | Exception filter | `apps/api/src/common/filters/all-exceptions.filter.ts` |
 | RLS script | `prisma/sql/rls.sql` |
@@ -218,12 +289,34 @@ Supabase is used as **managed PostgreSQL + object storage** only — NOT Supabas
 
 1. **Deliverables field** — the brief mentions a dedicated Deliverables field on time entries. Not implemented, was lowest priority.
 2. **Open-ended KPI metric types** — `KpiMetricType` is a fixed 4-value enum. Brief may want free-text. Was confirmed as stretch goal.
-3. **Test coverage** — 7 suites / 42 tests is a foundation, all backend. There are no frontend tests at all; `apps/web` is covered only by typecheck and lint. Full coverage wasn't scoped.
-4. **Lint warnings** — `apps/web` carries ~186 eslint warnings (mostly `no-explicit-any` and unused vars). CI gates on errors only; `--max-warnings 0` would need a cleanup pass first.
-5. **`ignoreBuildErrors`** — `apps/web/next.config.ts` still sets `typescript.ignoreBuildErrors: true`, so Vercel deploys even with type errors. CI now catches them pre-merge, but dropping this flag would close the gap properly.
-6. **Duplicate Vercel project** — `time-forge-n2gg` fails on every commit (Root Directory is the repo root, so Next can't be detected). `time-forge` is the working one. Delete or repoint the duplicate; the root `vercel.json` exists only to serve it.
-7. **OpenAI key** — Worker falls back to stub mode when `OPENAI_API_KEY` is absent. Not a bug, but production needs the real key.
+3. **Test coverage** — 36 suites / 378 tests, all backend. There are still no
+   frontend tests at all; `apps/web` is covered only by typecheck and lint, so
+   any UI change needs verifying by running the app.
+4. **Lint warnings** — `apps/web` carries ~186 eslint warnings (mostly
+   `no-explicit-any` and unused vars). CI gates on errors only; `--max-warnings 0`
+   would need a cleanup pass first.
+5. **`ignoreBuildErrors`** — `apps/web/next.config.ts` still sets
+   `typescript.ignoreBuildErrors: true`, so Vercel deploys even with type errors.
+   CI catches them pre-merge, but dropping this flag would close the gap properly.
+6. **Duplicate Vercel project** — `time-forge-n2gg` fails on every commit (Root
+   Directory is the repo root, so Next can't be detected), which makes every PR
+   look partly red. `time-forge` is the working one. Delete or repoint the
+   duplicate; the root `vercel.json` exists only to serve it.
+7. **OpenAI key** — Worker falls back to stub mode when `OPENAI_API_KEY` is
+   absent. Not a bug, but production needs the real key.
 8. **Seed data** — Demo accounts use `ChangeMe123!` — rotate before production.
+9. **New tenants get no daily cap.** The `maxDailyMinutes` backfill covered
+   existing orgs only; an org created since inherits `NULL` and falls back to
+   `maxShiftMinutes` (12h seeded). Onboarding has to set it deliberately.
+10. **13th-month: only one of three toggles exists.** "Deduct unpaid absences"
+   has nothing to act on — the base is `regularPay`, derived from time actually
+   worked, so absences are already excluded and a deduction would double-count.
+   "Include maternity leave" is not expressible: `LeaveType` is
+   `ANNUAL | SICK | PERSONAL` and payroll reads no leave data. Both need schema
+   work before they can mean anything.
+11. **A session starting near the daily cap opens in `WARNING`.** With 30 minutes
+   granted and `warningLeadMinutes` at 60, the employee gets an "approaching your
+   shift limit" notification at clock-in. Accurate, but a new notification moment.
 
 ---
 
@@ -232,7 +325,7 @@ Supabase is used as **managed PostgreSQL + object storage** only — NOT Supabas
 ```bash
 npm install
 npx prisma generate
-npx prisma migrate deploy   # or: db push (dev only)
+npx prisma migrate deploy   # `db push` ONLY on a throwaway local DB — see Migration baseline
 npm run db:seed
 npm run start:api            # terminal 1
 npm run start:worker         # terminal 2
