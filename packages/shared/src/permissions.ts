@@ -281,7 +281,12 @@ export const ROLE_PERMISSIONS: Record<Role, string[]> = {
     P.AUDIT_READ_SCOPED,
     P.NOTIFICATION_READ_SELF, P.NOTIFICATION_UPDATE_SELF,
     P.AI_TRIGGER_ORG, P.AI_READ,
-    P.DASHBOARD_READ_SELF, P.DASHBOARD_READ_ORG,
+    // BUG-BZ: the Team Productivity endpoints require dashboard:read_team, and
+    // the guard requires *every* declared permission, so read_org alone left HR
+    // with a 403 on a report they are expected to run. Granted rather than
+    // widening the route, which would have taken the permission away from
+    // supervisors as the route's gate.
+    P.DASHBOARD_READ_SELF, P.DASHBOARD_READ_TEAM, P.DASHBOARD_READ_ORG,
     P.ORG_READ, P.ORG_SETTINGS_READ, P.HOLIDAY_READ, P.HOLIDAY_WRITE,
     P.DEPARTMENT_CREATE, P.DEPARTMENT_UPDATE, P.DEPARTMENT_DELETE,
     P.PROJECT_CREATE, P.PROJECT_UPDATE, P.PROJECT_DELETE,
