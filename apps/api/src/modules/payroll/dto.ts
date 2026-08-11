@@ -162,7 +162,28 @@ export class UpdatePayrollSettingsDto {
 
   @IsNumber() @Min(0) @IsOptional() thirteenthMonthExemptionCap?: number;
 
+  @IsBoolean() @IsOptional() thirteenthMonthIncludesDeMinimis?: boolean;
+
   @IsInt() @Min(2018) @Max(2100) @IsOptional() birTaxTableYear?: number;
+}
+
+/**
+ * BUG-BY — the 13th-Month Pay Settings panel.
+ *
+ * Its own DTO and route so the payroll-settings screen (statutory rates) and
+ * the 13th-month policy screen can be saved independently; both persist to the
+ * same payroll_settings row.
+ */
+export class UpdateThirteenthMonthSettingsDto {
+  /**
+   * Whether de minimis benefits count towards the basic salary the 13th-month
+   * divisor works on. False follows DOLE, which excludes them from basic salary
+   * unless the employer has integrated them.
+   */
+  @IsBoolean() @IsOptional() includesDeMinimis?: boolean;
+
+  /** Annual tax-exempt ceiling for 13th-month pay and other benefits. */
+  @IsNumber() @Min(0) @IsOptional() exemptionCap?: number;
 }
 
 export interface StatutoryReportQuery {

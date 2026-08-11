@@ -4,6 +4,7 @@ import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { AssignDeMinimisDto, ThirteenthMonthQuery } from './dto';
 import { DE_MINIMIS_CATALOG, DE_MINIMIS_RULES, capDeMinimisAmount } from './de-minimis';
+import { PayrollSettingsService } from './payroll-settings.service';
 
 function round2(n: number): number {
   return Math.round((n + Number.EPSILON) * 100) / 100;
@@ -22,7 +23,10 @@ function round2(n: number): number {
  */
 @Injectable()
 export class CompensationBenefitsService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly settings: PayrollSettingsService,
+  ) {}
 
   // ── 13th-Month Pay Tracker ─────────────────────────────────────────────────
 
@@ -53,6 +57,7 @@ export class CompensationBenefitsService {
       select: {
         userId: true,
         regularPay: true,
+        deMinimisTotal: true,
         payrollReport: { select: { period: { select: { startDate: true } } } },
         user: {
           select: {
@@ -77,13 +82,20 @@ export class CompensationBenefitsService {
       }
     >();
 
+    // BUG-BY — policy comes from the organization's settings, resolved per
+    // request. Nothing is cached, so an admin's change applies to the very next
+    // read of this tracker rather than waiting on a restart or a recalculation.
+    const config = await this.settings.forPrincipal(p);
+
     for (const li of lineItems) {
       let row = byUser.get(li.userId);
       if (!row) {
         row = { employee: li.user, ytdBasicSalary: 0, months: new Set(), periodsCounted: 0 };
         byUser.set(li.userId, row);
       }
-      row.ytdBasicSalary += Number(li.regularPay);
+      row.ytdBasicSalary +=
+        Number(li.regularPay) +
+        (config.thirteenthMonthIncludesDeMinimis ? Number(li.deMinimisTotal) : 0);
       row.periodsCounted += 1;
       row.months.add(li.payrollReport.period.startDate.getUTCMonth());
     }
@@ -113,6 +125,12 @@ export class CompensationBenefitsService {
       totalThirteenthMonthPay: round2(
         employees.reduce((s, e) => s + e.thirteenthMonthPay, 0),
       ),
+      // Echoed so the tracker screen can state the policy the figures were
+      // produced under, rather than leaving the reader to guess.
+      settings: {
+        includesDeMinimis: config.thirteenthMonthIncludesDeMinimis,
+        exemptionCap: config.thirteenthMonthExemptionCap,
+      },
       employees,
     };
   }
