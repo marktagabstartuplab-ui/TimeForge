@@ -99,6 +99,61 @@ describe('ShiftLimitsService', () => {
     service = module.get(ShiftLimitsService);
   });
 
+  describe('updateConfig — the daily cap on a first-time save', () => {
+    const admin = {
+      userId: 'admin-1',
+      tenantId: 'tenant-1',
+      organizationId: 'org-1',
+      roles: ['ADMIN'],
+      permissions: ['*'],
+    } as never;
+
+    /**
+     * An org with no configuration row yet: the first save creates one. It must
+     * not carry an explicit null daily cap, because null falls back to
+     * maxShiftMinutes and would hand that org a silent 12-hour day. Leaving the
+     * field off lets the column default (480) apply.
+     */
+    it('does not write an explicit null daily cap when creating the row', async () => {
+      prisma.shiftConfiguration.findFirst.mockResolvedValue(null);
+      prisma.shiftConfiguration.create.mockImplementation(({ data }: never) => ({
+        id: 'cfg-new',
+        ...(data as object),
+      }));
+
+      await service.updateConfig(admin, { maxShiftMinutes: 720 });
+
+      const { data } = prisma.shiftConfiguration.create.mock.calls[0][0];
+      expect(data.maxDailyMinutes).toBeUndefined();
+    });
+
+    it('persists a daily cap the admin sets explicitly', async () => {
+      prisma.shiftConfiguration.findFirst.mockResolvedValue(null);
+      prisma.shiftConfiguration.create.mockImplementation(({ data }: never) => ({
+        id: 'cfg-new',
+        ...(data as object),
+      }));
+
+      await service.updateConfig(admin, { maxDailyMinutes: 600 });
+
+      expect(prisma.shiftConfiguration.create.mock.calls[0][0].data.maxDailyMinutes).toBe(600);
+    });
+
+    // Null is the documented way to opt back into the maxShiftMinutes fallback,
+    // so it has to survive rather than being read as "not supplied".
+    it('lets an explicit null clear the cap on an existing row', async () => {
+      prisma.shiftConfiguration.findFirst.mockResolvedValue({ id: 'cfg-1', maxDailyMinutes: 480 });
+      prisma.shiftConfiguration.update.mockImplementation(({ data }: never) => ({
+        id: 'cfg-1',
+        ...(data as object),
+      }));
+
+      await service.updateConfig(admin, { maxDailyMinutes: null });
+
+      expect(prisma.shiftConfiguration.update.mock.calls[0][0].data.maxDailyMinutes).toBeNull();
+    });
+  });
+
   describe('status', () => {
     it('is OK before the warning window', async () => {
       const status = await service.status(makeSession(), new Date(CLOCK_IN.getTime() + 5 * HOUR));

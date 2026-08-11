@@ -1,0 +1,11 @@
+-- The daily cap now defaults instead of arriving null.
+--
+-- A shift_configurations row created without one — which is what happens the
+-- first time an admin saves shift settings for an organization that had no row
+-- — fell back to max_shift_minutes and silently granted a 12-hour day rather
+-- than the 8-hour policy this feature was specified against.
+--
+-- Only affects rows inserted from here on. Existing rows keep their value,
+-- including any deliberately set to null to opt into the max_shift_minutes
+-- fallback.
+ALTER TABLE "shift_configurations" ALTER COLUMN "max_daily_minutes" SET DEFAULT 480;

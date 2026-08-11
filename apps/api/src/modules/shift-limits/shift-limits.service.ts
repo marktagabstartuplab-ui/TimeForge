@@ -88,17 +88,25 @@ export class ShiftLimitsService {
       throw new BadRequestException('warningLeadMinutes must be less than maxShiftMinutes');
     }
 
-    // `??` would treat an explicit null as "not supplied"; null is how a caller
-    // clears the daily cap and returns the org to the maxShiftMinutes fallback,
-    // so absence has to be tested separately. A daily cap *below* the shift
-    // length is the point of the setting, not a mistake, so it isn't rejected.
+    // Three-way, because two different "nothing" values mean different things.
+    // `??` would treat an explicit null as "not supplied", and null is how a
+    // caller clears the daily cap to restore the maxShiftMinutes fallback. And
+    // when no value is supplied while *creating* a row, the key is left off
+    // entirely rather than written as null: writing null would defeat the
+    // column's 480 default and hand that org a silent 12-hour day. A daily cap
+    // below the shift length is the point of the setting, not a mistake, so it
+    // is not rejected.
     const maxDailyMinutes =
-      dto.maxDailyMinutes !== undefined ? dto.maxDailyMinutes : (existing?.maxDailyMinutes ?? null);
+      dto.maxDailyMinutes !== undefined
+        ? dto.maxDailyMinutes
+        : existing
+          ? existing.maxDailyMinutes
+          : undefined;
 
     const data = {
       shiftName: dto.shiftName ?? existing?.shiftName ?? 'Standard',
       maxShiftMinutes,
-      maxDailyMinutes,
+      ...(maxDailyMinutes !== undefined ? { maxDailyMinutes } : {}),
       warningLeadMinutes,
       gracePeriodMinutes: dto.gracePeriodMinutes ?? existing?.gracePeriodMinutes ?? 0,
       requiresSupervisorOverride:
