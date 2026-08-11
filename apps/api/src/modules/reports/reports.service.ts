@@ -59,6 +59,44 @@ export class ReportsService {
     }
   }
 
+  /**
+   * BUG-BZ — which employees the Team Productivity report covers.
+   *
+   * It used to be `departmentId IN (departments I manage)` for everyone. A
+   * supervisor heads a department so that worked, but an Admin or HR user heads
+   * none: the list came back empty, no timesheets matched, and the report
+   * rendered "No active productivity records" with ₱0 cards over a period that
+   * had plenty of approved timesheets. Nothing was stale — the query simply
+   * excluded every employee.
+   *
+   * Org-level readers now see the whole organization, and may narrow to one
+   * department with `?departmentId=`. Supervisors are unchanged, still confined
+   * to the departments they head.
+   */
+  private async productivityUserScope(
+    p: AuthPrincipal,
+    query: ReportsQuery,
+  ): Promise<Prisma.UserWhereInput> {
+    const isOrgReader =
+      p.permissions.includes('*') ||
+      p.permissions.includes('dashboard:read_org') ||
+      p.roles.includes('ADMIN') ||
+      p.roles.includes('HR');
+
+    if (isOrgReader) {
+      return query.departmentId ? { departmentId: query.departmentId } : {};
+    }
+
+    // Unchanged for supervisors: the departments they head. `query.departmentId`
+    // is deliberately not consulted here — validateScope() has already rejected
+    // a supervisor asking for anyone else's department, and it *overwrites* the
+    // field with their own department, which is not necessarily one they manage.
+    // Narrowing on it would have emptied the report for exactly the role the
+    // report already worked for.
+    const deptIds = await this.deptScope.managedDepartmentIds(p);
+    return { departmentId: { in: deptIds } };
+  }
+
   private async validateScope(p: AuthPrincipal, query: ReportsQuery) {
     const isAdmin = p.permissions.includes('*') || p.roles.includes('ADMIN');
     const isHR = p.roles.includes('HR') || p.permissions.includes('org:read_dashboard');
@@ -788,15 +826,15 @@ export class ReportsService {
     const limit = Math.min(Number(query.limit ?? 10), 50);
     const cursor = query.cursor ? decodeCursor(query.cursor) : undefined;
 
-    // Resolve reports list or users — department-based supervision.
-    const deptIds = await this.deptScope.managedDepartmentIds(p);
+    // BUG-BZ — org readers see the organization, supervisors their departments.
+    const userScope = await this.productivityUserScope(p, query);
     const reports = await this.prisma.user.findMany({
       where: {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
         deletedAt: null,
         status: 'ACTIVE',
-        departmentId: { in: deptIds },
+        ...userScope,
         ...(query.q
           ? {
               OR: [
@@ -873,14 +911,14 @@ export class ReportsService {
   async getTeamProductivitySummary(p: AuthPrincipal, query: ReportsQuery) {
     await this.validateScope(p, query);
 
-    const deptIds = await this.deptScope.managedDepartmentIds(p);
+    const userScope = await this.productivityUserScope(p, query);
     const reports = await this.prisma.user.findMany({
       where: {
         tenantId: p.tenantId,
         organizationId: p.organizationId,
         deletedAt: null,
         status: 'ACTIVE',
-        departmentId: { in: deptIds },
+        ...userScope,
       },
       select: { id: true, hourlyRate: true },
     });
