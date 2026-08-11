@@ -19,7 +19,7 @@ import {
 } from '@nestjs/common';
 import type { Response } from 'express';
 import { PayrollService } from './payroll.service';
-import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, RunActionDto, PayrollExportRequestDto, PayrollActionDto, PayrollRejectActionDto, GeneratePayrollDto, UpdatePayrollSettingsDto, StatutoryExportQuery, StatutoryReportQuery, UpdateRateDto } from './dto';
+import { CreatePayrollPeriodDto, ExportPayrollDto, PayrollPeriodQuery, RunActionDto, PayrollExportRequestDto, PayrollActionDto, PayrollRejectActionDto, GeneratePayrollDto, UpdatePayrollSettingsDto, UpdateThirteenthMonthSettingsDto, StatutoryExportQuery, StatutoryReportQuery, UpdateRateDto } from './dto';
 import { PayrollSettingsService } from './payroll-settings.service';
 import { AuthPrincipal, CurrentUser, RequirePermissions } from '../../common/decorators';
 
@@ -113,6 +113,25 @@ export class PayrollController {
     @Body() dto: UpdatePayrollSettingsDto,
   ) {
     return this.settings.update(u, dto);
+  }
+
+  /**
+   * BUG-BY — 13th-Month Pay Settings. Same permissions as the statutory rates
+   * they sit beside: HR reads, Finance/Admin change.
+   */
+  @Get('settings/13th-month')
+  @RequirePermissions('payroll_rate:read')
+  getThirteenthMonthSettings(@CurrentUser() u: AuthPrincipal) {
+    return this.settings.getThirteenthMonthSettings(u);
+  }
+
+  @Put('settings/13th-month')
+  @RequirePermissions('payroll_rate:update')
+  updateThirteenthMonthSettings(
+    @CurrentUser() u: AuthPrincipal,
+    @Body() dto: UpdateThirteenthMonthSettingsDto,
+  ) {
+    return this.settings.updateThirteenthMonthSettings(u, dto);
   }
 
   /** SSS remittance report for a period (defaults to the latest generated one). */

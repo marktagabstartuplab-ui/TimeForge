@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthPrincipal } from '../../common/decorators';
-import { UpdatePayrollSettingsDto } from './dto';
+import { UpdatePayrollSettingsDto, UpdateThirteenthMonthSettingsDto } from './dto';
 
 /** Plain-number view of payroll_settings, for arithmetic in the deduction engine. */
 export interface ResolvedPayrollSettings {
@@ -25,6 +25,12 @@ export interface ResolvedPayrollSettings {
   specialHolidayWorkedRate: number;
   restDayWorkedRate: number;
   thirteenthMonthExemptionCap: number;
+  /**
+   * BUG-BY — whether de minimis benefits count towards the basic salary the
+   * 13th-month divisor works on. Configuration, not a constant, so a policy
+   * change is an admin action rather than a code change.
+   */
+  thirteenthMonthIncludesDeMinimis: boolean;
   birTaxTableYear: number;
 }
 
@@ -50,6 +56,9 @@ export const DEFAULT_PAYROLL_SETTINGS: ResolvedPayrollSettings = {
   specialHolidayWorkedRate: 1.3,
   restDayWorkedRate: 1.3,
   thirteenthMonthExemptionCap: 90_000,
+  // DOLE excludes de minimis from basic salary unless the employer integrated
+  // it, and false is what every org effectively had before the setting existed.
+  thirteenthMonthIncludesDeMinimis: false,
   birTaxTableYear: 2026,
 };
 
@@ -91,6 +100,7 @@ export class PayrollSettingsService {
       specialHolidayWorkedRate: Number(row.specialHolidayWorkedRate),
       restDayWorkedRate: Number(row.restDayWorkedRate),
       thirteenthMonthExemptionCap: Number(row.thirteenthMonthExemptionCap),
+      thirteenthMonthIncludesDeMinimis: row.thirteenthMonthIncludesDeMinimis,
       birTaxTableYear: row.birTaxTableYear,
     };
   }
@@ -148,5 +158,31 @@ export class PayrollSettingsService {
       where: { id: existing.id },
       data: { ...dto, updatedBy: p.userId, version: { increment: 1 } },
     });
+  }
+
+  /**
+   * BUG-BY — the 13th-Month Pay Settings panel.
+   *
+   * A thin projection over the same payroll_settings row, so the 13th-month
+   * policy screen and the statutory-rates screen can be saved independently
+   * without either overwriting the other's fields. Takes effect on the next
+   * read: the tracker resolves settings per request, holding nothing cached.
+   */
+  async getThirteenthMonthSettings(p: AuthPrincipal) {
+    const settings = await this.forPrincipal(p);
+    return {
+      includesDeMinimis: settings.thirteenthMonthIncludesDeMinimis,
+      exemptionCap: settings.thirteenthMonthExemptionCap,
+    };
+  }
+
+  async updateThirteenthMonthSettings(p: AuthPrincipal, dto: UpdateThirteenthMonthSettingsDto) {
+    await this.update(p, {
+      ...(dto.includesDeMinimis !== undefined
+        ? { thirteenthMonthIncludesDeMinimis: dto.includesDeMinimis }
+        : {}),
+      ...(dto.exemptionCap !== undefined ? { thirteenthMonthExemptionCap: dto.exemptionCap } : {}),
+    });
+    return this.getThirteenthMonthSettings(p);
   }
 }

@@ -4,10 +4,16 @@ import { CompensationBenefitsService } from './compensation-benefits.service';
 import { PrismaService } from '../../common/prisma/prisma.service';
 import { AuthPrincipal } from '../../common/decorators';
 import { capDeMinimisAmount, DE_MINIMIS_RULES } from './de-minimis';
+import { PayrollSettingsService, DEFAULT_PAYROLL_SETTINGS } from './payroll-settings.service';
+
+/** Same rounding the service applies, so expectations read as money. */
+const round = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
 
 describe('CompensationBenefitsService (BUG-BC)', () => {
   let service: CompensationBenefitsService;
   let prisma: any;
+  /** BUG-BY — the org's 13th-month policy, swappable per test. */
+  let settings: any;
 
   const hr: AuthPrincipal = {
     userId: 'usr-hr-1',
@@ -39,14 +45,70 @@ describe('CompensationBenefitsService (BUG-BC)', () => {
       auditLog: { create: jest.fn().mockResolvedValue({}) },
     };
 
+    settings = {
+      forPrincipal: jest.fn().mockResolvedValue({ ...DEFAULT_PAYROLL_SETTINGS }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         CompensationBenefitsService,
         { provide: PrismaService, useValue: prisma },
+        { provide: PayrollSettingsService, useValue: settings },
       ],
     }).compile();
 
     service = module.get(CompensationBenefitsService);
+  });
+
+  // ── BUG-BY: configurable 13th-month policy ──────────────────────────────────
+
+  describe('13th-month policy is configuration, not a constant', () => {
+    /** One period: ₱20,000 basic salary plus ₱2,000 of de minimis. */
+    const withDeMinimis = () =>
+      prisma.payrollLineItem.findMany.mockResolvedValue([
+        {
+          userId: 'usr-emp-1',
+          regularPay: 20000,
+          deMinimisTotal: 2000,
+          payrollReport: { period: { startDate: new Date(Date.UTC(2026, 0, 1)) } },
+          user: employee('usr-emp-1', 'Cruz'),
+        },
+      ]);
+
+    it('excludes de minimis from basic salary by default', async () => {
+      withDeMinimis();
+
+      const result = await service.getThirteenthMonthTracker(hr, { year: 2026 });
+
+      expect(result.employees[0].ytdBasicSalary).toBe(20000);
+      expect(result.employees[0].thirteenthMonthPay).toBe(round(20000 / 12));
+      expect(result.settings.includesDeMinimis).toBe(false);
+    });
+
+    it('includes de minimis once the organization turns it on', async () => {
+      withDeMinimis();
+      settings.forPrincipal.mockResolvedValue({
+        ...DEFAULT_PAYROLL_SETTINGS,
+        thirteenthMonthIncludesDeMinimis: true,
+      });
+
+      const result = await service.getThirteenthMonthTracker(hr, { year: 2026 });
+
+      expect(result.employees[0].ytdBasicSalary).toBe(22000);
+      expect(result.employees[0].thirteenthMonthPay).toBe(round(22000 / 12));
+      expect(result.settings.includesDeMinimis).toBe(true);
+    });
+
+    // "Changes take effect immediately" — the tracker resolves settings on every
+    // call, so there is no cache to invalidate and no recalculation to trigger.
+    it('reads the policy on every request', async () => {
+      withDeMinimis();
+
+      await service.getThirteenthMonthTracker(hr, { year: 2026 });
+      await service.getThirteenthMonthTracker(hr, { year: 2026 });
+
+      expect(settings.forPrincipal).toHaveBeenCalledTimes(2);
+    });
   });
 
   // ── (a)(b) 13th-month tracker ───────────────────────────────────────────────

@@ -1431,6 +1431,13 @@ model PayrollSettings {
   // 13th-month pay and other benefits are tax-exempt up to this annual amount.
   thirteenthMonthExemptionCap Decimal @default(90000) @map("thirteenth_month_exemption_cap") @db.Decimal(12, 2)
 
+  /// BUG-BY — 13th-month policy, configurable so a policy change does not need a
+  /// code change. Whether de minimis benefits count towards the "basic salary"
+  /// the 13th-month divisor works on. Default false: DOLE treats de minimis as
+  /// excluded from basic salary unless the employer has integrated it, and false
+  /// reproduces the figure this org's tracker showed before the setting existed.
+  thirteenthMonthIncludesDeMinimis Boolean @default(false) @map("thirteenth_month_includes_de_minimis")
+
   birTaxTableYear Int @default(2026) @map("bir_tax_table_year")
 
   createdBy String?   @map("created_by") @db.Uuid

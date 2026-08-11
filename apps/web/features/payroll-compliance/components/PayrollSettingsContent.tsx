@@ -21,7 +21,7 @@ type FieldKey = keyof PayrollSettingsUpdate;
  * (0.05) but entered as percentages (5) — asking an admin to type `0.025` for
  * PhilHealth is exactly how a rate ends up off by a factor of ten.
  */
-type FieldKind = "percent" | "peso" | "multiplier" | "hour" | "year";
+type FieldKind = "percent" | "peso" | "multiplier" | "hour" | "year" | "toggle";
 
 interface FieldDef {
   key: FieldKey;
@@ -84,6 +84,23 @@ const SECTIONS: SectionDef[] = [
     ],
   },
   {
+    // BUG-BY — 13th-month policy, so a change of practice is an admin action
+    // rather than a code change. Only the de minimis question is settable: the
+    // base is regular pay for time actually worked, so unpaid absences are
+    // already excluded, and the system records no maternity leave to include.
+    title: "13th-Month Pay",
+    description:
+      "How basic salary is measured for the 13th-month computation. Applies to the next tracker read — no recalculation needed.",
+    fields: [
+      {
+        key: "thirteenthMonthIncludesDeMinimis",
+        label: "Base salary includes de minimis",
+        kind: "toggle",
+        hint: "Off follows DOLE, which excludes de minimis unless the employer integrated it.",
+      },
+    ],
+  },
+  {
     title: "Tax",
     description: "13th-month pay is exempt up to the cap. The BIR table year selects the withholding schedule.",
     fields: [
@@ -96,7 +113,10 @@ const SECTIONS: SectionDef[] = [
 const ALL_FIELDS = SECTIONS.flatMap((s) => s.fields);
 
 /** Stored value → what the admin sees in the input. */
-function toDisplay(stored: string | number, kind: FieldKind): string {
+function toDisplay(stored: string | number | boolean, kind: FieldKind): string {
+  // Toggles ride through the same string-keyed state as every other field, so
+  // dirty-tracking and seeding stay uniform; "true"/"false" is that encoding.
+  if (kind === "toggle") return stored ? "true" : "false";
   const n = Number(stored);
   if (!Number.isFinite(n)) return "";
   if (kind === "percent") {
@@ -108,7 +128,8 @@ function toDisplay(stored: string | number, kind: FieldKind): string {
 }
 
 /** What the admin typed → the value the API expects. */
-function toStored(display: string, kind: FieldKind): number | null {
+function toStored(display: string, kind: FieldKind): number | boolean | null {
+  if (kind === "toggle") return display === "true";
   const n = Number(display);
   if (display.trim() === "" || !Number.isFinite(n)) return null;
   if (kind === "percent") return Math.round((n / 100) * 1_000_000) / 1_000_000;
@@ -207,7 +228,7 @@ export function PayrollSettingsContent() {
       if (!dirtyKeys.includes(field.key)) continue;
       const stored = toStored(values[field.key] ?? "", field.kind);
       if (stored === null) continue;
-      (payload as Record<string, number>)[field.key] = stored;
+      (payload as Record<string, number | boolean>)[field.key] = stored;
     }
     saveMutation.mutate(payload);
   };
@@ -316,6 +337,44 @@ export function PayrollSettingsContent() {
                 const suffix = suffixFor(field.kind);
                 const isDirty = dirtyKeys.includes(field.key);
                 const isInvalid = invalidKeys.includes(field.key);
+
+                if (field.kind === "toggle") {
+                  const on = values[field.key] === "true";
+                  return (
+                    <div key={field.key} className="flex flex-col gap-1.5">
+                      <label
+                        htmlFor={`payroll-setting-${field.key}`}
+                        className="text-xs font-semibold text-brand-navy"
+                      >
+                        {field.label}
+                      </label>
+                      <div
+                        className={`flex h-9 items-center gap-2.5 rounded-[8px] border px-3 ${
+                          isDirty ? "border-[#0052cc]" : "border-[#c3c6d2]"
+                        }`}
+                      >
+                        <input
+                          id={`payroll-setting-${field.key}`}
+                          type="checkbox"
+                          checked={on}
+                          disabled={!canEdit}
+                          onChange={(e) =>
+                            setValues((prev) => ({
+                              ...prev,
+                              [field.key]: e.target.checked ? "true" : "false",
+                            }))
+                          }
+                          className="h-4 w-4 accent-[#0052cc] disabled:cursor-not-allowed"
+                        />
+                        <span className="text-sm text-brand-ink">{on ? "Yes" : "No"}</span>
+                      </div>
+                      <span className="text-[11px] text-brand-muted min-h-[14px]">
+                        {field.hint ?? ""}
+                      </span>
+                    </div>
+                  );
+                }
+
                 return (
                   <div key={field.key} className="flex flex-col gap-1.5">
                     <label
